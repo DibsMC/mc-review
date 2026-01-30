@@ -1,0 +1,123 @@
+// @ts-nocheck
+/* scripts/importProducts.js
+   Usage:
+     node scripts/importProducts.js data/flowers_master.csv
+     node scripts/importProducts.js data/flowers_master.csv --dry-run
+*/
+
+const fs = require("fs");
+const path = require("path");
+const admin = require("firebase-admin");
+const { parse } = require("csv-parse/sync");
+
+const serviceAccountPath = path.join(__dirname, "serviceAccountKey.json");
+
+if (!fs.existsSync(serviceAccountPath)) {
+    console.error(
+        "Missing serviceAccountKey.json. Put it at scripts/serviceAccountKey.json"
+    );
+    process.exit(1);
+}
+
+admin.initializeApp({
+    credential: admin.credential.cert(require(serviceAccountPath)),
+});
+
+const db = admin.firestore();
+
+function toNullIfBlank(v) {
+    const s = (v ?? "").toString().trim();
+    return s === "" ? null : s;
+}
+
+function toNumberOrNull(v) {
+    const s = (v ?? "").toString().trim();
+    if (s === "") return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+    const csvPathArg = args.find((a) => !a.startsWith("--"));
+    const dryRun = args.includes("--dry-run");
+
+    if (!csvPathArg) {
+        console.error("Provide a CSV path, e.g. data/flowers_master.csv");
+        process.exit(1);
+    }
+
+    const csvPath = path.isAbsolute(csvPathArg)
+        ? csvPathArg
+        : path.join(process.cwd(), csvPathArg);
+
+    if (!fs.existsSync(csvPath)) {
+        console.error("CSV not found:", csvPath);
+        process.exit(1);
+    }
+
+    const raw = fs.readFileSync(csvPath, "utf8");
+
+    const records = parse(raw, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+    });
+
+    if (!records.length) {
+        console.log("No rows found in CSV.");
+        return;
+    }
+
+    const BATCH_SIZE = 400;
+    console.log(
+        `Loaded ${records.length} rows from ${path.basename(csvPath)} ${dryRun ? "(DRY RUN)" : ""
+        }`
+    );
+
+    let totalWritten = 0;
+    let totalSkipped = 0;
+
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+        const chunk = records.slice(i, i + BATCH_SIZE);
+        const batch = db.batch();
+
+        for (const row of chunk) {
+            const id = toNullIfBlank(row.id);
+            if (!id) {
+                totalSkipped += 1;
+                continue;
+            }
+
+            const doc = {
+                name: toNullIfBlank(row.name) ?? "",
+                maker: toNullIfBlank(row.maker) ?? "",
+                variant: toNullIfBlank(row.variant),
+                type: (toNullIfBlank(row.type) || "flower").toLowerCase(),
+                thcPct: toNumberOrNull(row.thcPct),
+                cbdPct: toNumberOrNull(row.cbdPct),
+                isActive: true,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+
+            const ref = db.collection("products").doc(id);
+            if (!dryRun) batch.set(ref, doc, { merge: true });
+            totalWritten += 1;
+        }
+
+        if (!dryRun) await batch.commit();
+        console.log(
+            `Processed ${Math.min(i + BATCH_SIZE, records.length)}/${records.length}`
+        );
+    }
+
+    console.log(
+        `Done. ${totalWritten} upserts${dryRun ? " (dry-run)" : ""}. Skipped ${totalSkipped
+        }.`
+    );
+}
+
+main().catch((e) => {
+    console.error("Import failed:", e);
+    process.exit(1);
+});

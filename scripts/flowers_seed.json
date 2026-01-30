@@ -1,0 +1,506 @@
+[
+  {
+    "id": "tripoli",
+    "name": "Tripoli",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 20.0,
+    "cbdPct": 1.0,
+    "priceGBP": 59.0
+  },
+  {
+    "id": "citroli",
+    "name": "Citroli",
+    "brand": "4C LABS",
+    "type": "Sativa",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "crossbow",
+    "name": "Crossbow",
+    "brand": "UPSTATE",
+    "type": "Hybrid",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 69.0
+  },
+  {
+    "id": "gary-busey",
+    "name": "Gary Busey",
+    "brand": "4C LABS",
+    "type": "Hybrid",
+    "thcPct": 30.0,
+    "cbdPct": 1.0,
+    "priceGBP": 90.0
+  },
+  {
+    "id": "black-amber",
+    "name": "Black Amber",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 32.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "khalifa-mints",
+    "name": "Khalifa Mints",
+    "brand": "4C LABS",
+    "type": "Hybrid",
+    "thcPct": 24.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "rs-11",
+    "name": "RS-11",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 24.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "frozen-fist",
+    "name": "Frozen Fist",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 89.5
+  },
+  {
+    "id": "animal-face-ja",
+    "name": "Animal Face Ja",
+    "brand": "i-l",
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 70.0
+  },
+  {
+    "id": "grape-cookies",
+    "name": "Grape Cookies",
+    "brand": "SUPERSEED",
+    "type": "Indica",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 100.0
+  },
+  {
+    "id": "black-mountain-side",
+    "name": "Black Mountain Side",
+    "brand": "Il",
+    "type": "Hybrid",
+    "thcPct": 30.0,
+    "cbdPct": 1.0,
+    "priceGBP": 80.0
+  },
+  {
+    "id": "donkey-butter",
+    "name": "Donkey Butter",
+    "brand": "2 Il",
+    "type": "Hybrid",
+    "thcPct": 31.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "first-class-funk",
+    "name": "First Class Funk",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 72.5
+  },
+  {
+    "id": "pave-runtz",
+    "name": "Pave Runtz",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 28.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "super-m-a-c",
+    "name": "Super M.A.C.",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "zookies",
+    "name": "Zookies",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 23.0,
+    "cbdPct": 1.0,
+    "priceGBP": 50.0
+  },
+  {
+    "id": "lavender-cake",
+    "name": "Lavender Cake",
+    "brand": "3k",
+    "type": "Indica",
+    "thcPct": 20.0,
+    "cbdPct": 1.0,
+    "priceGBP": 55.0
+  },
+  {
+    "id": "snow-lotus",
+    "name": "Snow Lotus",
+    "brand": "I-l",
+    "type": "Indica",
+    "thcPct": 34.0,
+    "cbdPct": 1.0,
+    "priceGBP": 69.5
+  },
+  {
+    "id": "emergen-c",
+    "name": "Emergen-C",
+    "brand": "Il",
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 49.5
+  },
+  {
+    "id": "king-s-kush",
+    "name": "King's Kush",
+    "brand": "fo rR",
+    "type": "Indica",
+    "thcPct": 24.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "high-society",
+    "name": "High Society",
+    "brand": "Gain",
+    "type": "Hybrid",
+    "thcPct": 30.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "lemon-cherry-gelato",
+    "name": "Lemon Cherry Gelato",
+    "brand": "oO ats",
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 77.5
+  },
+  {
+    "id": "tangie-chem",
+    "name": "Tangie Chem",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 23.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "sun-county-kush",
+    "name": "Sun County Kush",
+    "brand": null,
+    "type": "Sativa",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 65.0
+  },
+  {
+    "id": "jelly-rancher",
+    "name": "Jelly Rancher",
+    "brand": "Oo I-l",
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "long-valley-legend",
+    "name": "Long Valley Legend",
+    "brand": "fo Il",
+    "type": "Hybrid",
+    "thcPct": 23.0,
+    "cbdPct": 1.0,
+    "priceGBP": 80.0
+  },
+  {
+    "id": "tangerine-boost",
+    "name": "Tangerine Boost",
+    "brand": "Hybrid  Long Valley Legend",
+    "type": "Sativa",
+    "thcPct": 23.0,
+    "cbdPct": 1.0,
+    "priceGBP": 80.0
+  },
+  {
+    "id": "gmo-mac",
+    "name": "GMO MAC",
+    "brand": "Il",
+    "type": "Indica",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 90.0
+  },
+  {
+    "id": "lemonatti",
+    "name": "Lemonatti",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 60.0
+  },
+  {
+    "id": "ghost-wreck-haze",
+    "name": "Ghost Wreck Haze",
+    "brand": "fo Il",
+    "type": "Hybrid",
+    "thcPct": 8.0,
+    "cbdPct": 10.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "long-valley-legend",
+    "name": "Long Valley Legend",
+    "brand": "Hybrid  Ghost Wreck Haze",
+    "type": "Hybrid",
+    "thcPct": 8.0,
+    "cbdPct": 10.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "gastro-pop",
+    "name": "Gastro Pop",
+    "brand": "Il",
+    "type": "Indica",
+    "thcPct": 28.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "gelatti-pie",
+    "name": "Gelatti Pie",
+    "brand": "I-l",
+    "type": "Sativa",
+    "thcPct": 30.0,
+    "cbdPct": 1.0,
+    "priceGBP": 100.0
+  },
+  {
+    "id": "black-russian",
+    "name": "Black Russian",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 18.0,
+    "cbdPct": 1.0,
+    "priceGBP": 55.0
+  },
+  {
+    "id": "ghost-wreck-haze",
+    "name": "Ghost Wreck Haze",
+    "brand": "Indica  Black Russian",
+    "type": "Hybrid",
+    "thcPct": 18.0,
+    "cbdPct": 1.0,
+    "priceGBP": 55.0
+  },
+  {
+    "id": "cherry-cheesecake",
+    "name": "Cherry Cheesecake",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 55.0
+  },
+  {
+    "id": "high-society-oracle",
+    "name": "High Society (Oracle)",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "halle-berry",
+    "name": "Halle Berry",
+    "brand": "Il",
+    "type": "Hybrid",
+    "thcPct": 22.0,
+    "cbdPct": 1.0,
+    "priceGBP": 55.0
+  },
+  {
+    "id": "black-russian",
+    "name": "Black Russian",
+    "brand": "Hybrid  Halle Berry",
+    "type": "Indica",
+    "thcPct": 22.0,
+    "cbdPct": 1.0,
+    "priceGBP": 55.0
+  },
+  {
+    "id": "lemon-gelato",
+    "name": "Lemon Gelato",
+    "brand": "Il",
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 80.0
+  },
+  {
+    "id": "miracle-alien-cookies",
+    "name": "Miracle Alien Cookies",
+    "brand": "fo Il",
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "alien-jelly",
+    "name": "Alien Jelly",
+    "brand": "Gain",
+    "type": "Indica",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "halle-berry",
+    "name": "Halle Berry",
+    "brand": "pai Bema AB 8 AB ERPRE FRE 5b Ws SELLS awa ears",
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  },
+  {
+    "id": "omg",
+    "name": "OMG",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 65.0
+  },
+  {
+    "id": "mochi-gelato",
+    "name": "Mochi Gelato",
+    "brand": "fo and",
+    "type": "Hybrid",
+    "thcPct": 28.0,
+    "cbdPct": 1.0,
+    "priceGBP": 80.0
+  },
+  {
+    "id": "superboof",
+    "name": "Superboof",
+    "brand": "Il",
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "alien-jelly",
+    "name": "Alien Jelly",
+    "brand": "en ee ee",
+    "type": "Indica",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "gmo-animal-cookies",
+    "name": "GMO Animal Cookies",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 60.0
+  },
+  {
+    "id": "gelato-41",
+    "name": "Gelato #41",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 22.0,
+    "cbdPct": 1.0,
+    "priceGBP": 70.0
+  },
+  {
+    "id": "chem-mog",
+    "name": "Chem-Mog",
+    "brand": null,
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "superboof",
+    "name": "Superboof",
+    "brand": "DALGETY CMOG THC 27 CBD 1 CANN",
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "zkittlez-fuel",
+    "name": "Zkittlez Fuel",
+    "brand": "Il",
+    "type": "Hybrid",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 62.5
+  },
+  {
+    "id": "banana-daddy",
+    "name": "Banana Daddy",
+    "brand": null,
+    "type": "Indica",
+    "thcPct": 26.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "oaxacan-kush",
+    "name": "Oaxacan Kush",
+    "brand": "Il",
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "chem-mog-hybrid-oaxacan-kush",
+    "name": "Chem-Mog Hybrid | Oaxacan Kush",
+    "brand": "4C LABS XK-S OAXACAN KUSH SMALLS",
+    "type": "Hybrid",
+    "thcPct": 27.0,
+    "cbdPct": 1.0,
+    "priceGBP": 85.0
+  },
+  {
+    "id": "karamel-kandy-hybrid-mac-doughnuts",
+    "name": "Karamel Kandy Hybrid | Mac Doughnuts",
+    "brand": "I-l  i",
+    "type": "Hybrid",
+    "thcPct": 25.0,
+    "cbdPct": 1.0,
+    "priceGBP": 75.0
+  }
+]
