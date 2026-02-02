@@ -5,6 +5,33 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 
+function formatTerpenes(v: any): string | null {
+  if (!v) return null;
+
+  // if stored as a simple string like: "myrcene:major|limonene:minor"
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    return s
+      .split("|")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => part.replace(":", ": "))
+      .join("  •  ");
+  }
+
+  // if stored as an object/map later
+  if (typeof v === "object") {
+    const entries = Object.entries(v)
+      .map(([k, val]) => `${k}: ${val}`)
+      .filter((x) => x.trim() !== "");
+    return entries.length ? entries.join("  •  ") : null;
+  }
+
+  return null;
+}
+
+
 type Review = {
   id: string;
   rating?: number;

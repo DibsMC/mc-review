@@ -1,4 +1,3 @@
-import type { View as RNView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -11,13 +10,14 @@ import {
     Modal,
     Platform,
     Pressable,
+    StyleSheet,
     Text,
     TextInput,
     View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import firestore from "@react-native-firebase/firestore";
+import firestore, { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { theme } from "../../../lib/theme";
 
@@ -28,9 +28,10 @@ type Product = {
     name: string;
     maker: string;
     variant?: string | null;
-    type: string;
+    type: string; // "flower" etc
     thcPct?: number | null;
     cbdPct?: number | null;
+    terpenes?: string | null;
 };
 
 type Review = {
@@ -42,7 +43,7 @@ type Review = {
     score?: number | null;
 
     text?: string | null;
-    createdAt?: any;
+    createdAt?: FirebaseFirestoreTypes.Timestamp | number | null;
 
     sleepy?: number | null;
     calm?: number | null;
@@ -61,16 +62,17 @@ function formatPct(n: number | null | undefined) {
     return `${n}%`;
 }
 
-function safeName(v: any) {
+function safeName(v: unknown) {
     return typeof v === "string" && v.trim() ? v.trim() : "";
 }
 
 function getCreatedAtMs(r: Review) {
-    const c = (r as any).createdAt;
+    const c = r.createdAt;
     if (!c) return 0;
-    if (typeof c?.toMillis === "function") return c.toMillis();
-    if (typeof c?.seconds === "number") return c.seconds * 1000;
     if (typeof c === "number") return c;
+    // Firestore Timestamp
+    if (typeof (c as any)?.toMillis === "function") return (c as any).toMillis();
+    if (typeof (c as any)?.seconds === "number") return (c as any).seconds * 1000;
     return 0;
 }
 
@@ -79,9 +81,7 @@ function round1(n: number) {
 }
 
 function avgNumbers(vals: Array<number | null | undefined>) {
-    const xs = vals.filter(
-        (v): v is number => typeof v === "number" && Number.isFinite(v)
-    );
+    const xs = vals.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
     if (xs.length === 0) return 0;
     return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
@@ -95,30 +95,100 @@ function computeHeadlineScore(input: {
     clarity?: number | null;
 }) {
     const rating = Number.isFinite(input.rating) ? input.rating : 0;
-    const effects = avgNumbers([
-        input.daytime,
-        input.sleepy,
-        input.calm,
-        input.clarity,
-    ]);
+    const effects = avgNumbers([input.daytime, input.sleepy, input.calm, input.clarity]);
     if (!effects) return round1(rating);
     return round1(rating * 0.75 + effects * 0.25);
 }
 
-// Bud rating with partial fill + theme tint (no white boxes)
-function BudRating({
-    value,
-    size = 18,
-}: {
-    value: number;
-    size?: number;
-}) {
-    const safe = Number.isFinite(value)
-        ? Math.max(0, Math.min(5, value))
-        : 0;
+/* -------------------- Terpenes parsing -------------------- */
 
-    const filledTint = theme.colors.budFilled;
-    const emptyTint = theme.colors.budEmpty;
+function prettyTerpeneName(raw: string) {
+    const s = raw.trim().replace(/_/g, " ").replace(/-/g, " ");
+    return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function parseTerpenes(input: string | null | undefined) {
+    if (!input) return [];
+    // "limonene:major|caryophyllene:major|linalool:major"
+    return input
+        .split("|")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => {
+            const [nameRaw, strengthRaw] = part.split(":").map((x) => (x ?? "").trim());
+            const name = prettyTerpeneName(nameRaw);
+            const strength = strengthRaw ? strengthRaw.toLowerCase() : "";
+            return { name, strength };
+        })
+        .filter((t) => t.name);
+}
+
+/* -------------------- Metallic chip theme -------------------- */
+
+function hashStringToInt(input: string) {
+    let h = 0;
+    for (let i = 0; i < input.length; i++) {
+        h = (h << 5) - h + input.charCodeAt(i);
+        h |= 0;
+    }
+    return Math.abs(h);
+}
+
+type MetalTheme = {
+    colors: [string, string, string];
+    border: string;
+    text: string;
+    subText: string;
+};
+
+const METAL_THEMES: MetalTheme[] = [
+    {
+        colors: ["rgba(212,175,55,0.95)", "rgba(240,214,120,0.95)", "rgba(170,130,30,0.95)"],
+        border: "rgba(255,240,190,0.28)",
+        text: "rgba(12,12,14,0.96)",
+        subText: "rgba(20,20,24,0.78)",
+    },
+    {
+        colors: ["rgba(190,195,205,0.92)", "rgba(235,238,245,0.92)", "rgba(150,155,170,0.92)"],
+        border: "rgba(255,255,255,0.24)",
+        text: "rgba(12,12,14,0.96)",
+        subText: "rgba(20,20,24,0.78)",
+    },
+    {
+        colors: ["rgba(70,75,88,0.92)", "rgba(120,128,145,0.92)", "rgba(52,56,66,0.92)"],
+        border: "rgba(255,255,255,0.16)",
+        text: "rgba(250,250,252,0.96)",
+        subText: "rgba(235,235,240,0.74)",
+    },
+    {
+        colors: ["rgba(170,92,60,0.92)", "rgba(245,175,125,0.92)", "rgba(120,60,40,0.92)"],
+        border: "rgba(255,220,200,0.20)",
+        text: "rgba(12,12,14,0.96)",
+        subText: "rgba(20,20,24,0.78)",
+    },
+    {
+        colors: ["rgba(70,150,120,0.92)", "rgba(160,240,210,0.92)", "rgba(40,90,76,0.92)"],
+        border: "rgba(210,255,240,0.20)",
+        text: "rgba(8,10,12,0.96)",
+        subText: "rgba(20,22,26,0.78)",
+    },
+    {
+        colors: ["rgba(120,95,185,0.92)", "rgba(210,190,255,0.92)", "rgba(75,60,130,0.92)"],
+        border: "rgba(240,230,255,0.22)",
+        text: "rgba(12,12,14,0.96)",
+        subText: "rgba(20,20,24,0.78)",
+    },
+];
+
+function metalThemeForKey(key: string): MetalTheme {
+    const idx = hashStringToInt(key.trim().toLowerCase()) % METAL_THEMES.length;
+    return METAL_THEMES[idx];
+}
+
+/* -------------------- BudRating -------------------- */
+
+function BudRating({ value, size = 18 }: { value: number; size?: number }) {
+    const safe = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
 
     return (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -133,21 +203,20 @@ function BudRating({
                         style={{
                             width: size,
                             height: size,
-                            marginRight: i === 4 ? 0 : 6,
+                            marginRight: i === 4 ? 0 : 8,
                         }}
                     >
-                        {/* empty bud */}
                         <Image
                             source={budImg}
                             resizeMode="contain"
                             style={{
                                 width: size,
                                 height: size,
+                                opacity: 0.22,
                             }}
                         />
 
-                        {/* filled portion */}
-                        {fill > 0 && (
+                        {fill > 0 ? (
                             <View
                                 style={{
                                     position: "absolute",
@@ -164,10 +233,11 @@ function BudRating({
                                     style={{
                                         width: size,
                                         height: size,
+                                        opacity: 1,
                                     }}
                                 />
                             </View>
-                        )}
+                        ) : null}
                     </View>
                 );
             })}
@@ -175,6 +245,7 @@ function BudRating({
     );
 }
 
+/* -------------------- RatingRow -------------------- */
 
 function RatingRow({
     label,
@@ -188,54 +259,95 @@ function RatingRow({
     disabled: boolean;
 }) {
     return (
-        <View style={{ marginTop: 10 }}>
-            <Text style={{ marginBottom: 6, color: theme.colors.textOnLightSecondary }}>
+        <View style={{ marginTop: 14 }}>
+            <Text style={{ marginBottom: 10, color: "rgba(255,255,255,0.78)", fontWeight: "800" }}>
                 {label}
             </Text>
 
-            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                    <Pressable
-                        key={`${label}-${n}`}
-                        onPress={() => {
-                            if (disabled) return;
-                            onChange(n);
-                        }}
-                        disabled={disabled}
-                        style={{
-                            paddingVertical: 10,
-                            paddingHorizontal: 12,
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor:
-                                value === n
-                                    ? "rgba(0,0,0,0.85)"
-                                    : "rgba(0,0,0,0.12)",
-                            backgroundColor:
-                                value === n ? "rgba(0,0,0,0.9)" : "rgba(255,255,255,0.9)",
-                            opacity: disabled ? 0.6 : 1,
-                            marginRight: 8,
-                            marginBottom: 8,
-                        }}
-                    >
-                        <Text
-                            style={{
-                                color: value === n ? "#fff" : "rgba(0,0,0,0.9)",
-                                fontWeight: "800",
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                {[1, 2, 3, 4, 5].map((n) => {
+                    const selected = value === n;
+
+                    return (
+                        <Pressable
+                            key={`${label}-${n}`}
+                            onPress={() => {
+                                if (disabled) return;
+                                onChange(n);
                             }}
+                            disabled={disabled}
+                            style={[
+                                styles.ratingDot,
+                                selected ? styles.ratingDotSelected : styles.ratingDotUnselected,
+                                disabled ? { opacity: 0.6 } : null,
+                            ]}
                         >
-                            {n}
-                        </Text>
-                    </Pressable>
-                ))}
+                            <Image
+                                source={budImg}
+                                resizeMode="contain"
+                                style={{ width: 18, height: 18, opacity: selected ? 1 : 0.22 }}
+                            />
+                            {selected ? <View pointerEvents="none" style={styles.ratingRing} /> : null}
+                        </Pressable>
+                    );
+                })}
             </View>
         </View>
     );
 }
 
+/* -------------------- BlingButton -------------------- */
+
+function BlingButton({
+    label,
+    onPress,
+    disabled,
+    variant,
+}: {
+    label: string;
+    onPress: () => void;
+    disabled?: boolean;
+    variant: "gold" | "green";
+}) {
+    const gold = ["rgba(212,175,55,0.98)", "rgba(228,198,92,0.94)", "rgba(246,228,140,0.92)"] as const;
+    const green = ["rgba(120,190,140,0.98)", "rgba(150,215,168,0.95)", "rgba(185,235,200,0.92)"] as const;
+
+    const border = variant === "gold" ? "rgba(212,175,55,0.45)" : "rgba(150,215,168,0.40)";
+    const textColor = "rgba(10,12,14,0.92)";
+
+    return (
+        <Pressable
+            onPress={onPress}
+            disabled={disabled}
+            style={[styles.blingBtnOuter, { borderColor: border, opacity: disabled ? 0.65 : 1 }]}
+        >
+            <LinearGradient
+                pointerEvents="none"
+                colors={variant === "gold" ? [...gold] : [...green]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFillObject}
+            />
+
+            <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(255,255,255,0.26)", "rgba(255,255,255,0.00)"]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.blingGloss}
+            />
+
+            <View pointerEvents="none" style={styles.blingInnerGlow} />
+
+            <Text style={[styles.blingBtnText, { color: textColor }]}>{label}</Text>
+        </Pressable>
+    );
+}
+
+/* ==================== SCREEN ==================== */
+
 export default function FlowerDetail() {
-    const router = useRouter();
-    const { flowerId } = useLocalSearchParams<{ flowerId: string }>();
+    const { flowerId } = useLocalSearchParams<{ flowerId?: string }>();
     const productId = typeof flowerId === "string" ? flowerId : "";
 
     const [product, setProduct] = useState<Product | null>(null);
@@ -249,13 +361,8 @@ export default function FlowerDetail() {
     const [sortMode, setSortMode] = useState<SortMode>("recent");
     const [sortOpen, setSortOpen] = useState(false);
 
-    const sortBtnRef = useRef<RNView | null>(null);
-    const [sortAnchor, setSortAnchor] = useState<{
-        x: number;
-        y: number;
-        w: number;
-        h: number;
-    } | null>(null);
+    const sortBtnRef = useRef<View | null>(null);
+    const [sortAnchor, setSortAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
     const [reviewOpen, setReviewOpen] = useState(false);
     const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
@@ -327,8 +434,7 @@ export default function FlowerDetail() {
     const sortedReviews = useMemo(() => {
         const list = [...reviews];
 
-        if (sortMode === "recent")
-            return list.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a));
+        if (sortMode === "recent") return list.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a));
 
         if (sortMode === "high") {
             return list.sort((a, b) => {
@@ -357,6 +463,7 @@ export default function FlowerDetail() {
         return () => clearInterval(t);
     }, [isCooldown]);
 
+    // Product listener
     useEffect(() => {
         if (!productId) return;
 
@@ -381,6 +488,7 @@ export default function FlowerDetail() {
                         type: typeof data?.type === "string" ? data.type : "flower",
                         thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
                         cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
+                        terpenes: typeof data?.terpenes === "string" ? data.terpenes : null,
                     });
                     setLoadingProduct(false);
                 },
@@ -394,6 +502,7 @@ export default function FlowerDetail() {
         return () => unsub();
     }, [productId]);
 
+    // Reviews listener
     useEffect(() => {
         if (!productId) return;
 
@@ -430,8 +539,8 @@ export default function FlowerDetail() {
                             userId: typeof data.userId === "string" ? data.userId : "",
                             rating: ratingFromDb,
                             score: scoreFromDb ?? computedScore,
-                            text: data.text ?? null,
-                            createdAt: data.createdAt,
+                            text: typeof data.text === "string" ? data.text : null,
+                            createdAt: (data.createdAt ?? null) as any,
                             sleepy: sleepyFromDb,
                             calm: calmFromDb,
                             daytime: daytimeFromDb,
@@ -451,6 +560,7 @@ export default function FlowerDetail() {
         return () => unsub();
     }, [productId]);
 
+    // Fetch user names for review list
     useEffect(() => {
         const uids = Array.from(new Set(reviews.map((r) => r.userId).filter(Boolean)));
         if (uids.length === 0) return;
@@ -632,8 +742,7 @@ export default function FlowerDetail() {
     };
 
     const primaryButtonLabel = myLastReview ? "Edit last review" : "Write a review";
-    const sortLabel =
-        sortMode === "recent" ? "Most recent" : sortMode === "high" ? "Highest" : "Lowest";
+    const sortLabel = sortMode === "recent" ? "Most recent" : sortMode === "high" ? "Highest" : "Lowest";
 
     const openSortMenu = () => {
         Keyboard.dismiss();
@@ -648,19 +757,9 @@ export default function FlowerDetail() {
 
     if (loadingProduct) {
         return (
-            <SafeAreaView
-                style={{
-                    flex: 1,
-                    paddingHorizontal: 16,
-                    paddingTop: 72,
-                    backgroundColor: "transparent",
-                }}
-            >
-
+            <SafeAreaView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 72, backgroundColor: "transparent" }}>
                 <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
-                <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary }}>
-                    Loading product...
-                </Text>
+                <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary }}>Loading product...</Text>
             </SafeAreaView>
         );
     }
@@ -668,8 +767,6 @@ export default function FlowerDetail() {
     if (!product) {
         return (
             <SafeAreaView style={{ flex: 1, padding: 16, backgroundColor: "transparent" }}>
-
-
                 <Text style={{ fontSize: 18, fontWeight: "900", marginTop: 16, color: theme.colors.textOnDark }}>
                     Product not found
                 </Text>
@@ -680,21 +777,13 @@ export default function FlowerDetail() {
         );
     }
 
+    const terps = parseTerpenes(product.terpenes);
+
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
-            {/* Header (Back only) */}
-
             {/* Sort menu Modal */}
-            <Modal
-                visible={sortOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setSortOpen(false)}
-            >
-                <Pressable
-                    onPress={() => setSortOpen(false)}
-                    style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.10)" }}
-                >
+            <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
+                <Pressable onPress={() => setSortOpen(false)} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.10)" }}>
                     <View pointerEvents="box-none" style={{ flex: 1 }}>
                         <View
                             pointerEvents="box-none"
@@ -725,15 +814,10 @@ export default function FlowerDetail() {
                                     style={{
                                         paddingVertical: 12,
                                         paddingHorizontal: 12,
-                                        backgroundColor:
-                                            sortMode === opt.key
-                                                ? "rgba(255,255,255,0.14)"
-                                                : "rgba(255,255,255,0.06)",
+                                        backgroundColor: sortMode === opt.key ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.06)",
                                     }}
                                 >
-                                    <Text style={{ fontWeight: "900", color: theme.colors.textOnDark }}>
-                                        {opt.label}
-                                    </Text>
+                                    <Text style={{ fontWeight: "900", color: theme.colors.textOnDark }}>{opt.label}</Text>
                                 </Pressable>
                             ))}
                         </View>
@@ -756,6 +840,7 @@ export default function FlowerDetail() {
                         setSortOpen(false);
                     }}
                     contentContainerStyle={{ paddingBottom: 24 }}
+                    ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
                     ListHeaderComponent={
                         <View style={{ padding: 16 }}>
                             {/* HERO glass card */}
@@ -769,44 +854,87 @@ export default function FlowerDetail() {
                                     overflow: "hidden",
                                 }}
                             >
-
-                                <Text
-                                    style={{
-                                        fontSize: 34,
-                                        fontWeight: "900",
-                                        lineHeight: 38,
-                                        color: theme.colors.textOnDark,
-                                    }}
-                                >
+                                <Text style={{ fontSize: 34, fontWeight: "900", lineHeight: 38, color: theme.colors.textOnDark }}>
                                     {product.name}
                                     {product.variant ? ` (${product.variant})` : ""}
                                 </Text>
 
-                                <Text
-                                    style={{
-                                        marginTop: 10,
-                                        fontSize: 15,
-                                        opacity: 0.95,
-                                        color: theme.colors.textOnDarkSecondary,
-                                    }}
-                                >
-                                    {product.maker || "Unknown maker"}  {product.type}  THC{" "}
-                                    {formatPct(product.thcPct)}  CBD {formatPct(product.cbdPct)}
+                                {/* Meta line */}
+                                <Text style={{ marginTop: 10, fontSize: 15, opacity: 0.95, color: theme.colors.textOnDarkSecondary }}>
+                                    {(product.maker || "Unknown maker") +
+                                        " · " +
+                                        (product.type || "flower") +
+                                        " · THC " +
+                                        formatPct(product.thcPct) +
+                                        " · CBD " +
+                                        formatPct(product.cbdPct)}
                                 </Text>
+
+                                {/* Terpenes */}
+                                {terps.length > 0 ? (
+                                    <View style={{ marginTop: 12 }}>
+                                        <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>
+                                            Terpenes
+                                        </Text>
+
+                                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                                            {terps.map((t) => {
+                                                const chip = metalThemeForKey(t.name);
+
+                                                return (
+                                                    <LinearGradient
+                                                        key={`${t.name}-${t.strength}`}
+                                                        colors={chip.colors}
+                                                        start={{ x: 0, y: 0.35 }}
+                                                        end={{ x: 1, y: 0.65 }}
+                                                        style={{
+                                                            paddingVertical: 9,
+                                                            paddingHorizontal: 14,
+                                                            borderRadius: 999,
+                                                            borderWidth: 1,
+                                                            borderColor: chip.border,
+                                                            overflow: "hidden",
+                                                            shadowColor: "rgba(0,0,0,0.35)",
+                                                            shadowOpacity: 0.30,
+                                                            shadowRadius: 10,
+                                                            shadowOffset: { width: 0, height: 8 },
+                                                            elevation: 10,
+                                                        }}
+                                                    >
+                                                        <LinearGradient
+                                                            pointerEvents="none"
+                                                            colors={["rgba(255,255,255,0.34)", "rgba(255,255,255,0.00)"]}
+                                                            start={{ x: 0.5, y: 0 }}
+                                                            end={{ x: 0.5, y: 1 }}
+                                                            style={{
+                                                                position: "absolute",
+                                                                left: 0,
+                                                                right: 0,
+                                                                top: 0,
+                                                                height: 16,
+                                                                opacity: 0.85,
+                                                            }}
+                                                        />
+
+                                                        <Text style={{ color: chip.text, fontWeight: "900", fontSize: 13 }}>
+                                                            {t.name}
+                                                            {t.strength ? (
+                                                                <Text style={{ color: chip.subText, fontWeight: "900" }}> {t.strength}</Text>
+                                                            ) : null}
+                                                        </Text>
+                                                    </LinearGradient>
+                                                );
+                                            })}
+                                        </View>
+                                    </View>
+                                ) : null}
 
                                 {/* Headline rating */}
                                 <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center" }}>
                                     {reviews.length ? (
                                         <>
                                             <BudRating value={avgOverall} size={18} />
-                                            <Text
-                                                style={{
-                                                    fontSize: 22,
-                                                    fontWeight: "900",
-                                                    marginLeft: 10,
-                                                    color: theme.colors.textOnDark,
-                                                }}
-                                            >
+                                            <Text style={{ fontSize: 22, fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
                                                 {round1(avgOverall).toFixed(1)}
                                             </Text>
                                         </>
@@ -818,28 +946,8 @@ export default function FlowerDetail() {
                                 </View>
 
                                 <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, opacity: 0.95 }}>
-                                    {reviews.length
-                                        ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}`
-                                        : "Be the first to review this"}
+                                    {reviews.length ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}` : "Be the first to review this"}
                                 </Text>
-
-                                {/* Coming next */}
-                                <View
-                                    style={{
-                                        marginTop: 16,
-                                        padding: 14,
-                                        borderRadius: 18,
-                                        borderWidth: 1,
-                                        borderColor: "rgba(255,255,255,0.18)",
-                                        backgroundColor: "rgba(246,247,248,0.14)",
-                                        overflow: "hidden",
-                                    }}
-                                >
-
-                                    <Text style={{ color: theme.colors.textOnDarkSecondary, opacity: 0.95 }}>
-                                        Coming next: user uploaded photos for this product.
-                                    </Text>
-                                </View>
 
                                 {/* Summary of effects */}
                                 <View
@@ -853,7 +961,6 @@ export default function FlowerDetail() {
                                         overflow: "hidden",
                                     }}
                                 >
-
                                     <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDark }}>
                                         Summary of effects
                                     </Text>
@@ -913,322 +1020,186 @@ export default function FlowerDetail() {
                                         </View>
                                     )}
                                 </View>
-                            </View>
 
-                            {/* Write / Edit controls */}
-                            {!reviewOpen ? (
-                                <View style={{ marginTop: 16 }}>
-                                    <Pressable
-                                        onPress={() => {
-                                            Keyboard.dismiss();
-                                            setSortOpen(false);
-                                            if (isCooldown) return;
-                                            if (myLastReview) openEditLastReview();
-                                            else openWriteNewReview();
-                                        }}
-                                        disabled={submitting || isCooldown}
-                                        style={{
-                                            paddingVertical: 14,
-                                            borderRadius: 14,
-                                            backgroundColor: theme.colors.accent, // gold
-                                            alignItems: "center",
-                                            overflow: "hidden",
-                                            opacity: submitting || isCooldown ? 0.75 : 1,
-                                            borderWidth: 1,
-                                            borderColor: "rgba(255,255,255,0.18)",
-                                        }}
-                                    >
-                                        {/* shine */}
-                                        <View
-                                            pointerEvents="none"
-                                            style={{
-                                                position: "absolute",
-                                                top: 0,
-                                                left: 0,
-                                                right: 0,
-                                                height: 22,
-                                                backgroundColor: "rgba(255,255,255,0.18)",
-                                            }}
-                                        />
-
-                                        <Text style={{ color: "#111", fontWeight: "900" }}>
-                                            {isCooldown ? `You can edit again in ${secondsLeft}s` : primaryButtonLabel}
-                                        </Text>
-                                    </Pressable>
-
-                                    {myLastReview ? (
-                                        <Pressable
+                                {/* Write / Edit controls */}
+                                {!reviewOpen ? (
+                                    <View style={{ marginTop: 16 }}>
+                                        <BlingButton
+                                            variant="gold"
+                                            label={isCooldown ? `You can edit again in ${secondsLeft}s` : primaryButtonLabel}
+                                            disabled={submitting || isCooldown}
                                             onPress={() => {
                                                 Keyboard.dismiss();
                                                 setSortOpen(false);
                                                 if (isCooldown) return;
-                                                openWriteNewReview();
+                                                if (myLastReview) openEditLastReview();
+                                                else openWriteNewReview();
                                             }}
-                                            disabled={submitting || isCooldown}
-                                            style={{
-                                                marginTop: 10,
-                                                paddingVertical: 12,
-                                                borderRadius: 14,
-                                                backgroundColor: theme.colors.budFilled, // green
-                                                alignItems: "center",
-                                                overflow: "hidden",
-                                                opacity: submitting || isCooldown ? 0.6 : 1,
-                                                borderWidth: 1,
-                                                borderColor: "rgba(255,255,255,0.18)",
-                                            }}
-                                        >
-                                            {/* shine */}
-                                            <View
-                                                pointerEvents="none"
-                                                style={{
-                                                    position: "absolute",
-                                                    top: 0,
-                                                    left: 0,
-                                                    right: 0,
-                                                    height: 20,
-                                                    backgroundColor: "rgba(255,255,255,0.16)",
-                                                }}
-                                            />
+                                        />
 
-                                            <Text style={{ fontWeight: "900", color: "#0b0f0d" }}>
-                                                Write a new review
-                                            </Text>
-                                        </Pressable>
+                                        {myLastReview ? (
+                                            <View style={{ marginTop: 12 }}>
+                                                <BlingButton
+                                                    variant="green"
+                                                    label="Write a new review"
+                                                    disabled={submitting || isCooldown}
+                                                    onPress={() => {
+                                                        Keyboard.dismiss();
+                                                        setSortOpen(false);
+                                                        if (isCooldown) return;
+                                                        openWriteNewReview();
+                                                    }}
+                                                />
+                                            </View>
+                                        ) : null}
+                                    </View>
+                                ) : (
+                                    <View style={styles.reviewCard}>
+                                        <Text style={{ fontSize: 26, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                            {editingReviewId ? "Edit last review" : "Write a review"}
+                                        </Text>
 
-                                    ) : null}
-                                </View>
-                            ) : (
-                                <View
-                                    style={{
-                                        marginTop: 16,
-                                        padding: 14,
-                                        borderRadius: 18,
-                                        borderWidth: 1,
-                                        borderColor: "rgba(255,255,255,0.18)",
-                                        backgroundColor: "rgba(246,247,248,0.88)",
-                                    }}
-                                >
-                                    <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnLight }}>
-                                        {editingReviewId ? "Edit last review" : "Write a review"}
-                                    </Text>
+                                        <RatingRow label="Overall rating" value={rating} onChange={setRating} disabled={submitting} />
 
-                                    <RatingRow label="Overall rating" value={rating} onChange={setRating} disabled={submitting} />
+                                        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.72)", lineHeight: 18 }}>
+                                            Overall is your satisfaction score. The effect ratings softly shape the final score.
+                                        </Text>
 
-                                    <Text style={{ marginTop: 8, color: theme.colors.textOnLightSecondary, lineHeight: 18 }}>
-                                        Overall is your satisfaction score. The effect ratings softly shape the final score.
-                                    </Text>
-
-                                    <View style={{ marginTop: 6 }}>
                                         <RatingRow label="Daytime suitability" value={daytime} onChange={setDaytime} disabled={submitting} />
                                         <RatingRow label="Sleepiness" value={sleepy} onChange={setSleepy} disabled={submitting} />
                                         <RatingRow label="Calm" value={calm} onChange={setCalm} disabled={submitting} />
                                         <RatingRow label="Mental clarity" value={clarity} onChange={setClarity} disabled={submitting} />
-                                    </View>
 
-                                    <Text style={{ marginTop: 14, marginBottom: 6, fontWeight: "900", color: theme.colors.textOnLight }}>
-                                        Notes
-                                    </Text>
+                                        <Text style={{ marginTop: 18, marginBottom: 10, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                            Notes
+                                        </Text>
 
-                                    <TextInput
-                                        value={text}
-                                        onChangeText={setText}
-                                        editable={!submitting}
-                                        placeholder="What stood out? Effects, taste/smell, onset, buds, anything unexpected..."
-                                        placeholderTextColor="rgba(0,0,0,0.35)"
-                                        multiline
-                                        scrollEnabled
-                                        returnKeyType="default"
-                                        textAlignVertical="top"
-                                        style={{
-                                            minHeight: 90,
-                                            maxHeight: 160,
-                                            borderWidth: 1,
-                                            borderColor: "rgba(0,0,0,0.12)",
-                                            borderRadius: 14,
-                                            paddingHorizontal: 12,
-                                            paddingTop: 12,
-                                            paddingBottom: 12,
-                                            fontSize: 16,
-                                            lineHeight: 22,
-                                            marginBottom: 12,
-                                            opacity: submitting ? 0.7 : 1,
-                                            backgroundColor: "rgba(255,255,255,0.85)",
-                                            color: theme.colors.textOnLight,
-                                        }}
-                                    />
+                                        <TextInput
+                                            value={text}
+                                            onChangeText={setText}
+                                            editable={!submitting}
+                                            placeholder="What stood out? Effects, taste/smell, onset, buds, anything unexpected..."
+                                            placeholderTextColor="rgba(255,255,255,0.35)"
+                                            multiline
+                                            scrollEnabled
+                                            returnKeyType="default"
+                                            textAlignVertical="top"
+                                            style={styles.notesInput}
+                                        />
 
-                                    <View style={{ flexDirection: "row" }}>
-                                        <Pressable
-                                            onPress={async () => {
-                                                Keyboard.dismiss();
-                                                await submitReview();
-                                            }}
-                                            disabled={submitting || isCooldown}
-                                            style={{
-                                                flex: 1,
-                                                paddingVertical: 12,
-                                                borderRadius: 14,
-                                                backgroundColor: submitting || isCooldown ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.85)",
-                                                alignItems: "center",
-                                                opacity: submitting || isCooldown ? 0.8 : 1,
-                                                marginRight: 10,
-                                            }}
-                                        >
-                                            <Text style={{ color: "#fff", fontWeight: "900", textAlign: "center" }}>
-                                                {submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}
-                                            </Text>
-                                        </Pressable>
-
-                                        <Pressable
-                                            onPress={() => {
-                                                Keyboard.dismiss();
-                                                setReviewOpen(false);
-                                                setEditingReviewId(null);
-                                            }}
-                                            disabled={submitting}
-                                            style={{
-                                                flex: 1,
-                                                paddingVertical: 12,
-                                                borderRadius: 14,
-                                                borderWidth: 1,
-                                                borderColor: "rgba(0,0,0,0.12)",
-                                                backgroundColor: "rgba(255,255,255,0.85)",
-                                                alignItems: "center",
-                                                opacity: submitting ? 0.75 : 1,
-                                            }}
-                                        >
-                                            <Text style={{ fontWeight: "900", textAlign: "center", color: theme.colors.textOnLight }}>
-                                                Close
-                                            </Text>
-                                        </Pressable>
-                                    </View>
-
-                                    {thankYouVisible ? (
-                                        <View style={{ alignItems: "center", marginTop: 12 }}>
-                                            <View
-                                                style={{
-                                                    backgroundColor: "rgba(0,0,0,0.75)",
-                                                    borderRadius: 14,
-                                                    paddingVertical: 12,
-                                                    paddingHorizontal: 14,
-                                                    width: "100%",
-                                                    maxWidth: 340,
+                                        <View style={{ flexDirection: "row", marginTop: 12 }}>
+                                            <Pressable
+                                                onPress={async () => {
+                                                    Keyboard.dismiss();
+                                                    await submitReview();
                                                 }}
+                                                disabled={submitting || isCooldown}
+                                                style={[styles.formBtn, { marginRight: 10, opacity: submitting || isCooldown ? 0.7 : 1 }]}
                                             >
-                                                <Text style={{ color: "#fff", textAlign: "center" }}>
-                                                    <Text style={{ fontWeight: "900" }}>Saved.</Text> Your review is live.
+                                                <Text style={styles.formBtnText}>
+                                                    {submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}
+                                                </Text>
+                                            </Pressable>
+
+                                            <Pressable
+                                                onPress={() => {
+                                                    Keyboard.dismiss();
+                                                    setReviewOpen(false);
+                                                    setEditingReviewId(null);
+                                                }}
+                                                disabled={submitting}
+                                                style={[styles.formBtnAlt, { opacity: submitting ? 0.7 : 1 }]}
+                                            >
+                                                <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Close</Text>
+                                            </Pressable>
+                                        </View>
+
+                                        {thankYouVisible ? (
+                                            <View style={{ alignItems: "center", marginTop: 14 }}>
+                                                <View style={styles.toast}>
+                                                    <Text style={{ color: "#fff", textAlign: "center" }}>
+                                                        <Text style={{ fontWeight: "900" }}>Saved.</Text> Your review is live.
+                                                    </Text>
+                                                </View>
+
+                                                <Text style={styles.toastHint}>
+                                                    If your experience changes over time, you can post another review.
                                                 </Text>
                                             </View>
+                                        ) : null}
+                                    </View>
+                                )}
 
-                                            <Text
-                                                style={{
-                                                    marginTop: 10,
-                                                    fontSize: 14,
-                                                    color: "rgba(0,0,0,0.65)",
-                                                    textAlign: "center",
-                                                    width: "100%",
-                                                    maxWidth: 340,
-                                                    lineHeight: 20,
+                                {/* Reviews header + sort button */}
+                                <View style={{ marginTop: 24 }}>
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                        <Text style={{ fontSize: 34, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                            Reviews
+                                        </Text>
+
+                                        <View
+                                            ref={(n) => {
+                                                sortBtnRef.current = n;
+                                            }}
+                                            collapsable={false}
+                                        >
+                                            <Pressable
+                                                onPress={() => {
+                                                    if (sortOpen) setSortOpen(false);
+                                                    else openSortMenu();
                                                 }}
+                                                style={styles.sortPill}
                                             >
-                                                If your experience changes over time, you can post another review.
+                                                <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, includeFontPadding: false }}>
+                                                    {sortLabel}
+                                                </Text>
+                                            </Pressable>
+                                        </View>
+                                    </View>
+
+                                    {loadingReviews ? (
+                                        <View style={{ marginTop: 10 }}>
+                                            <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
+                                            <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>
+                                                Loading reviews...
                                             </Text>
                                         </View>
                                     ) : null}
-                                </View>
-                            )}
 
-                            {/* Reviews header + sort button */}
-                            <View style={{ marginTop: 22 }}>
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                    <Text style={{ fontSize: 28, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                        Reviews
-                                    </Text>
-
-                                    <View
-                                        ref={(n) => {
-                                            sortBtnRef.current = n;
-                                        }}
-                                        collapsable={false}
-                                    >
-                                        <Pressable
-                                            onPress={() => {
-                                                if (sortOpen) setSortOpen(false);
-                                                else openSortMenu();
-                                            }}
-                                            style={{
-                                                paddingVertical: 10,
-                                                paddingHorizontal: 12,
-                                                borderRadius: 14,
-                                                borderWidth: 1,
-                                                borderColor: "rgba(255,255,255,0.18)",
-                                                backgroundColor: "rgba(246,247,248,0.14)",
-                                            }}
-                                        >
-                                            <Text style={{ fontWeight: "900", color: theme.colors.textOnDark }}>
-                                                {sortLabel}
-                                            </Text>
-                                        </Pressable>
-                                    </View>
+                                    {!loadingReviews && reviews.length === 0 ? (
+                                        <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>
+                                            No reviews yet.
+                                        </Text>
+                                    ) : null}
                                 </View>
                             </View>
-
-                            {loadingReviews ? (
-                                <View style={{ marginTop: 10 }}>
-                                    <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
-                                    <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>
-                                        Loading reviews...
-                                    </Text>
-                                </View>
-                            ) : null}
-
-                            {!loadingReviews && reviews.length === 0 ? (
-                                <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>
-                                    No reviews yet.
-                                </Text>
-                            ) : null}
                         </View>
                     }
-                    ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
                     renderItem={({ item }) => {
                         const displayName = displayNameForUid(item.userId);
                         const score = getReviewScore(item);
                         const dateMs = getCreatedAtMs(item);
 
                         return (
-                            <View
-                                style={{
-                                    marginHorizontal: 16,
-                                    padding: 14,
-                                    borderRadius: 18,
-                                    borderWidth: 1,
-                                    borderColor: "rgba(255,255,255,0.16)",
-                                    backgroundColor: "rgba(246,247,248,0.14)",
-                                    overflow: "hidden",
-                                }}
-                            >
+                            <View style={styles.reviewItem}>
                                 <LinearGradient
                                     pointerEvents="none"
-                                    colors={[
-                                        "rgba(255,255,255,0.10)",
-                                        "rgba(255,255,255,0.03)",
-                                        "rgba(0,0,0,0.08)",
-                                    ]}
+                                    colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.03)", "rgba(0,0,0,0.08)"]}
                                     start={{ x: 0.5, y: 0 }}
                                     end={{ x: 0.5, y: 1 }}
-                                    style={{
-                                        position: "absolute",
-                                        top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                    }}
+                                    style={StyleSheet.absoluteFillObject}
                                 />
 
-
-
                                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                    <Text style={{ fontWeight: "900", fontSize: 16, flexShrink: 1, marginRight: 10, color: theme.colors.textOnDark }}>
+                                    <Text
+                                        style={{
+                                            fontWeight: "900",
+                                            fontSize: 16,
+                                            flexShrink: 1,
+                                            marginRight: 10,
+                                            color: theme.colors.textOnDark,
+                                        }}
+                                    >
                                         {displayName}
                                     </Text>
 
@@ -1237,7 +1208,7 @@ export default function FlowerDetail() {
                                     </Text>
                                 </View>
 
-                                <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
+                                <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
                                     <BudRating value={score} size={18} />
                                     <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
                                         {round1(score).toFixed(1)}
@@ -1257,3 +1228,155 @@ export default function FlowerDetail() {
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    blingBtnOuter: {
+        height: 58,
+        borderRadius: 20,
+        borderWidth: 1,
+        overflow: "hidden",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    blingBtnText: {
+        fontWeight: "900",
+        fontSize: 18,
+        lineHeight: 20,
+        textAlign: "center",
+        includeFontPadding: false,
+        textAlignVertical: "center",
+    },
+    blingGloss: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        height: 22,
+        opacity: 0.9,
+    },
+    blingInnerGlow: {
+        position: "absolute",
+        left: 10,
+        right: 10,
+        top: 10,
+        bottom: 10,
+        borderRadius: 16,
+        backgroundColor: "rgba(255,255,255,0.10)",
+        opacity: 0.35,
+    },
+
+    sortPill: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(246,247,248,0.14)",
+    },
+
+    reviewItem: {
+        marginHorizontal: 16,
+        padding: 14,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(246,247,248,0.14)",
+        overflow: "hidden",
+    },
+
+    reviewCard: {
+        marginTop: 18,
+        padding: 16,
+        borderRadius: 22,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(246,247,248,0.14)",
+        overflow: "hidden",
+    },
+
+    notesInput: {
+        minHeight: 110,
+        maxHeight: 190,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.14)",
+        borderRadius: 16,
+        paddingHorizontal: 14,
+        paddingTop: 14,
+        paddingBottom: 14,
+        fontSize: 16,
+        lineHeight: 22,
+        backgroundColor: "rgba(0,0,0,0.22)",
+        color: theme.colors.textOnDark,
+    },
+
+    formBtn: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 16,
+        backgroundColor: "rgba(0,0,0,0.70)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    formBtnAlt: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.14)",
+        backgroundColor: "rgba(255,255,255,0.10)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    formBtnText: {
+        fontWeight: "900",
+        textAlign: "center",
+        color: "#fff",
+        includeFontPadding: false,
+    },
+
+    toast: {
+        backgroundColor: "rgba(0,0,0,0.75)",
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        width: "100%",
+        maxWidth: 340,
+    },
+    toastHint: {
+        marginTop: 10,
+        fontSize: 14,
+        color: "rgba(255,255,255,0.62)",
+        textAlign: "center",
+        width: "100%",
+        maxWidth: 340,
+        lineHeight: 20,
+    },
+
+    ratingDot: {
+        width: 58,
+        height: 58,
+        borderRadius: 29,
+        borderWidth: 2,
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+    },
+    ratingDotUnselected: {
+        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(255,255,255,0.04)",
+    },
+    ratingDotSelected: {
+        borderColor: "rgba(212,175,55,0.85)",
+        backgroundColor: "rgba(212,175,55,0.12)",
+    },
+    ratingRing: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        borderRadius: 999,
+        borderWidth: 2,
+        borderColor: "rgba(212,175,55,0.75)",
+    },
+});

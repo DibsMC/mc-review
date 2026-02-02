@@ -5,17 +5,12 @@ export default function UserLayout() {
     return (
         <Stack
             screenOptions={{
-                animation: "fade",
-                headerTransparent: true,
-                headerTintColor: "white",
-                headerTitleStyle: { fontWeight: "800", color: "white" },
-                headerBackTitle: "Back",
-                headerBackTitleVisible: false,
                 headerShadowVisible: false,
+                headerBackButtonDisplayMode: "minimal",
                 contentStyle: { backgroundColor: "rgba(10,11,15,0.35)" },
             }}
-
         >
+
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="reviews-info" options={{ headerShown: true, title: "Reviews and scale" }} />
             <Stack.Screen name="about" options={{ headerShown: true, title: "About" }} />

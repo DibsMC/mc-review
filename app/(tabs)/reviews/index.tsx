@@ -1,13 +1,20 @@
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useEffect, useMemo, useState } from "react";
+import { CinematicCard } from "../../../components/ui/CinematicCard";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  FlatList,
-  Pressable,
-  Text,
-  View,
   ActivityIndicator,
+  Animated,
+  Dimensions,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import firestore from "@react-native-firebase/firestore";
@@ -20,13 +27,8 @@ type Product = {
   name: string;
   maker: string;
   variant?: string | null;
-
-  // strain type eg sativa/indica/hybrid
-  strainType?: string | null;
-
-  // product type eg flower/vape/oil/edible (optional in your data)
-  productType?: string | null;
-
+  strainType?: string | null; // "indica" | "sativa" | "hybrid"
+  productType?: string | null; // "flower" | "vape" | "oil" | "edible" etc
   thcPct?: number | null;
   cbdPct?: number | null;
 };
@@ -38,17 +40,15 @@ type Review = {
   score?: number | null;
 };
 
-type Stats = { count: number; avg: number };
+type Stat = { count: number; avg: number };
 
-type SortKey = "mostReviewed" | "highestRated" | "thcDesc" | "thcAsc" | "az" | "maker";
-
-type Filters = {
-  makers: string[];
-  strainTypes: string[];
-  productTypes: string[];
-  minRating: number; // 0 to 5
-  hasReviewsOnly: boolean;
-};
+type SortKey =
+  | "mostReviewed"
+  | "highestRated"
+  | "thcHighLow"
+  | "thcLowHigh"
+  | "maker"
+  | "atoz";
 
 function formatPct(n: number | null | undefined) {
   if (n === null || n === undefined) return "-";
@@ -68,40 +68,65 @@ function normStr(v: any) {
   return v.trim().toLowerCase();
 }
 
-function normalizeStrainType(v: any): string {
+function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
   const s = normStr(v);
   if (!s) return "unknown";
   if (s.includes("sativa")) return "sativa";
   if (s.includes("indica")) return "indica";
   if (s.includes("hybrid")) return "hybrid";
-  return s;
+  return "unknown";
 }
 
-function normalizeProductType(v: any): string {
+function normalizeProductType(v: any): "" | "flower" | "vape" | "oil" | "edible" {
   const s = normStr(v);
   if (!s) return "";
-  // common normalizations
   if (s.includes("flower")) return "flower";
   if (s.includes("vape") || s.includes("cart")) return "vape";
   if (s.includes("oil") || s.includes("tinct")) return "oil";
   if (s.includes("edible") || s.includes("gummy")) return "edible";
-  return s;
+  return "";
+}
+
+function sortLabel(k: SortKey) {
+  switch (k) {
+    case "mostReviewed":
+      return "Most reviewed";
+    case "highestRated":
+      return "Highest rated";
+    case "thcHighLow":
+      return "THC high to low";
+    case "thcLowHigh":
+      return "THC low to high";
+    case "maker":
+      return "Maker";
+    case "atoz":
+    default:
+      return "A to Z";
+  }
+}
+
+function chipOnDark(selected: boolean) {
+  return {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: selected ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.12)",
+    backgroundColor: selected ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)",
+  };
 }
 
 function BudRating({ value, size = 18 }: { value: number; size?: number }) {
   const safe = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
 
-  // tuned for the darker "glass" cards on the reviews list
-  const EMPTY_TINT = "rgba(255,255,255,0.14)"; // darker empties = more pop
-  const GLOW = "rgba(160,255,210,0.75)";
-  // brighter mint glow
-  const SCALE = 1.1; // extra punch
+  const EMPTY_TINT = "rgba(255,255,255,0.14)";
+  const SCALE = 1.1;
 
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       {[0, 1, 2, 3, 4].map((i) => {
         const rawFill = Math.max(0, Math.min(1, safe - i));
-        const fill = Math.round(rawFill * 4) / 4; // quarter steps
+        const fill = Math.round(rawFill * 4) / 4;
         const px = Math.round(size * fill);
 
         return (
@@ -114,7 +139,6 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
               marginRight: i === 4 ? 0 : 6,
             }}
           >
-            {/* Empty bud = dim silhouette */}
             <Image
               source={budImg}
               style={{
@@ -126,7 +150,6 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
               resizeMode="contain"
             />
 
-            {/* Filled overlay */}
             {fill > 0 ? (
               <View
                 style={{
@@ -138,47 +161,23 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
                   overflow: "hidden",
                 }}
               >
-                {/* Soft glow (shadow-only, no background tile) */}
-                <>
-                  {/* Outer glow (bigger, softer) */}
-                  <View
-                    pointerEvents="none"
-                    style={{
-                      position: "absolute",
-                      left: -3,
-                      top: -3,
-                      width: size + 6,
-                      height: size + 6,
-                      borderRadius: 999,
-                      shadowColor: GLOW,
-                      shadowOpacity: 0.85,
-                      shadowRadius: 14,
-                      shadowOffset: { width: 0, height: 0 },
-                      elevation: 12,
-                    }}
-                  />
-
-                  {/* Inner glow (tighter, brighter) */}
-                  <View
-                    pointerEvents="none"
-                    style={{
-                      position: "absolute",
-                      left: -1,
-                      top: -1,
-                      width: size + 2,
-                      height: size + 2,
-                      borderRadius: 999,
-                      shadowColor: GLOW,
-                      shadowOpacity: 1,
-                      shadowRadius: 7,
-                      shadowOffset: { width: 0, height: 0 },
-                      elevation: 8,
-                    }}
-                  />
-                </>
-
-
-                {/* Full-colour bud */}
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    left: -4,
+                    top: -4,
+                    width: size + 8,
+                    height: size + 8,
+                    borderRadius: 999,
+                    shadowColor: "rgba(130, 255, 210, 0.9)",
+                    shadowOpacity: 1,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 0 },
+                    elevation: 6,
+                    opacity: 0.9,
+                  }}
+                />
                 <Image
                   source={budImg}
                   style={{
@@ -198,70 +197,52 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
   );
 }
 
-function Divider() {
-  return <View style={{ height: 1, backgroundColor: theme.colors.dividerOnDark, marginTop: theme.spacing.lg }} />;
-}
-
-function Pill({
-  label,
-  onPress,
-}: {
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.pill, pressed && { opacity: 0.85 }]}>
-      <Text style={styles.pillText}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function Chip({
-  label,
-  on,
-  onPress,
-}: {
-  label: string;
-  on: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chip,
-        on && styles.chipOn,
-        pressed && { opacity: 0.85 },
-      ]}
-    >
-      <Text style={styles.chipText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 export default function ReviewsIndex() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [items, setItems] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [statsByProductId, setStatsByProductId] = useState<Record<string, Stats>>({});
+  const [statsByProductId, setStatsByProductId] = useState<Record<string, Stat>>(
+    {}
+  );
 
+  // Search + applied sort/filters (what the list actually uses)
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("atoz");
+  const [strainFilter, setStrainFilter] = useState<
+    "all" | "sativa" | "indica" | "hybrid" | "unknown"
+  >("all");
+  const [productTypeFilter, setProductTypeFilter] = useState<
+    "all" | "flower" | "vape" | "oil" | "edible"
+  >("all");
+  const [makerFilter, setMakerFilter] = useState<string | null>(null);
+
+  // Modal open
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  // Draft values inside the modal (close with X saves these to applied state)
+  const [draftSortKey, setDraftSortKey] = useState<SortKey>("atoz");
+  const [draftStrainFilter, setDraftStrainFilter] = useState<
+    "all" | "sativa" | "indica" | "hybrid" | "unknown"
+  >("all");
+  const [draftProductTypeFilter, setDraftProductTypeFilter] = useState<
+    "all" | "flower" | "vape" | "oil" | "edible"
+  >("all");
+  const [draftMakerFilter, setDraftMakerFilter] = useState<string | null>(null);
+
+  // Expand sections in modal
   const [sortOpen, setSortOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [makerOpen, setMakerOpen] = useState(false);
 
-  const [sortKey, setSortKey] = useState<SortKey>("mostReviewed");
+  // Header is static (always visible)
+  const headerOpacity = useRef(new Animated.Value(1)).current;
+  const [headerH, setHeaderH] = useState(170);
 
-  const [filters, setFilters] = useState<Filters>({
-    makers: [],
-    strainTypes: [],
-    productTypes: [],
-    minRating: 0,
-    hasReviewsOnly: false,
-  });
-
+  // Products
   useEffect(() => {
     setLoadingProducts(true);
     setErrorMsg(null);
@@ -278,13 +259,9 @@ export default function ReviewsIndex() {
               name: typeof data?.name === "string" ? data.name : "",
               maker: typeof data?.maker === "string" ? data.maker : "",
               variant: data?.variant ?? null,
-
-              // your existing field (data.type) mapped into strainType
               strainType: typeof data?.type === "string" ? data.type : null,
-
-              // optional new field (data.productType) if you add it later
-              productType: typeof data?.productType === "string" ? data.productType : null,
-
+              productType:
+                typeof data?.productType === "string" ? data.productType : null,
               thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
               cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
             };
@@ -303,6 +280,7 @@ export default function ReviewsIndex() {
     return () => unsub();
   }, []);
 
+  // Reviews -> stats map
   useEffect(() => {
     setLoadingReviews(true);
 
@@ -318,13 +296,14 @@ export default function ReviewsIndex() {
 
             return {
               id: d.id,
-              productId: typeof data?.productId === "string" ? data.productId : "",
+              productId:
+                typeof data?.productId === "string" ? data.productId : "",
               rating,
               score,
             };
           });
 
-          const map: Record<string, Stats> = {};
+          const map: Record<string, Stat> = {};
 
           for (const r of rows) {
             if (!r.productId) continue;
@@ -358,105 +337,94 @@ export default function ReviewsIndex() {
     return () => unsub();
   }, []);
 
-  const sortLabel =
-    sortKey === "mostReviewed"
-      ? "Most reviewed"
-      : sortKey === "highestRated"
-        ? "Highest rated"
-        : sortKey === "thcDesc"
-          ? "THC high"
-          : sortKey === "thcAsc"
-            ? "THC low"
-            : sortKey === "maker"
-              ? "Maker"
-              : "A to Z";
-
-  const makerOptions = useMemo(() => {
+  const makers = useMemo(() => {
     const set = new Set<string>();
-    for (const p of items) {
-      if (p.maker) set.add(p.maker);
+    for (const it of items) {
+      if (it.maker) set.add(it.maker);
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(set).sort((a, b) =>
+      safeLower(a) < safeLower(b) ? -1 : 1
+    );
   }, [items]);
 
-  const productTypeOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of items) {
-      const t = normalizeProductType(p.productType);
-      if (t) set.add(t);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [items]);
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (strainFilter !== "all") n += 1;
+    if (productTypeFilter !== "all") n += 1;
+    if (makerFilter) n += 1;
+    return n;
+  }, [strainFilter, productTypeFilter, makerFilter]);
 
-  const strainTypeOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of items) {
-      set.add(normalizeStrainType(p.strainType));
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [items]);
+  const activeFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (strainFilter !== "all") labels.push(`Strain: ${strainFilter}`);
+    if (productTypeFilter !== "all") labels.push(`Type: ${productTypeFilter}`);
+    if (makerFilter) labels.push(`Maker: ${makerFilter}`);
+    return labels;
+  }, [strainFilter, productTypeFilter, makerFilter]);
 
-  const activeFilterCount =
-    (filters.makers.length ? 1 : 0) +
-    (filters.strainTypes.length ? 1 : 0) +
-    (filters.productTypes.length ? 1 : 0) +
-    (filters.minRating > 0 ? 1 : 0) +
-    (filters.hasReviewsOnly ? 1 : 0);
+  const displayItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
 
-  const visibleItems = useMemo(() => {
-    const list = [...items];
+    const filtered = items.filter((it) => {
+      // Search
+      if (q) {
+        const hay = `${it.name} ${it.variant ?? ""} ${it.maker}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
 
-    const filtered = list.filter((p) => {
-      const stat = statsByProductId[p.id];
-      const count = stat?.count ?? 0;
-      const avg = stat?.avg ?? 0;
+      // Strain
+      if (strainFilter !== "all") {
+        const st = normalizeStrainType(it.strainType);
+        if (st !== strainFilter) return false;
+      }
 
-      const makerOk =
-        !filters.makers.length || (p.maker && filters.makers.includes(p.maker));
+      // Product type
+      if (productTypeFilter !== "all") {
+        const pt = normalizeProductType(it.productType ?? "");
+        const finalPt = pt || "flower";
+        if (finalPt !== productTypeFilter) return false;
+      }
 
-      const strainNorm = normalizeStrainType(p.strainType);
-      const strainOk =
-        !filters.strainTypes.length || filters.strainTypes.includes(strainNorm);
+      // Maker
+      if (makerFilter) {
+        if (safeLower(it.maker) !== safeLower(makerFilter)) return false;
+      }
 
-      const typeNorm = normalizeProductType(p.productType);
-      const typeOk =
-        !filters.productTypes.length || (typeNorm && filters.productTypes.includes(typeNorm));
-
-      const ratingOk = filters.minRating <= 0 || avg >= filters.minRating;
-      const reviewsOk = !filters.hasReviewsOnly || count > 0;
-
-      return makerOk && strainOk && typeOk && ratingOk && reviewsOk;
+      return true;
     });
 
-    filtered.sort((a, b) => {
-      const aStat = statsByProductId[a.id];
-      const bStat = statsByProductId[b.id];
+    const copy = [...filtered];
 
-      const aCount = aStat?.count ?? 0;
-      const bCount = bStat?.count ?? 0;
+    copy.sort((a, b) => {
+      const sa = statsByProductId[a.id];
+      const sb = statsByProductId[b.id];
 
-      const aAvg = aStat?.avg ?? 0;
-      const bAvg = bStat?.avg ?? 0;
+      const countA = sa?.count ?? 0;
+      const countB = sb?.count ?? 0;
+      const avgA = sa?.avg ?? 0;
+      const avgB = sb?.avg ?? 0;
 
-      const aThc = a.thcPct ?? 0;
-      const bThc = b.thcPct ?? 0;
-
-      if (sortKey === "mostReviewed") return bCount - aCount;
-      if (sortKey === "highestRated") return bAvg - aAvg;
-      if (sortKey === "thcDesc") return bThc - aThc;
-      if (sortKey === "thcAsc") return aThc - bThc;
-
-      if (sortKey === "maker") {
+      if (sortKey === "mostReviewed") {
+        if (countA !== countB) return countB - countA;
+      } else if (sortKey === "highestRated") {
+        if (avgA !== avgB) return avgB - avgA;
+        if (countA !== countB) return countB - countA;
+      } else if (sortKey === "thcHighLow") {
+        const ta = a.thcPct ?? -1;
+        const tb = b.thcPct ?? -1;
+        if (ta !== tb) return tb - ta;
+      } else if (sortKey === "thcLowHigh") {
+        const ta = a.thcPct ?? 9999;
+        const tb = b.thcPct ?? 9999;
+        if (ta !== tb) return ta - tb;
+      } else if (sortKey === "maker") {
         const am = safeLower(a.maker);
         const bm = safeLower(b.maker);
         if (am !== bm) return am < bm ? -1 : 1;
-        const an = safeLower(a.name);
-        const bn = safeLower(b.name);
-        if (an !== bn) return an < bn ? -1 : 1;
-        return a.id < b.id ? -1 : 1;
       }
 
-      // az
+      // Tie-break: A to Z
       const an = safeLower(a.name);
       const bn = safeLower(b.name);
       if (an !== bn) return an < bn ? -1 : 1;
@@ -468,8 +436,55 @@ export default function ReviewsIndex() {
       return a.id < b.id ? -1 : 1;
     });
 
-    return filtered;
-  }, [items, filters, sortKey, statsByProductId]);
+    return copy;
+  }, [
+    items,
+    statsByProductId,
+    query,
+    sortKey,
+    strainFilter,
+    productTypeFilter,
+    makerFilter,
+  ]);
+
+  const openFilters = () => {
+    // Copy applied -> draft
+    setDraftSortKey(sortKey);
+    setDraftStrainFilter(strainFilter);
+    setDraftProductTypeFilter(productTypeFilter);
+    setDraftMakerFilter(makerFilter);
+
+    setSortOpen(false);
+    setMakerOpen(false);
+    setPanelOpen(true);
+  };
+
+  const closeAndSaveFilters = () => {
+    // Apply draft -> applied
+    setSortKey(draftSortKey);
+    setStrainFilter(draftStrainFilter);
+    setProductTypeFilter(draftProductTypeFilter);
+    setMakerFilter(draftMakerFilter);
+
+    setSortOpen(false);
+    setMakerOpen(false);
+    setPanelOpen(false);
+  };
+
+  const resetDraft = () => {
+    setDraftSortKey("atoz");
+    setDraftStrainFilter("all");
+    setDraftProductTypeFilter("all");
+    setDraftMakerFilter(null);
+    setSortOpen(false);
+    setMakerOpen(false);
+  };
+
+  const windowH = Dimensions.get("window").height;
+
+  // Floating button position (higher up, smaller)
+  const floatingSize = 46;
+  const floatingTop = Math.max(insets.top + 68, Math.round(windowH * 0.2));
 
   if (loadingProducts) {
     return (
@@ -511,7 +526,7 @@ export default function ReviewsIndex() {
             color: theme.colors.textOnDark,
           }}
         >
-          Couldnt load products
+          Could not load products
         </Text>
         <Text
           style={{
@@ -529,52 +544,24 @@ export default function ReviewsIndex() {
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
-        <FlatList
-          data={visibleItems}
+        <Animated.FlatList
+          data={displayItems}
           keyExtractor={(item) => item.id}
           style={{ flex: 1, backgroundColor: "transparent" }}
-          contentContainerStyle={{
-            padding: theme.spacing.xl,
-            paddingBottom: theme.spacing.xxl,
-            backgroundColor: "transparent",
-          }}
+          contentContainerStyle={{ paddingBottom: theme.spacing.xxl }}
+          ListHeaderComponent={<View style={{ height: headerH + 14 }} />}
           ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
-          ListHeaderComponent={
-            <View style={{ marginBottom: theme.spacing.md, backgroundColor: "transparent" }}>
-              <Text
-                style={{
-                  ...theme.typography.title,
-                  color: theme.colors.accent,
-                  marginBottom: theme.spacing.xs,
-                }}
-              >
-                Reviews
-              </Text>
-
-              <Text
-                style={{
-                  ...theme.typography.caption,
-                  color: theme.colors.textOnDarkSecondary,
-                }}
-              >
-                Browse products and see community ratings.
-              </Text>
-
-              <View style={{ flexDirection: "row", alignItems: "center", marginTop: theme.spacing.md, gap: 10 }}>
-                <Pill label={`Sort: ${sortLabel}`} onPress={() => setSortOpen(true)} />
-                <Pill
-                  label={activeFilterCount ? `Filters (${activeFilterCount})` : "Filters"}
-                  onPress={() => setFilterOpen(true)}
-                />
-              </View>
-
-              <Divider />
-            </View>
-          }
+          scrollEventThrottle={16}
           ListEmptyComponent={
-            <View style={{ paddingTop: 40, backgroundColor: "transparent" }}>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: theme.colors.textOnDark }}>
-                No products found
+            <View style={{ paddingTop: 26, paddingHorizontal: theme.spacing.xl }}>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "900",
+                  color: theme.colors.textOnDark,
+                }}
+              >
+                No matches
               </Text>
               <Text
                 style={{
@@ -583,7 +570,7 @@ export default function ReviewsIndex() {
                   ...theme.typography.body,
                 }}
               >
-                Your Firestore "products" collection might be empty.
+                Try clearing filters or changing your search.
               </Text>
             </View>
           }
@@ -592,31 +579,24 @@ export default function ReviewsIndex() {
             const hasRatings = !!stat && stat.count > 0;
             const avg = hasRatings ? stat.avg : 0;
 
-            const strain = normalizeStrainType(item.strainType);
-            const ptype = normalizeProductType(item.productType);
+            const maker = item.maker?.trim() ? item.maker.trim() : "Unknown maker";
 
-            const metaBits: string[] = [];
-            metaBits.push(item.maker || "Unknown maker");
-            if (strain) metaBits.push(strain);
-            if (ptype) metaBits.push(ptype);
-            metaBits.push(`THC ${formatPct(item.thcPct)}`);
-            metaBits.push(`CBD ${formatPct(item.cbdPct)}`);
+            // Build a clean meta line: "Maker · THC 20% · CBD 0.1%"
+            const parts = [
+              maker,
+              `THC ${formatPct(item.thcPct)}`,
+              `CBD ${formatPct(item.cbdPct)}`,
+            ].filter(Boolean);
+
+            const metaLine = parts.join(" · ");
 
             return (
-              <Pressable
+              <CinematicCard
                 onPress={() => router.push(`/reviews/${item.id}`)}
-                style={({ pressed }) => [
-                  {
-                    borderRadius: 22,
-                    overflow: "hidden",
-                    backgroundColor: "rgba(255,255,255,0.16)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.12)",
-                    transform: [{ scale: pressed ? 0.99 : 1 }],
-                    opacity: pressed ? 0.96 : 1,
-                    ...theme.shadow.card,
-                  },
-                ]}
+                style={{
+                  marginHorizontal: theme.spacing.xl,
+                  overflow: "hidden",
+                }}
               >
                 <View style={{ padding: 18 }}>
                   <Text
@@ -636,10 +616,12 @@ export default function ReviewsIndex() {
                       marginTop: 6,
                       color: theme.colors.textOnDarkSecondary,
                       ...theme.typography.caption,
+                      lineHeight: 18,
                     }}
                     numberOfLines={1}
+                    ellipsizeMode="tail"
                   >
-                    {metaBits.join("  ")}
+                    {metaLine}
                   </Text>
 
                   <View style={{ marginTop: 12 }}>
@@ -669,269 +651,657 @@ export default function ReviewsIndex() {
                         ) : null}
                       </View>
                     ) : (
-                      <Text style={{ fontWeight: "800", color: theme.colors.textOnDarkSecondary }}>
+                      <Text
+                        style={{
+                          fontWeight: "800",
+                          color: theme.colors.textOnDarkSecondary,
+                        }}
+                      >
                         No ratings yet{loadingReviews ? " (loading...)" : ""}
                       </Text>
                     )}
                   </View>
                 </View>
-              </Pressable>
+              </CinematicCard>
             );
           }}
         />
-      </SafeAreaView>
 
-      {/* SORT MODAL */}
-      <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setSortOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => { }}>
-            <Text style={styles.modalTitle}>Sort</Text>
-            <Text style={styles.modalSub}>Choose how the list is ordered.</Text>
+        {/* Overlay header (appears when not scrolling) */}
+        <Animated.View
+          onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+          pointerEvents="box-none"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            opacity: headerOpacity,
+            zIndex: 50,
+            elevation: 50,
+          }}
+        >
+          {/* Opaque mask so list content can't show through behind search */}
+          <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+            <View style={{ flex: 1, backgroundColor: "rgba(10,11,15,0.96)" }} />
+          </View>
 
-            {[
-              ["mostReviewed", "Most reviewed"],
-              ["highestRated", "Highest rated"],
-              ["thcDesc", "THC high to low"],
-              ["thcAsc", "THC low to high"],
-              ["maker", "Maker"],
-              ["az", "A to Z"],
-            ].map(([key, label]) => {
-              const selected = sortKey === (key as SortKey);
-
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => {
-                    setSortKey(key as SortKey);
-                    setSortOpen(false);
-                  }}
-                  style={[
-                    styles.row,
-                    selected && {
-                      backgroundColor: "rgba(255,255,255,0.14)",
-                      borderColor: "rgba(255,255,255,0.26)",
-                    },
-                  ]}
-                >
-                  <View>
-                    <Text style={styles.rowText}>{label}</Text>
-                    {selected ? <Text style={styles.rowSub}>Selected</Text> : null}
-                  </View>
-                  <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "900" }}>
-                    {selected ? "" : ""}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* FILTERS MODAL */}
-      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setFilterOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => { }}>
-            <Text style={styles.modalTitle}>Filters</Text>
-            <Text style={styles.modalSub}>Narrow the list down to what you want.</Text>
-
-            {productTypeOptions.length ? (
-              <>
-                <Text style={styles.sectionTitle}>Product type</Text>
-                <View style={styles.chipWrap}>
-                  {productTypeOptions.map((t) => {
-                    const on = filters.productTypes.includes(t);
-                    return (
-                      <Chip
-                        key={t}
-                        label={t}
-                        on={on}
-                        onPress={() => {
-                          setFilters((prev) => ({
-                            ...prev,
-                            productTypes: on ? prev.productTypes.filter((x) => x !== t) : [...prev.productTypes, t],
-                          }));
-                        }}
-                      />
-                    );
-                  })}
-                </View>
-                <View style={{ height: 14 }} />
-              </>
-            ) : null}
-
-            <Text style={styles.sectionTitle}>Strain type</Text>
-            <View style={styles.chipWrap}>
-              {strainTypeOptions.map((t) => {
-                const on = filters.strainTypes.includes(t);
-                return (
-                  <Chip
-                    key={t}
-                    label={t}
-                    on={on}
-                    onPress={() => {
-                      setFilters((prev) => ({
-                        ...prev,
-                        strainTypes: on ? prev.strainTypes.filter((x) => x !== t) : [...prev.strainTypes, t],
-                      }));
-                    }}
-                  />
-                );
-              })}
-            </View>
-
-            <View style={{ height: 14 }} />
-
-            <Text style={styles.sectionTitle}>Grower</Text>
-            <View style={styles.chipWrap}>
-              {makerOptions.slice(0, 16).map((m) => {
-                const on = filters.makers.includes(m);
-                return (
-                  <Chip
-                    key={m}
-                    label={m}
-                    on={on}
-                    onPress={() => {
-                      setFilters((prev) => ({
-                        ...prev,
-                        makers: on ? prev.makers.filter((x) => x !== m) : [...prev.makers, m],
-                      }));
-                    }}
-                  />
-                );
-              })}
-            </View>
-
-            <View style={{ height: 14 }} />
-
-            <Pressable
-              onPress={() => setFilters((prev) => ({ ...prev, hasReviewsOnly: !prev.hasReviewsOnly }))}
-              style={styles.row}
+          <View
+            style={{
+              paddingHorizontal: theme.spacing.xl,
+              paddingTop: insets.top + theme.spacing.md,
+              paddingBottom: theme.spacing.lg,
+              backgroundColor: "rgba(10,11,15,0.92)",
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(255,255,255,0.10)",
+            }}
+          >
+            <Text
+              style={{
+                ...theme.typography.title,
+                color: theme.colors.accent,
+                marginBottom: theme.spacing.xs,
+              }}
             >
-              <View>
-                <Text style={styles.rowText}>Has reviews only</Text>
-                <Text style={styles.rowSub}>Hide products with no reviews yet</Text>
-              </View>
-              <Text style={{ color: "rgba(255,255,255,0.80)", fontWeight: "900" }}>
-                {filters.hasReviewsOnly ? "On" : "Off"}
-              </Text>
-            </Pressable>
+              Reviews
+            </Text>
 
-            <Pressable
-              onPress={() =>
-                setFilters((prev) => ({
-                  ...prev,
-                  minRating: prev.minRating >= 5 ? 0 : prev.minRating + 1,
-                }))
-              }
-              style={styles.row}
+            <Text
+              style={{
+                ...theme.typography.caption,
+                color: theme.colors.textOnDarkSecondary,
+                marginBottom: theme.spacing.md,
+              }}
             >
-              <View>
-                <Text style={styles.rowText}>Minimum rating</Text>
-                <Text style={styles.rowSub}>Tap to cycle 0 to 5</Text>
-              </View>
-              <Text style={{ color: "rgba(255,255,255,0.80)", fontWeight: "900" }}>
-                {filters.minRating.toFixed(0)}
-              </Text>
-            </Pressable>
+              Browse products and see community ratings.
+            </Text>
 
-            <View style={styles.footerRow}>
-              <Pressable
-                onPress={() => {
-                  setFilters({
-                    makers: [],
-                    strainTypes: [],
-                    productTypes: [],
-                    minRating: 0,
-                    hasReviewsOnly: false,
-                  });
+            <View
+              style={{
+                borderRadius: 16,
+                backgroundColor: "rgba(255,255,255,0.10)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.14)",
+                paddingHorizontal: 14,
+                paddingVertical: Platform.OS === "ios" ? 12 : 8,
+              }}
+            >
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search by name or maker"
+                placeholderTextColor="rgba(255,255,255,0.40)"
+                style={{
+                  color: theme.colors.textOnDark,
+                  fontSize: 15,
+                  fontWeight: "600",
                 }}
-                style={styles.btn}
-              >
-                <Text style={styles.btnText}>Reset</Text>
-              </Pressable>
-
-              <Pressable onPress={() => setFilterOpen(false)} style={styles.btn}>
-                <Text style={styles.btnText}>Done</Text>
-              </Pressable>
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+              />
             </View>
+
+            <View style={{ marginTop: theme.spacing.sm }}>
+              <Text
+                style={{
+                  color: "rgba(255,255,255,0.65)",
+                  fontWeight: "700",
+                  fontSize: 12,
+                }}
+              >
+                Sort: {sortLabel(sortKey)}
+                {activeFilterCount > 0 ? ` | Filters: ${activeFilterCount}` : ""}
+              </Text>
+
+              {activeFilterCount > 0 ? (
+                <Text
+                  style={{
+                    marginTop: 4,
+                    color: "rgba(255,255,255,0.55)",
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
+                >
+                  {activeFilterLabels.join(" | ")}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Floating filters button */}
+        <Animated.View
+          pointerEvents="box-none"
+          style={{
+            position: "absolute",
+            right: theme.spacing.xl,
+            top: floatingTop,
+            opacity: headerOpacity,
+            zIndex: 60,
+            elevation: 60,
+          }}
+        >
+          <Pressable
+            onPress={openFilters}
+            style={({ pressed }) => ({
+              width: floatingSize,
+              height: floatingSize,
+              borderRadius: floatingSize / 2,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: pressed ? 0.88 : 1,
+
+              backgroundColor: "rgba(235,237,240,0.96)",
+              borderWidth: 1,
+              borderColor: "rgba(0,0,0,0.08)",
+
+              shadowColor: "rgba(0,0,0,0.35)",
+              shadowOpacity: 0.45,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 12,
+            })}
+          >
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                width: floatingSize + 10,
+                height: floatingSize + 10,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.28)",
+                backgroundColor: "rgba(255,255,255,0.06)",
+              }}
+            />
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                width: floatingSize - 6,
+                height: floatingSize - 6,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: "rgba(0,0,0,0.10)",
+              }}
+            />
+
+            <Image
+              source={budImg}
+              resizeMode="contain"
+              style={{
+                width: Math.round(floatingSize * 0.54),
+                height: Math.round(floatingSize * 0.54),
+                tintColor: "rgba(12,12,12,0.95)",
+              }}
+            />
+
+            {activeFilterCount > 0 ? (
+              <View
+                style={{
+                  position: "absolute",
+                  top: -6,
+                  right: -6,
+                  minWidth: 18,
+                  height: 18,
+                  paddingHorizontal: 6,
+                  borderRadius: 999,
+
+                  backgroundColor: "rgba(12,12,12,0.95)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.22)",
+
+                  alignItems: "center",
+                  justifyContent: "center",
+
+                  shadowColor: "rgba(0,0,0,0.35)",
+                  shadowOpacity: 0.35,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 6 },
+                  elevation: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "900",
+                    color: "rgba(235,237,240,0.98)",
+                  }}
+                >
+                  {activeFilterCount}
+                </Text>
+              </View>
+            ) : null}
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Animated.View>
+
+        {/* Filters modal (tap backdrop or X saves draft) */}
+        <Modal
+          visible={panelOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={closeAndSaveFilters}
+        >
+          <View style={{ flex: 1, justifyContent: "flex-end" }}>
+            <Pressable
+              onPress={closeAndSaveFilters}
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: "rgba(0,0,0,0.40)" },
+              ]}
+            />
+
+            <View
+              style={{
+                backgroundColor: "rgba(20,22,28,0.94)",
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                overflow: "hidden",
+              }}
+            >
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
+              >
+                <ScrollView
+                  style={{ maxHeight: Dimensions.get("window").height * 0.82 }}
+                  contentContainerStyle={{
+                    padding: 18,
+                    paddingBottom: Math.max(insets.bottom, 18) + 18,
+                  }}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {/* Header row + X (saves) */}
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text
+                      style={{
+                        fontSize: 26,
+                        fontWeight: "900",
+                        color: theme.colors.textOnDark,
+                        flex: 1,
+                      }}
+                    >
+                      Filters
+                    </Text>
+
+                    <Pressable
+                      onPress={closeAndSaveFilters}
+                      style={({ pressed }) => ({
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "rgba(255,255,255,0.10)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.14)",
+                        opacity: pressed ? 0.9 : 1,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: theme.colors.textOnDark,
+                          fontWeight: "900",
+                          fontSize: 16,
+                        }}
+                      >
+                        ✕
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {/* Reset */}
+                  <Pressable
+                    onPress={resetDraft}
+                    style={({ pressed }) => ({
+                      marginTop: 12,
+                      alignSelf: "flex-start",
+                      borderRadius: 999,
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
+                      backgroundColor: "rgba(255,255,255,0.08)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.12)",
+                      opacity: pressed ? 0.9 : 1,
+                    })}
+                  >
+                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                      Reset
+                    </Text>
+                  </Pressable>
+
+                  {/* Active (draft) summary */}
+                  {(draftStrainFilter !== "all" ||
+                    draftProductTypeFilter !== "all" ||
+                    !!draftMakerFilter) ? (
+                    <View
+                      style={{
+                        marginTop: 12,
+                        borderRadius: 16,
+                        padding: 12,
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.10)",
+                      }}
+                    >
+                      <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                        Active
+                      </Text>
+                      <Text
+                        style={{
+                          marginTop: 6,
+                          color: theme.colors.textOnDarkSecondary,
+                          ...theme.typography.caption,
+                        }}
+                      >
+                        {[
+                          draftStrainFilter !== "all" ? `Strain: ${draftStrainFilter}` : "",
+                          draftProductTypeFilter !== "all" ? `Type: ${draftProductTypeFilter}` : "",
+                          draftMakerFilter ? `Maker: ${draftMakerFilter}` : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" | ")}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Sort */}
+                  <Text
+                    style={{
+                      marginTop: 18,
+                      fontSize: 16,
+                      fontWeight: "900",
+                      color: theme.colors.textOnDark,
+                    }}
+                  >
+                    Sort
+                  </Text>
+
+                  <Pressable
+                    onPress={() => setSortOpen((v) => !v)}
+                    style={({ pressed }) => ({
+                      marginTop: 10,
+                      borderRadius: 18,
+                      paddingVertical: 14,
+                      paddingHorizontal: 14,
+                      backgroundColor: "rgba(255,255,255,0.10)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.14)",
+                      opacity: pressed ? 0.9 : 1,
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.textOnDark,
+                        fontWeight: "900",
+                        fontSize: 16,
+                      }}
+                    >
+                      {sortLabel(draftSortKey)}
+                    </Text>
+                    <Text
+                      style={{
+                        marginTop: 4,
+                        color: theme.colors.textOnDarkSecondary,
+                        ...theme.typography.caption,
+                      }}
+                    >
+                      Tap to change
+                    </Text>
+                  </Pressable>
+
+                  {sortOpen ? (
+                    <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      {(
+                        [
+                          "mostReviewed",
+                          "highestRated",
+                          "thcHighLow",
+                          "thcLowHigh",
+                          "maker",
+                          "atoz",
+                        ] as SortKey[]
+                      ).map((k) => {
+                        const selected = draftSortKey === k;
+                        return (
+                          <Pressable
+                            key={k}
+                            onPress={() => {
+                              setDraftSortKey(k);
+                              setSortOpen(false);
+                            }}
+                            style={({ pressed }) => ({
+                              alignSelf: "flex-start",
+                              borderRadius: 999,
+                              paddingVertical: 10,
+                              paddingHorizontal: 14,
+                              backgroundColor: selected
+                                ? "rgba(255,255,255,0.16)"
+                                : "rgba(255,255,255,0.08)",
+                              borderWidth: 1,
+                              borderColor: selected
+                                ? "rgba(255,255,255,0.24)"
+                                : "rgba(255,255,255,0.12)",
+                              opacity: pressed ? 0.9 : 1,
+                            })}
+                          >
+                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                              {sortLabel(k)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+
+                  {/* Filters */}
+                  <Text
+                    style={{
+                      marginTop: 22,
+                      fontSize: 16,
+                      fontWeight: "900",
+                      color: theme.colors.textOnDark,
+                    }}
+                  >
+                    Filters
+                  </Text>
+
+                  {/* Strain */}
+                  <Text
+                    style={{
+                      marginTop: 12,
+                      color: theme.colors.textOnDarkSecondary,
+                      ...theme.typography.caption,
+                      fontWeight: "800",
+                    }}
+                  >
+                    Strain type
+                  </Text>
+
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+                    {(["all", "sativa", "indica", "hybrid", "unknown"] as const).map((v) => {
+                      const selected = draftStrainFilter === v;
+                      return (
+                        <Pressable
+                          key={v}
+                          onPress={() => setDraftStrainFilter(v)}
+                          style={({ pressed }) => ({
+                            ...chipOnDark(selected),
+                            opacity: pressed ? 0.85 : 1,
+                          })}
+                        >
+                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                            {v === "all" ? "All" : v}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {/* Product type */}
+                  <Text
+                    style={{
+                      marginTop: 16,
+                      color: theme.colors.textOnDarkSecondary,
+                      ...theme.typography.caption,
+                      fontWeight: "800",
+                    }}
+                  >
+                    Product type
+                  </Text>
+
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+                    {(["all", "flower", "vape", "oil", "edible"] as const).map((v) => {
+                      const selected = draftProductTypeFilter === v;
+                      return (
+                        <Pressable
+                          key={v}
+                          onPress={() => setDraftProductTypeFilter(v)}
+                          style={({ pressed }) => ({
+                            ...chipOnDark(selected),
+                            opacity: pressed ? 0.85 : 1,
+                          })}
+                        >
+                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                            {v === "all" ? "All" : v}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {/* Maker */}
+                  <Text
+                    style={{
+                      marginTop: 16,
+                      color: theme.colors.textOnDarkSecondary,
+                      ...theme.typography.caption,
+                      fontWeight: "800",
+                    }}
+                  >
+                    Maker
+                  </Text>
+
+                  <Pressable
+                    onPress={() => setMakerOpen((v) => !v)}
+                    style={({ pressed }) => ({
+                      marginTop: 10,
+                      borderRadius: 18,
+                      paddingVertical: 14,
+                      paddingHorizontal: 14,
+                      backgroundColor: "rgba(255,255,255,0.10)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.14)",
+                      opacity: pressed ? 0.9 : 1,
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.textOnDark,
+                        fontWeight: "900",
+                        fontSize: 16,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {draftMakerFilter ? draftMakerFilter : "All makers"}
+                    </Text>
+                    <Text
+                      style={{
+                        marginTop: 4,
+                        color: theme.colors.textOnDarkSecondary,
+                        ...theme.typography.caption,
+                      }}
+                    >
+                      Tap to change
+                    </Text>
+                  </Pressable>
+
+                  {makerOpen ? (
+                    <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      <Pressable
+                        onPress={() => {
+                          setDraftMakerFilter(null);
+                          setMakerOpen(false);
+                        }}
+                        style={({ pressed }) => ({
+                          alignSelf: "flex-start",
+                          borderRadius: 999,
+                          paddingVertical: 10,
+                          paddingHorizontal: 14,
+                          backgroundColor: !draftMakerFilter
+                            ? "rgba(255,255,255,0.16)"
+                            : "rgba(255,255,255,0.08)",
+                          borderWidth: 1,
+                          borderColor: !draftMakerFilter
+                            ? "rgba(255,255,255,0.24)"
+                            : "rgba(255,255,255,0.12)",
+                          opacity: pressed ? 0.9 : 1,
+                        })}
+                      >
+                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                          All makers
+                        </Text>
+                      </Pressable>
+
+                      {makers.slice(0, 40).map((m) => {
+                        const selected =
+                          draftMakerFilter && safeLower(draftMakerFilter) === safeLower(m);
+                        return (
+                          <Pressable
+                            key={m}
+                            onPress={() => {
+                              setDraftMakerFilter(selected ? null : m);
+                              setMakerOpen(false);
+                            }}
+                            style={({ pressed }) => ({
+                              alignSelf: "flex-start",
+                              borderRadius: 999,
+                              paddingVertical: 10,
+                              paddingHorizontal: 14,
+                              backgroundColor: selected
+                                ? "rgba(255,255,255,0.16)"
+                                : "rgba(255,255,255,0.08)",
+                              borderWidth: 1,
+                              borderColor: selected
+                                ? "rgba(255,255,255,0.24)"
+                                : "rgba(255,255,255,0.12)",
+                              opacity: pressed ? 0.9 : 1,
+                              maxWidth: "100%",
+                            })}
+                          >
+                            <Text
+                              style={{ color: theme.colors.textOnDark, fontWeight: "900" }}
+                              numberOfLines={1}
+                            >
+                              {m}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+
+                      {makers.length > 40 ? (
+                        <Text
+                          style={{
+                            marginTop: 6,
+                            color: theme.colors.textOnDarkSecondary,
+                            ...theme.typography.caption,
+                          }}
+                        >
+                          More makers coming next (we will add maker search in this panel).
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </ScrollView>
+              </KeyboardAvoidingView>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
     </View>
   );
 }
-
-const styles = {
-  pill: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  pillText: {
-    color: "rgba(255,255,255,0.92)",
-    fontWeight: "900" as const,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-end" as const,
-  },
-  modalCard: {
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(18,18,22,0.92)",
-    padding: 16,
-  },
-  modalTitle: { color: "white", fontSize: 18, fontWeight: "900" as const },
-  modalSub: { color: "rgba(255,255,255,0.7)", marginTop: 6, marginBottom: 12 },
-
-  sectionTitle: { color: "white", fontWeight: "900" as const, marginBottom: 8 },
-
-  row: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    justifyContent: "space-between" as const,
-    marginBottom: 10,
-  },
-  rowText: { color: "white", fontWeight: "900" as const },
-  rowSub: { color: "rgba(255,255,255,0.6)", marginTop: 2, fontSize: 12 },
-
-  chipWrap: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8 },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  chipOn: {
-    borderColor: "rgba(255,255,255,0.26)",
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  chipText: { color: "rgba(255,255,255,0.9)", fontWeight: "900" as const, fontSize: 12 },
-
-  footerRow: { flexDirection: "row" as const, gap: 10, marginTop: 8 },
-  btn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    alignItems: "center" as const,
-  },
-  btnText: { color: "white", fontWeight: "900" as const },
-};

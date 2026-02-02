@@ -36,6 +36,34 @@ function toNumberOrNull(v) {
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
 }
+function parseTerpenes(v) {
+    const s = (v ?? "").toString().trim();
+    if (!s) return null;
+
+    // Accept formats like:
+    // "myrcene:major|limonene:minor"
+    // "a-pinene:2.95%|beta-pinene:3.67%"
+    const parts = s.split("|").map(p => p.trim()).filter(Boolean);
+    if (!parts.length) return null;
+
+    return parts.map((p) => {
+        const [nameRaw, valueRaw] = p.split(":");
+        const name = (nameRaw ?? "").trim();
+        const value = (valueRaw ?? "").trim();
+
+        if (!name) return null;
+
+        // value can be "major/minor" OR "2.95%" OR empty
+        const pct = value.endsWith("%") ? Number(value.replace("%", "").trim()) : null;
+        const pctValue = Number.isFinite(pct) ? pct : null;
+
+        return {
+            name,                         // e.g. "myrcene" or "a-pinene"
+            level: pctValue === null ? (value || null) : null,  // "major"/"minor"
+            pct: pctValue,                // 2.95 (number) if percent
+        };
+    }).filter(Boolean);
+}
 
 async function main() {
     const args = process.argv.slice(2);
@@ -96,6 +124,7 @@ async function main() {
                 type: (toNullIfBlank(row.type) || "flower").toLowerCase(),
                 thcPct: toNumberOrNull(row.thcPct),
                 cbdPct: toNumberOrNull(row.cbdPct),
+                terpenes: toNullIfBlank(row.terpenes),
                 isActive: true,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
