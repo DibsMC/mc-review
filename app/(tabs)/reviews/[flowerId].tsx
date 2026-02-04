@@ -45,10 +45,18 @@ type Review = {
     text?: string | null;
     createdAt?: FirebaseFirestoreTypes.Timestamp | number | null;
 
+    // legacy effects
     sleepy?: number | null;
     calm?: number | null;
     daytime?: number | null;
     clarity?: number | null;
+
+    // extended effects
+    backPain?: number | null;
+    jointPain?: number | null;
+    legPain?: number | null;
+    headacheRelief?: number | null;
+    racingThoughts?: number | null;
 };
 
 type UserProfile = {
@@ -70,7 +78,6 @@ function getCreatedAtMs(r: Review) {
     const c = r.createdAt;
     if (!c) return 0;
     if (typeof c === "number") return c;
-    // Firestore Timestamp
     if (typeof (c as any)?.toMillis === "function") return (c as any).toMillis();
     if (typeof (c as any)?.seconds === "number") return (c as any).seconds * 1000;
     return 0;
@@ -80,24 +87,92 @@ function round1(n: number) {
     return Math.round(n * 10) / 10;
 }
 
+function clamp(n: number, lo: number, hi: number) {
+    return Math.max(lo, Math.min(hi, n));
+}
+
 function avgNumbers(vals: Array<number | null | undefined>) {
     const xs = vals.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
     if (xs.length === 0) return 0;
     return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-// 75% overall rating, 25% effects average (only if any effects exist)
-function computeHeadlineScore(input: {
+/**
+ * Effects averaging but with a key detail:
+ * - treat values outside 1..5 as unset
+ * - allow "unset" values (null/undefined/0) to be ignored
+ */
+function avgEffects(vals: Array<number | null | undefined>) {
+    const xs = vals.filter(
+        (v): v is number => typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 5
+    );
+    if (xs.length === 0) return null;
+    return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+/**
+ * Anti-"super strain" model:
+ * - Bayesian shrinkage for product headline score: prevents low-n perfect reviews dominating.
+ * - Effects contribute a small bounded delta (max +/-0.25 stars).
+ * - Gentle penalty if many effects are near-max, to prevent everything-being-5 winning automatically.
+ *
+ * Returns a star score on the same 1..5 scale.
+ */
+function computeRobustProductScore(params: {
+    ratings: number[]; // each 1..5
+    effectsMeans: number[]; // per-review effects mean (1..5), only where present
+    globalMeanRating: number; // global mean of ratings (1..5)
+}) {
+    const { ratings, effectsMeans, globalMeanRating } = params;
+
+    const v = ratings.length;
+    if (v === 0) return 0;
+
+    const R = avgNumbers(ratings);
+    const C = Number.isFinite(globalMeanRating) && globalMeanRating > 0 ? globalMeanRating : 3.5;
+
+    // m = "how many reviews before we fully trust"
+    const m = 8;
+
+    const bayes = (v / (v + m)) * R + (m / (v + m)) * C;
+
+    // effects delta
+    const E = effectsMeans.length ? avgNumbers(effectsMeans) : 0;
+    const hasEffects = effectsMeans.length > 0;
+    const eDelta = hasEffects ? clamp((E - 3) / 2, -1, 1) : 0; // -1..+1
+
+    // Effects max influence +/-0.25
+    const effectsBoost = eDelta * 0.25;
+
+    // Anti-super penalty: if effectsMean is extremely high across many reviews, nudge down slightly.
+    // We approximate "super" by checking how often effects mean is >= 4.5.
+    const highCount = effectsMeans.filter((x) => x >= 4.5).length;
+    const superPenalty = clamp(highCount >= 4 ? 0.08 * (highCount - 3) : 0, 0, 0.25);
+
+    return round1(clamp(bayes + effectsBoost - superPenalty, 1, 5));
+}
+
+/**
+ * Per-review headline score:
+ * We keep it simple and consistent with product scoring:
+ * - base = rating
+ * - add tiny effects delta (max +/-0.25) if effects exist
+ * - apply tiny "super" penalty if this review is maxing everything
+ */
+function computeRobustReviewScore(input: {
     rating: number;
-    daytime?: number | null;
-    sleepy?: number | null;
-    calm?: number | null;
-    clarity?: number | null;
+    effectsMean: number | null;
+    highEffectsCount: number; // count of effect fields >=4.5 in this review
 }) {
     const rating = Number.isFinite(input.rating) ? input.rating : 0;
-    const effects = avgNumbers([input.daytime, input.sleepy, input.calm, input.clarity]);
-    if (!effects) return round1(rating);
-    return round1(rating * 0.75 + effects * 0.25);
+    if (!input.effectsMean) return round1(clamp(rating, 1, 5));
+
+    const eDelta = clamp((input.effectsMean - 3) / 2, -1, 1);
+    const effectsBoost = eDelta * 0.25;
+
+    const superPenalty = clamp(input.highEffectsCount >= 4 ? 0.06 * (input.highEffectsCount - 3) : 0, 0, 0.18);
+
+    return round1(clamp(rating + effectsBoost - superPenalty, 1, 5));
 }
 
 /* -------------------- Terpenes parsing -------------------- */
@@ -109,7 +184,6 @@ function prettyTerpeneName(raw: string) {
 
 function parseTerpenes(input: string | null | undefined) {
     if (!input) return [];
-    // "limonene:major|caryophyllene:major|linalool:major"
     return input
         .split("|")
         .map((part) => part.trim())
@@ -206,36 +280,11 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
                             marginRight: i === 4 ? 0 : 8,
                         }}
                     >
-                        <Image
-                            source={budImg}
-                            resizeMode="contain"
-                            style={{
-                                width: size,
-                                height: size,
-                                opacity: 0.22,
-                            }}
-                        />
+                        <Image source={budImg} resizeMode="contain" style={{ width: size, height: size, opacity: 0.22 }} />
 
                         {fill > 0 ? (
-                            <View
-                                style={{
-                                    position: "absolute",
-                                    left: 0,
-                                    top: 0,
-                                    width: px,
-                                    height: size,
-                                    overflow: "hidden",
-                                }}
-                            >
-                                <Image
-                                    source={budImg}
-                                    resizeMode="contain"
-                                    style={{
-                                        width: size,
-                                        height: size,
-                                        opacity: 1,
-                                    }}
-                                />
+                            <View style={{ position: "absolute", left: 0, top: 0, width: px, height: size, overflow: "hidden" }}>
+                                <Image source={budImg} resizeMode="contain" style={{ width: size, height: size, opacity: 1 }} />
                             </View>
                         ) : null}
                     </View>
@@ -260,9 +309,7 @@ function RatingRow({
 }) {
     return (
         <View style={{ marginTop: 14 }}>
-            <Text style={{ marginBottom: 10, color: "rgba(255,255,255,0.78)", fontWeight: "800" }}>
-                {label}
-            </Text>
+            <Text style={{ marginBottom: 10, color: "rgba(255,255,255,0.78)", fontWeight: "800" }}>{label}</Text>
 
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                 {[1, 2, 3, 4, 5].map((n) => {
@@ -282,11 +329,7 @@ function RatingRow({
                                 disabled ? { opacity: 0.6 } : null,
                             ]}
                         >
-                            <Image
-                                source={budImg}
-                                resizeMode="contain"
-                                style={{ width: 18, height: 18, opacity: selected ? 1 : 0.22 }}
-                            />
+                            <Image source={budImg} resizeMode="contain" style={{ width: 18, height: 18, opacity: selected ? 1 : 0.22 }} />
                             {selected ? <View pointerEvents="none" style={styles.ratingRing} /> : null}
                         </Pressable>
                     );
@@ -316,11 +359,7 @@ function BlingButton({
     const textColor = "rgba(10,12,14,0.92)";
 
     return (
-        <Pressable
-            onPress={onPress}
-            disabled={disabled}
-            style={[styles.blingBtnOuter, { borderColor: border, opacity: disabled ? 0.65 : 1 }]}
-        >
+        <Pressable onPress={onPress} disabled={disabled} style={[styles.blingBtnOuter, { borderColor: border, opacity: disabled ? 0.65 : 1 }]}>
             <LinearGradient
                 pointerEvents="none"
                 colors={variant === "gold" ? [...gold] : [...green]}
@@ -370,10 +409,18 @@ export default function FlowerDetail() {
     const [rating, setRating] = useState<number>(5);
     const [text, setText] = useState<string>("");
 
+    // effects (defaults = 3)
     const [daytime, setDaytime] = useState<number>(3);
     const [sleepy, setSleepy] = useState<number>(3);
     const [calm, setCalm] = useState<number>(3);
     const [clarity, setClarity] = useState<number>(3);
+
+    // extended effects (defaults = 3)
+    const [backPain, setBackPain] = useState<number>(3);
+    const [jointPain, setJointPain] = useState<number>(3);
+    const [legPain, setLegPain] = useState<number>(3);
+    const [headacheRelief, setHeadacheRelief] = useState<number>(3);
+    const [racingThoughts, setRacingThoughts] = useState<number>(3);
 
     const [submitting, setSubmitting] = useState(false);
 
@@ -395,12 +442,6 @@ export default function FlowerDetail() {
     const currentUid = currentUser?.uid ?? "";
     const meName = safeName(currentUser?.displayName) || "You";
 
-    const getReviewScore = (r: Review) => {
-        if (typeof r.score === "number" && Number.isFinite(r.score)) return r.score;
-        if (typeof r.rating === "number" && Number.isFinite(r.rating)) return r.rating;
-        return 0;
-    };
-
     const myLastReview = useMemo(() => {
         if (!currentUid) return null;
         const mine = reviews.filter((r) => r.userId === currentUid);
@@ -408,11 +449,52 @@ export default function FlowerDetail() {
         return [...mine].sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a))[0];
     }, [currentUid, reviews]);
 
-    const avgOverall = useMemo(() => {
-        if (reviews.length === 0) return 0;
-        const sum = reviews.reduce((acc, r) => acc + getReviewScore(r), 0);
-        return sum / reviews.length;
+    // Global mean rating (within this product’s review set we can’t see whole DB,
+    // but we can still use a neutral/typical prior).
+    // You can tune this later if you add a global stats doc.
+    const globalMeanRating = 3.6;
+
+    const ratingsList = useMemo(() => {
+        return reviews
+            .map((r) => r.rating)
+            .filter((x) => typeof x === "number" && Number.isFinite(x) && x >= 1 && x <= 5);
     }, [reviews]);
+
+    const avgOverall = useMemo(() => {
+        if (ratingsList.length === 0) return 0;
+        return avgNumbers(ratingsList);
+    }, [ratingsList]);
+
+    const perReviewEffectsMean = useMemo(() => {
+        // per-review mean of all effects that exist on that review (ignore unset)
+        return reviews.map((r) => {
+            const m = avgEffects([
+                r.daytime,
+                r.sleepy,
+                r.calm,
+                r.clarity,
+                r.backPain,
+                r.jointPain,
+                r.legPain,
+                r.headacheRelief,
+                r.racingThoughts,
+            ]);
+            return m;
+        });
+    }, [reviews]);
+
+    const effectsMeansForProduct = useMemo(() => {
+        return perReviewEffectsMean.filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+    }, [perReviewEffectsMean]);
+
+    const robustProductScore = useMemo(() => {
+        if (ratingsList.length === 0) return 0;
+        return computeRobustProductScore({
+            ratings: ratingsList,
+            effectsMeans: effectsMeansForProduct,
+            globalMeanRating,
+        });
+    }, [effectsMeansForProduct, ratingsList]);
 
     const effectsSummary = useMemo(() => {
         const sleepyAvg = avgNumbers(reviews.map((r) => r.sleepy));
@@ -420,16 +502,79 @@ export default function FlowerDetail() {
         const daytimeAvg = avgNumbers(reviews.map((r) => r.daytime));
         const clarityAvg = avgNumbers(reviews.map((r) => r.clarity));
 
-        const withAnySub = reviews.filter(
-            (r) =>
-                typeof r.sleepy === "number" ||
-                typeof r.calm === "number" ||
-                typeof r.daytime === "number" ||
-                typeof r.clarity === "number"
-        ).length;
+        const backPainAvg = avgNumbers(reviews.map((r) => r.backPain));
+        const jointPainAvg = avgNumbers(reviews.map((r) => r.jointPain));
+        const legPainAvg = avgNumbers(reviews.map((r) => r.legPain));
+        const headacheReliefAvg = avgNumbers(reviews.map((r) => r.headacheRelief));
+        const racingThoughtsAvg = avgNumbers(reviews.map((r) => r.racingThoughts));
 
-        return { sleepyAvg, calmAvg, daytimeAvg, clarityAvg, withAnySub };
+        const withAnySub = reviews.filter((r) => {
+            const vals = [
+                r.sleepy,
+                r.calm,
+                r.daytime,
+                r.clarity,
+                r.backPain,
+                r.jointPain,
+                r.legPain,
+                r.headacheRelief,
+                r.racingThoughts,
+            ];
+            return vals.some((v) => typeof v === "number" && v >= 1 && v <= 5);
+        }).length;
+
+        return {
+            sleepyAvg,
+            calmAvg,
+            daytimeAvg,
+            clarityAvg,
+
+            backPainAvg,
+            jointPainAvg,
+            legPainAvg,
+            headacheReliefAvg,
+            racingThoughtsAvg,
+
+            withAnySub,
+        };
     }, [reviews]);
+
+    const getReviewScore = (r: Review) => {
+        // Prefer explicit stored score if present (keeps compatibility)
+        if (typeof r.score === "number" && Number.isFinite(r.score)) return r.score;
+
+        const effectsMean = avgEffects([
+            r.daytime,
+            r.sleepy,
+            r.calm,
+            r.clarity,
+            r.backPain,
+            r.jointPain,
+            r.legPain,
+            r.headacheRelief,
+            r.racingThoughts,
+        ]);
+
+        const effectVals = [
+            r.daytime,
+            r.sleepy,
+            r.calm,
+            r.clarity,
+            r.backPain,
+            r.jointPain,
+            r.legPain,
+            r.headacheRelief,
+            r.racingThoughts,
+        ].filter((v): v is number => typeof v === "number" && v >= 1 && v <= 5);
+
+        const highEffectsCount = effectVals.filter((v) => v >= 4.5).length;
+
+        return computeRobustReviewScore({
+            rating: r.rating,
+            effectsMean,
+            highEffectsCount,
+        });
+    };
 
     const sortedReviews = useMemo(() => {
         const list = [...reviews];
@@ -518,33 +663,25 @@ export default function FlowerDetail() {
 
                         const ratingFromDb = typeof data.rating === "number" ? data.rating : 0;
 
-                        const sleepyFromDb = typeof data.sleepy === "number" ? data.sleepy : null;
-                        const calmFromDb = typeof data.calm === "number" ? data.calm : null;
-                        const daytimeFromDb = typeof data.daytime === "number" ? data.daytime : null;
-                        const clarityFromDb = typeof data.clarity === "number" ? data.clarity : null;
-
-                        const scoreFromDb = typeof data.score === "number" ? data.score : null;
-
-                        const computedScore = computeHeadlineScore({
-                            rating: ratingFromDb,
-                            daytime: daytimeFromDb,
-                            sleepy: sleepyFromDb,
-                            calm: calmFromDb,
-                            clarity: clarityFromDb,
-                        });
-
                         return {
                             id: d.id,
                             productId: typeof data.productId === "string" ? data.productId : "",
                             userId: typeof data.userId === "string" ? data.userId : "",
                             rating: ratingFromDb,
-                            score: scoreFromDb ?? computedScore,
+                            score: typeof data.score === "number" ? data.score : null,
                             text: typeof data.text === "string" ? data.text : null,
                             createdAt: (data.createdAt ?? null) as any,
-                            sleepy: sleepyFromDb,
-                            calm: calmFromDb,
-                            daytime: daytimeFromDb,
-                            clarity: clarityFromDb,
+
+                            sleepy: typeof data.sleepy === "number" ? data.sleepy : null,
+                            calm: typeof data.calm === "number" ? data.calm : null,
+                            daytime: typeof data.daytime === "number" ? data.daytime : null,
+                            clarity: typeof data.clarity === "number" ? data.clarity : null,
+
+                            backPain: typeof data.backPain === "number" ? data.backPain : null,
+                            jointPain: typeof data.jointPain === "number" ? data.jointPain : null,
+                            legPain: typeof data.legPain === "number" ? data.legPain : null,
+                            headacheRelief: typeof data.headacheRelief === "number" ? data.headacheRelief : null,
+                            racingThoughts: typeof data.racingThoughts === "number" ? data.racingThoughts : null,
                         };
                     });
 
@@ -578,10 +715,7 @@ export default function FlowerDetail() {
                 const updates: Record<string, string> = {};
 
                 for (const chunk of chunks) {
-                    const snap = await firestore()
-                        .collection("users")
-                        .where(firestore.FieldPath.documentId(), "in", chunk)
-                        .get();
+                    const snap = await firestore().collection("users").where(firestore.FieldPath.documentId(), "in", chunk).get();
 
                     snap.docs.forEach((doc) => {
                         const data = doc.data() as UserProfile;
@@ -617,15 +751,26 @@ export default function FlowerDetail() {
         }, COOLDOWN_MS);
     };
 
-    const openWriteNewReview = () => {
-        if (isCooldown) return;
-        setEditingReviewId(null);
+    const resetFormDefaults = () => {
         setText("");
         setRating(5);
+
         setSleepy(3);
         setCalm(3);
         setDaytime(3);
         setClarity(3);
+
+        setBackPain(3);
+        setJointPain(3);
+        setLegPain(3);
+        setHeadacheRelief(3);
+        setRacingThoughts(3);
+    };
+
+    const openWriteNewReview = () => {
+        if (isCooldown) return;
+        setEditingReviewId(null);
+        resetFormDefaults();
         setReviewOpen(true);
         setSortOpen(false);
     };
@@ -648,6 +793,12 @@ export default function FlowerDetail() {
         setCalm(typeof myLastReview.calm === "number" ? myLastReview.calm : 3);
         setClarity(typeof myLastReview.clarity === "number" ? myLastReview.clarity : 3);
 
+        setBackPain(typeof myLastReview.backPain === "number" ? myLastReview.backPain : 3);
+        setJointPain(typeof myLastReview.jointPain === "number" ? myLastReview.jointPain : 3);
+        setLegPain(typeof myLastReview.legPain === "number" ? myLastReview.legPain : 3);
+        setHeadacheRelief(typeof myLastReview.headacheRelief === "number" ? myLastReview.headacheRelief : 3);
+        setRacingThoughts(typeof myLastReview.racingThoughts === "number" ? myLastReview.racingThoughts : 3);
+
         setReviewOpen(true);
         setSortOpen(false);
     };
@@ -667,22 +818,52 @@ export default function FlowerDetail() {
         }
 
         const ratingInt = parseInt(String(rating), 10);
+
         const sleepyInt = parseInt(String(sleepy), 10);
         const calmInt = parseInt(String(calm), 10);
         const daytimeInt = parseInt(String(daytime), 10);
         const clarityInt = parseInt(String(clarity), 10);
+
+        const backPainInt = parseInt(String(backPain), 10);
+        const jointPainInt = parseInt(String(jointPain), 10);
+        const legPainInt = parseInt(String(legPain), 10);
+        const headacheReliefInt = parseInt(String(headacheRelief), 10);
+        const racingThoughtsInt = parseInt(String(racingThoughts), 10);
 
         if (!Number.isFinite(ratingInt) || ratingInt < 1 || ratingInt > 5) {
             Alert.alert("Rating must be 1 to 5");
             return;
         }
 
-        const score = computeHeadlineScore({
+        // effects mean across 9 fields
+        const effectsMean = avgEffects([
+            daytimeInt,
+            sleepyInt,
+            calmInt,
+            clarityInt,
+            backPainInt,
+            jointPainInt,
+            legPainInt,
+            headacheReliefInt,
+            racingThoughtsInt,
+        ]);
+
+        const highCount = [
+            daytimeInt,
+            sleepyInt,
+            calmInt,
+            clarityInt,
+            backPainInt,
+            jointPainInt,
+            legPainInt,
+            headacheReliefInt,
+            racingThoughtsInt,
+        ].filter((v) => typeof v === "number" && v >= 4.5).length;
+
+        const score = computeRobustReviewScore({
             rating: ratingInt,
-            daytime: daytimeInt,
-            sleepy: sleepyInt,
-            calm: calmInt,
-            clarity: clarityInt,
+            effectsMean,
+            highEffectsCount: highCount,
         });
 
         setSubmitting(true);
@@ -693,10 +874,18 @@ export default function FlowerDetail() {
                     rating: ratingInt,
                     score,
                     text: text.trim() ? text.trim() : null,
+
                     sleepy: sleepyInt,
                     calm: calmInt,
                     daytime: daytimeInt,
                     clarity: clarityInt,
+
+                    backPain: backPainInt,
+                    jointPain: jointPainInt,
+                    legPain: legPainInt,
+                    headacheRelief: headacheReliefInt,
+                    racingThoughts: racingThoughtsInt,
+
                     editedAt: firestore.FieldValue.serverTimestamp(),
                 });
             } else {
@@ -706,22 +895,24 @@ export default function FlowerDetail() {
                     rating: ratingInt,
                     score,
                     text: text.trim() ? text.trim() : null,
+
                     sleepy: sleepyInt,
                     calm: calmInt,
                     daytime: daytimeInt,
                     clarity: clarityInt,
+
+                    backPain: backPainInt,
+                    jointPain: jointPainInt,
+                    legPain: legPainInt,
+                    headacheRelief: headacheReliefInt,
+                    racingThoughts: racingThoughtsInt,
+
                     createdAt: firestore.FieldValue.serverTimestamp(),
                 });
             }
 
             Keyboard.dismiss();
-
-            setText("");
-            setRating(5);
-            setSleepy(3);
-            setCalm(3);
-            setDaytime(3);
-            setClarity(3);
+            resetFormDefaults();
 
             startCooldown();
             setReviewOpen(false);
@@ -767,12 +958,8 @@ export default function FlowerDetail() {
     if (!product) {
         return (
             <SafeAreaView style={{ flex: 1, padding: 16, backgroundColor: "transparent" }}>
-                <Text style={{ fontSize: 18, fontWeight: "900", marginTop: 16, color: theme.colors.textOnDark }}>
-                    Product not found
-                </Text>
-                <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>
-                    That product id doesnt exist in Firestore.
-                </Text>
+                <Text style={{ fontSize: 18, fontWeight: "900", marginTop: 16, color: theme.colors.textOnDark }}>Product not found</Text>
+                <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>That product id doesnt exist in Firestore.</Text>
             </SafeAreaView>
         );
     }
@@ -825,11 +1012,7 @@ export default function FlowerDetail() {
                 </Pressable>
             </Modal>
 
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-                keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
-            >
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}>
                 <FlatList
                     removeClippedSubviews={false}
                     data={sortedReviews}
@@ -873,9 +1056,7 @@ export default function FlowerDetail() {
                                 {/* Terpenes */}
                                 {terps.length > 0 ? (
                                     <View style={{ marginTop: 12 }}>
-                                        <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>
-                                            Terpenes
-                                        </Text>
+                                        <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>Terpenes</Text>
 
                                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                                             {terps.map((t) => {
@@ -895,7 +1076,7 @@ export default function FlowerDetail() {
                                                             borderColor: chip.border,
                                                             overflow: "hidden",
                                                             shadowColor: "rgba(0,0,0,0.35)",
-                                                            shadowOpacity: 0.30,
+                                                            shadowOpacity: 0.3,
                                                             shadowRadius: 10,
                                                             shadowOffset: { width: 0, height: 8 },
                                                             elevation: 10,
@@ -918,9 +1099,7 @@ export default function FlowerDetail() {
 
                                                         <Text style={{ color: chip.text, fontWeight: "900", fontSize: 13 }}>
                                                             {t.name}
-                                                            {t.strength ? (
-                                                                <Text style={{ color: chip.subText, fontWeight: "900" }}> {t.strength}</Text>
-                                                            ) : null}
+                                                            {t.strength ? <Text style={{ color: chip.subText, fontWeight: "900" }}> {t.strength}</Text> : null}
                                                         </Text>
                                                     </LinearGradient>
                                                 );
@@ -933,15 +1112,13 @@ export default function FlowerDetail() {
                                 <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center" }}>
                                     {reviews.length ? (
                                         <>
-                                            <BudRating value={avgOverall} size={18} />
+                                            <BudRating value={robustProductScore || avgOverall} size={18} />
                                             <Text style={{ fontSize: 22, fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
-                                                {round1(avgOverall).toFixed(1)}
+                                                {(robustProductScore || avgOverall) ? round1(robustProductScore || avgOverall).toFixed(1) : "0.0"}
                                             </Text>
                                         </>
                                     ) : (
-                                        <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDarkSecondary }}>
-                                            No ratings yet
-                                        </Text>
+                                        <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDarkSecondary }}>No ratings yet</Text>
                                     )}
                                 </View>
 
@@ -961,14 +1138,10 @@ export default function FlowerDetail() {
                                         overflow: "hidden",
                                     }}
                                 >
-                                    <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                        Summary of effects
-                                    </Text>
+                                    <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDark }}>Summary of effects</Text>
 
                                     {effectsSummary.withAnySub === 0 ? (
-                                        <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>
-                                            No effect ratings yet. Be the first to add them.
-                                        </Text>
+                                        <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>No effect ratings yet. Be the first to add them.</Text>
                                     ) : (
                                         <View style={{ marginTop: 10 }}>
                                             {[
@@ -976,6 +1149,12 @@ export default function FlowerDetail() {
                                                 { label: "Sleepiness", avg: effectsSummary.sleepyAvg },
                                                 { label: "Calm", avg: effectsSummary.calmAvg },
                                                 { label: "Mental clarity", avg: effectsSummary.clarityAvg },
+
+                                                { label: "Back pain relief", avg: effectsSummary.backPainAvg },
+                                                { label: "Joint pain relief", avg: effectsSummary.jointPainAvg },
+                                                { label: "Leg pain relief", avg: effectsSummary.legPainAvg },
+                                                { label: "Headache relief", avg: effectsSummary.headacheReliefAvg },
+                                                { label: "Racing thoughts relief", avg: effectsSummary.racingThoughtsAvg },
                                             ].map((row) => (
                                                 <View
                                                     key={row.label}
@@ -986,16 +1165,7 @@ export default function FlowerDetail() {
                                                         paddingVertical: 8,
                                                     }}
                                                 >
-                                                    <Text
-                                                        style={{
-                                                            fontWeight: "800",
-                                                            color: theme.colors.textOnDarkSecondary,
-                                                            flex: 1,
-                                                            marginRight: 12,
-                                                        }}
-                                                    >
-                                                        {row.label}
-                                                    </Text>
+                                                    <Text style={{ fontWeight: "800", color: theme.colors.textOnDarkSecondary, flex: 1, marginRight: 12 }}>{row.label}</Text>
 
                                                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                                                         <BudRating value={row.avg} size={16} />
@@ -1062,7 +1232,7 @@ export default function FlowerDetail() {
                                         <RatingRow label="Overall rating" value={rating} onChange={setRating} disabled={submitting} />
 
                                         <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.72)", lineHeight: 18 }}>
-                                            Overall is your satisfaction score. The effect ratings softly shape the final score.
+                                            Overall is your satisfaction score. Effects add a small adjustment and results are weighted to avoid “super strains”.
                                         </Text>
 
                                         <RatingRow label="Daytime suitability" value={daytime} onChange={setDaytime} disabled={submitting} />
@@ -1070,9 +1240,13 @@ export default function FlowerDetail() {
                                         <RatingRow label="Calm" value={calm} onChange={setCalm} disabled={submitting} />
                                         <RatingRow label="Mental clarity" value={clarity} onChange={setClarity} disabled={submitting} />
 
-                                        <Text style={{ marginTop: 18, marginBottom: 10, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                            Notes
-                                        </Text>
+                                        <RatingRow label="Back pain relief" value={backPain} onChange={setBackPain} disabled={submitting} />
+                                        <RatingRow label="Joint pain relief" value={jointPain} onChange={setJointPain} disabled={submitting} />
+                                        <RatingRow label="Leg pain relief" value={legPain} onChange={setLegPain} disabled={submitting} />
+                                        <RatingRow label="Headache relief" value={headacheRelief} onChange={setHeadacheRelief} disabled={submitting} />
+                                        <RatingRow label="Racing thoughts relief" value={racingThoughts} onChange={setRacingThoughts} disabled={submitting} />
+
+                                        <Text style={{ marginTop: 18, marginBottom: 10, fontWeight: "900", color: theme.colors.textOnDark }}>Notes</Text>
 
                                         <TextInput
                                             value={text}
@@ -1096,9 +1270,7 @@ export default function FlowerDetail() {
                                                 disabled={submitting || isCooldown}
                                                 style={[styles.formBtn, { marginRight: 10, opacity: submitting || isCooldown ? 0.7 : 1 }]}
                                             >
-                                                <Text style={styles.formBtnText}>
-                                                    {submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}
-                                                </Text>
+                                                <Text style={styles.formBtnText}>{submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}</Text>
                                             </Pressable>
 
                                             <Pressable
@@ -1122,9 +1294,7 @@ export default function FlowerDetail() {
                                                     </Text>
                                                 </View>
 
-                                                <Text style={styles.toastHint}>
-                                                    If your experience changes over time, you can post another review.
-                                                </Text>
+                                                <Text style={styles.toastHint}>If your experience changes over time, you can post another review.</Text>
                                             </View>
                                         ) : null}
                                     </View>
@@ -1133,9 +1303,7 @@ export default function FlowerDetail() {
                                 {/* Reviews header + sort button */}
                                 <View style={{ marginTop: 24 }}>
                                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                        <Text style={{ fontSize: 34, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                            Reviews
-                                        </Text>
+                                        <Text style={{ fontSize: 34, fontWeight: "900", color: theme.colors.textOnDark }}>Reviews</Text>
 
                                         <View
                                             ref={(n) => {
@@ -1150,9 +1318,7 @@ export default function FlowerDetail() {
                                                 }}
                                                 style={styles.sortPill}
                                             >
-                                                <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, includeFontPadding: false }}>
-                                                    {sortLabel}
-                                                </Text>
+                                                <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, includeFontPadding: false }}>{sortLabel}</Text>
                                             </Pressable>
                                         </View>
                                     </View>
@@ -1160,16 +1326,12 @@ export default function FlowerDetail() {
                                     {loadingReviews ? (
                                         <View style={{ marginTop: 10 }}>
                                             <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
-                                            <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>
-                                                Loading reviews...
-                                            </Text>
+                                            <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>Loading reviews...</Text>
                                         </View>
                                     ) : null}
 
                                     {!loadingReviews && reviews.length === 0 ? (
-                                        <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>
-                                            No reviews yet.
-                                        </Text>
+                                        <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>No reviews yet.</Text>
                                     ) : null}
                                 </View>
                             </View>
@@ -1191,15 +1353,7 @@ export default function FlowerDetail() {
                                 />
 
                                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                    <Text
-                                        style={{
-                                            fontWeight: "900",
-                                            fontSize: 16,
-                                            flexShrink: 1,
-                                            marginRight: 10,
-                                            color: theme.colors.textOnDark,
-                                        }}
-                                    >
+                                    <Text style={{ fontWeight: "900", fontSize: 16, flexShrink: 1, marginRight: 10, color: theme.colors.textOnDark }}>
                                         {displayName}
                                     </Text>
 
@@ -1210,15 +1364,11 @@ export default function FlowerDetail() {
 
                                 <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
                                     <BudRating value={score} size={18} />
-                                    <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
-                                        {round1(score).toFixed(1)}
-                                    </Text>
+                                    <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>{round1(score).toFixed(1)}</Text>
                                 </View>
 
                                 {item.text ? (
-                                    <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 20, color: theme.colors.textOnDarkSecondary }}>
-                                        {item.text}
-                                    </Text>
+                                    <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 20, color: theme.colors.textOnDarkSecondary }}>{item.text}</Text>
                                 ) : null}
                             </View>
                         );

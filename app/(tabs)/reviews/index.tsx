@@ -1,6 +1,7 @@
 import { CinematicCard } from "../../../components/ui/CinematicCard";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Feather } from "@expo/vector-icons";
 import {
   ActivityIndicator,
   Animated,
@@ -28,9 +29,10 @@ type Product = {
   maker: string;
   variant?: string | null;
   strainType?: string | null; // "indica" | "sativa" | "hybrid"
-  productType?: string | null; // "flower" | "vape" | "oil" | "edible" etc
+  productType?: string | null; // kept for backward compat in DB, but we don't filter on it now
   thcPct?: number | null;
   cbdPct?: number | null;
+  terpenes?: string | null; // "limonene:major|caryophyllene:major|linalool:minor"
 };
 
 type Review = {
@@ -77,16 +79,6 @@ function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown"
   return "unknown";
 }
 
-function normalizeProductType(v: any): "" | "flower" | "vape" | "oil" | "edible" {
-  const s = normStr(v);
-  if (!s) return "";
-  if (s.includes("flower")) return "flower";
-  if (s.includes("vape") || s.includes("cart")) return "vape";
-  if (s.includes("oil") || s.includes("tinct")) return "oil";
-  if (s.includes("edible") || s.includes("gummy")) return "edible";
-  return "";
-}
-
 function sortLabel(k: SortKey) {
   switch (k) {
     case "mostReviewed":
@@ -116,10 +108,34 @@ function chipOnDark(selected: boolean) {
   };
 }
 
+/* -------------------- Terpenes parsing -------------------- */
+
+function prettyTerpeneName(raw: string) {
+  const s = raw.trim().replace(/_/g, " ").replace(/-/g, " ");
+  return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function parseTerpenes(input: string | null | undefined) {
+  if (!input) return [];
+  // "limonene:major|caryophyllene:major|linalool:minor"
+  return input
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [nameRaw, strengthRaw] = part.split(":").map((x) => (x ?? "").trim());
+      const name = prettyTerpeneName(nameRaw);
+      const strength = strengthRaw ? strengthRaw.toLowerCase() : "";
+      return { name, strength };
+    })
+    .filter((t) => t.name);
+}
+
+/* -------------------- BudRating -------------------- */
+
 function BudRating({ value, size = 18 }: { value: number; size?: number }) {
   const safe = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
 
-  const EMPTY_TINT = "rgba(255,255,255,0.14)";
   const SCALE = 1.1;
 
   return (
@@ -144,8 +160,7 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
               style={{
                 width: size,
                 height: size,
-                tintColor: EMPTY_TINT,
-                opacity: 1,
+                opacity: 0.22,
               }}
               resizeMode="contain"
             />
@@ -206,33 +221,29 @@ export default function ReviewsIndex() {
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [statsByProductId, setStatsByProductId] = useState<Record<string, Stat>>(
-    {}
-  );
+  const [statsByProductId, setStatsByProductId] = useState<Record<string, Stat>>({});
 
   // Search + applied sort/filters (what the list actually uses)
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("atoz");
-  const [strainFilter, setStrainFilter] = useState<
-    "all" | "sativa" | "indica" | "hybrid" | "unknown"
-  >("all");
-  const [productTypeFilter, setProductTypeFilter] = useState<
-    "all" | "flower" | "vape" | "oil" | "edible"
-  >("all");
+
+  // Strain: only sativa/indica/hybrid, null means "no strain filter"
+  const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
+
+  // Maker
   const [makerFilter, setMakerFilter] = useState<string | null>(null);
+
+  // Terpenes: multi-select, majors only for now
+  const [terpeneFilter, setTerpeneFilter] = useState<string[]>([]);
 
   // Modal open
   const [panelOpen, setPanelOpen] = useState(false);
 
   // Draft values inside the modal (close with X saves these to applied state)
   const [draftSortKey, setDraftSortKey] = useState<SortKey>("atoz");
-  const [draftStrainFilter, setDraftStrainFilter] = useState<
-    "all" | "sativa" | "indica" | "hybrid" | "unknown"
-  >("all");
-  const [draftProductTypeFilter, setDraftProductTypeFilter] = useState<
-    "all" | "flower" | "vape" | "oil" | "edible"
-  >("all");
+  const [draftStrainFilter, setDraftStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
   const [draftMakerFilter, setDraftMakerFilter] = useState<string | null>(null);
+  const [draftTerpeneFilter, setDraftTerpeneFilter] = useState<string[]>([]);
 
   // Expand sections in modal
   const [sortOpen, setSortOpen] = useState(false);
@@ -247,35 +258,33 @@ export default function ReviewsIndex() {
     setLoadingProducts(true);
     setErrorMsg(null);
 
-    const unsub = firestore()
-      .collection("products")
-      .onSnapshot(
-        (snapshot) => {
-          const list: Product[] = snapshot.docs.map((doc) => {
-            const data = doc.data() as any;
+    const unsub = firestore().collection("products").onSnapshot(
+      (snapshot) => {
+        const list: Product[] = snapshot.docs.map((doc) => {
+          const data = doc.data() as any;
 
-            return {
-              id: doc.id,
-              name: typeof data?.name === "string" ? data.name : "",
-              maker: typeof data?.maker === "string" ? data.maker : "",
-              variant: data?.variant ?? null,
-              strainType: typeof data?.type === "string" ? data.type : null,
-              productType:
-                typeof data?.productType === "string" ? data.productType : null,
-              thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
-              cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
-            };
-          });
+          return {
+            id: doc.id,
+            name: typeof data?.name === "string" ? data.name : "",
+            maker: typeof data?.maker === "string" ? data.maker : "",
+            variant: data?.variant ?? null,
+            strainType: typeof data?.type === "string" ? data.type : null,
+            productType: typeof data?.productType === "string" ? data.productType : null,
+            thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
+            cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
+            terpenes: typeof data?.terpenes === "string" ? data.terpenes : null,
+          };
+        });
 
-          setItems(list);
-          setLoadingProducts(false);
-        },
-        (err) => {
-          console.log("products snapshot error:", err);
-          setErrorMsg(err?.message ?? "Failed to load products");
-          setLoadingProducts(false);
-        }
-      );
+        setItems(list);
+        setLoadingProducts(false);
+      },
+      (err) => {
+        console.log("products snapshot error:", err);
+        setErrorMsg(err?.message ?? "Failed to load products");
+        setLoadingProducts(false);
+      }
+    );
 
     return () => unsub();
   }, []);
@@ -284,55 +293,48 @@ export default function ReviewsIndex() {
   useEffect(() => {
     setLoadingReviews(true);
 
-    const unsub = firestore()
-      .collection("reviews")
-      .onSnapshot(
-        (snapshot) => {
-          const rows: Review[] = snapshot.docs.map((d) => {
-            const data = d.data() as any;
+    const unsub = firestore().collection("reviews").onSnapshot(
+      (snapshot) => {
+        const rows: Review[] = snapshot.docs.map((d) => {
+          const data = d.data() as any;
 
-            const rating = typeof data?.rating === "number" ? data.rating : 0;
-            const score = typeof data?.score === "number" ? data.score : null;
+          const rating = typeof data?.rating === "number" ? data.rating : 0;
+          const score = typeof data?.score === "number" ? data.score : null;
 
-            return {
-              id: d.id,
-              productId:
-                typeof data?.productId === "string" ? data.productId : "",
-              rating,
-              score,
-            };
-          });
+          return {
+            id: d.id,
+            productId: typeof data?.productId === "string" ? data.productId : "",
+            rating,
+            score,
+          };
+        });
 
-          const map: Record<string, Stat> = {};
+        const map: Record<string, Stat> = {};
 
-          for (const r of rows) {
-            if (!r.productId) continue;
+        for (const r of rows) {
+          if (!r.productId) continue;
 
-            const val =
-              typeof r.score === "number" && Number.isFinite(r.score)
-                ? r.score
-                : r.rating;
+          const val = typeof r.score === "number" && Number.isFinite(r.score) ? r.score : r.rating;
+          if (val < 1 || val > 5) continue;
 
-            if (val < 1 || val > 5) continue;
-
-            const existing = map[r.productId];
-            if (!existing) {
-              map[r.productId] = { count: 1, avg: val };
-            } else {
-              const newCount = existing.count + 1;
-              const newAvg = (existing.avg * existing.count + val) / newCount;
-              map[r.productId] = { count: newCount, avg: newAvg };
-            }
+          const existing = map[r.productId];
+          if (!existing) {
+            map[r.productId] = { count: 1, avg: val };
+          } else {
+            const newCount = existing.count + 1;
+            const newAvg = (existing.avg * existing.count + val) / newCount;
+            map[r.productId] = { count: newCount, avg: newAvg };
           }
-
-          setStatsByProductId(map);
-          setLoadingReviews(false);
-        },
-        (err) => {
-          console.log("reviews snapshot error:", err);
-          setLoadingReviews(false);
         }
-      );
+
+        setStatsByProductId(map);
+        setLoadingReviews(false);
+      },
+      (err) => {
+        console.log("reviews snapshot error:", err);
+        setLoadingReviews(false);
+      }
+    );
 
     return () => unsub();
   }, []);
@@ -342,26 +344,38 @@ export default function ReviewsIndex() {
     for (const it of items) {
       if (it.maker) set.add(it.maker);
     }
-    return Array.from(set).sort((a, b) =>
-      safeLower(a) < safeLower(b) ? -1 : 1
-    );
+    return Array.from(set).sort((a, b) => (safeLower(a) < safeLower(b) ? -1 : 1));
+  }, [items]);
+
+  const terpeneOptions = useMemo(() => {
+    const set = new Set<string>();
+
+    for (const it of items) {
+      const terps = parseTerpenes(it.terpenes);
+      // majors only for now
+      terps
+        .filter((t) => t.strength === "major")
+        .forEach((t) => set.add(t.name));
+    }
+
+    return Array.from(set).sort((a, b) => (safeLower(a) < safeLower(b) ? -1 : 1));
   }, [items]);
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
-    if (strainFilter !== "all") n += 1;
-    if (productTypeFilter !== "all") n += 1;
+    if (strainFilter) n += 1;
     if (makerFilter) n += 1;
+    if (terpeneFilter.length > 0) n += 1;
     return n;
-  }, [strainFilter, productTypeFilter, makerFilter]);
+  }, [strainFilter, makerFilter, terpeneFilter]);
 
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
-    if (strainFilter !== "all") labels.push(`Strain: ${strainFilter}`);
-    if (productTypeFilter !== "all") labels.push(`Type: ${productTypeFilter}`);
+    if (strainFilter) labels.push(`Strain: ${strainFilter}`);
     if (makerFilter) labels.push(`Maker: ${makerFilter}`);
+    if (terpeneFilter.length > 0) labels.push(`Terpenes: ${terpeneFilter.join(", ")}`);
     return labels;
-  }, [strainFilter, productTypeFilter, makerFilter]);
+  }, [strainFilter, makerFilter, terpeneFilter]);
 
   const displayItems = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -374,21 +388,24 @@ export default function ReviewsIndex() {
       }
 
       // Strain
-      if (strainFilter !== "all") {
+      if (strainFilter) {
         const st = normalizeStrainType(it.strainType);
         if (st !== strainFilter) return false;
-      }
-
-      // Product type
-      if (productTypeFilter !== "all") {
-        const pt = normalizeProductType(it.productType ?? "");
-        const finalPt = pt || "flower";
-        if (finalPt !== productTypeFilter) return false;
       }
 
       // Maker
       if (makerFilter) {
         if (safeLower(it.maker) !== safeLower(makerFilter)) return false;
+      }
+
+      // Terpenes (majors only)
+      if (terpeneFilter.length > 0) {
+        const majors = parseTerpenes(it.terpenes)
+          .filter((t) => t.strength === "major")
+          .map((t) => safeLower(t.name));
+
+        const hasAllSelected = terpeneFilter.every((sel) => majors.includes(safeLower(sel)));
+        if (!hasAllSelected) return false;
       }
 
       return true;
@@ -437,22 +454,14 @@ export default function ReviewsIndex() {
     });
 
     return copy;
-  }, [
-    items,
-    statsByProductId,
-    query,
-    sortKey,
-    strainFilter,
-    productTypeFilter,
-    makerFilter,
-  ]);
+  }, [items, statsByProductId, query, sortKey, strainFilter, makerFilter, terpeneFilter]);
 
   const openFilters = () => {
     // Copy applied -> draft
     setDraftSortKey(sortKey);
     setDraftStrainFilter(strainFilter);
-    setDraftProductTypeFilter(productTypeFilter);
     setDraftMakerFilter(makerFilter);
+    setDraftTerpeneFilter(terpeneFilter);
 
     setSortOpen(false);
     setMakerOpen(false);
@@ -463,8 +472,8 @@ export default function ReviewsIndex() {
     // Apply draft -> applied
     setSortKey(draftSortKey);
     setStrainFilter(draftStrainFilter);
-    setProductTypeFilter(draftProductTypeFilter);
     setMakerFilter(draftMakerFilter);
+    setTerpeneFilter(draftTerpeneFilter);
 
     setSortOpen(false);
     setMakerOpen(false);
@@ -473,9 +482,9 @@ export default function ReviewsIndex() {
 
   const resetDraft = () => {
     setDraftSortKey("atoz");
-    setDraftStrainFilter("all");
-    setDraftProductTypeFilter("all");
+    setDraftStrainFilter(null);
     setDraftMakerFilter(null);
+    setDraftTerpeneFilter([]);
     setSortOpen(false);
     setMakerOpen(false);
   };
@@ -582,12 +591,7 @@ export default function ReviewsIndex() {
             const maker = item.maker?.trim() ? item.maker.trim() : "Unknown maker";
 
             // Build a clean meta line: "Maker · THC 20% · CBD 0.1%"
-            const parts = [
-              maker,
-              `THC ${formatPct(item.thcPct)}`,
-              `CBD ${formatPct(item.cbdPct)}`,
-            ].filter(Boolean);
-
+            const parts = [maker, `THC ${formatPct(item.thcPct)}`, `CBD ${formatPct(item.cbdPct)}`].filter(Boolean);
             const metaLine = parts.join(" · ");
 
             return (
@@ -827,15 +831,7 @@ export default function ReviewsIndex() {
               }}
             />
 
-            <Image
-              source={budImg}
-              resizeMode="contain"
-              style={{
-                width: Math.round(floatingSize * 0.54),
-                height: Math.round(floatingSize * 0.54),
-                tintColor: "rgba(12,12,12,0.95)",
-              }}
-            />
+            <Feather name="sliders" size={22} color="rgba(12,12,12,0.95)" />
 
             {activeFilterCount > 0 ? (
               <View
@@ -877,19 +873,11 @@ export default function ReviewsIndex() {
         </Animated.View>
 
         {/* Filters modal (tap backdrop or X saves draft) */}
-        <Modal
-          visible={panelOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={closeAndSaveFilters}
-        >
+        <Modal visible={panelOpen} transparent animationType="fade" onRequestClose={closeAndSaveFilters}>
           <View style={{ flex: 1, justifyContent: "flex-end" }}>
             <Pressable
               onPress={closeAndSaveFilters}
-              style={[
-                StyleSheet.absoluteFillObject,
-                { backgroundColor: "rgba(0,0,0,0.40)" },
-              ]}
+              style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.40)" }]}
             />
 
             <View
@@ -902,10 +890,7 @@ export default function ReviewsIndex() {
                 overflow: "hidden",
               }}
             >
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-                keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
-              >
+              <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}>
                 <ScrollView
                   style={{ maxHeight: Dimensions.get("window").height * 0.82 }}
                   contentContainerStyle={{
@@ -969,15 +954,11 @@ export default function ReviewsIndex() {
                       opacity: pressed ? 0.9 : 1,
                     })}
                   >
-                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                      Reset
-                    </Text>
+                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Reset</Text>
                   </Pressable>
 
                   {/* Active (draft) summary */}
-                  {(draftStrainFilter !== "all" ||
-                    draftProductTypeFilter !== "all" ||
-                    !!draftMakerFilter) ? (
+                  {(draftStrainFilter || !!draftMakerFilter || draftTerpeneFilter.length > 0) ? (
                     <View
                       style={{
                         marginTop: 12,
@@ -988,9 +969,7 @@ export default function ReviewsIndex() {
                         borderColor: "rgba(255,255,255,0.10)",
                       }}
                     >
-                      <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                        Active
-                      </Text>
+                      <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Active</Text>
                       <Text
                         style={{
                           marginTop: 6,
@@ -999,8 +978,8 @@ export default function ReviewsIndex() {
                         }}
                       >
                         {[
-                          draftStrainFilter !== "all" ? `Strain: ${draftStrainFilter}` : "",
-                          draftProductTypeFilter !== "all" ? `Type: ${draftProductTypeFilter}` : "",
+                          draftStrainFilter ? `Strain: ${draftStrainFilter}` : "",
+                          draftTerpeneFilter.length > 0 ? `Terpenes: ${draftTerpeneFilter.join(", ")}` : "",
                           draftMakerFilter ? `Maker: ${draftMakerFilter}` : "",
                         ]
                           .filter(Boolean)
@@ -1034,13 +1013,7 @@ export default function ReviewsIndex() {
                       opacity: pressed ? 0.9 : 1,
                     })}
                   >
-                    <Text
-                      style={{
-                        color: theme.colors.textOnDark,
-                        fontWeight: "900",
-                        fontSize: 16,
-                      }}
-                    >
+                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
                       {sortLabel(draftSortKey)}
                     </Text>
                     <Text
@@ -1056,16 +1029,7 @@ export default function ReviewsIndex() {
 
                   {sortOpen ? (
                     <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                      {(
-                        [
-                          "mostReviewed",
-                          "highestRated",
-                          "thcHighLow",
-                          "thcLowHigh",
-                          "maker",
-                          "atoz",
-                        ] as SortKey[]
-                      ).map((k) => {
+                      {(["mostReviewed", "highestRated", "thcHighLow", "thcLowHigh", "maker", "atoz"] as SortKey[]).map((k) => {
                         const selected = draftSortKey === k;
                         return (
                           <Pressable
@@ -1079,19 +1043,13 @@ export default function ReviewsIndex() {
                               borderRadius: 999,
                               paddingVertical: 10,
                               paddingHorizontal: 14,
-                              backgroundColor: selected
-                                ? "rgba(255,255,255,0.16)"
-                                : "rgba(255,255,255,0.08)",
+                              backgroundColor: selected ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)",
                               borderWidth: 1,
-                              borderColor: selected
-                                ? "rgba(255,255,255,0.24)"
-                                : "rgba(255,255,255,0.12)",
+                              borderColor: selected ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.12)",
                               opacity: pressed ? 0.9 : 1,
                             })}
                           >
-                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                              {sortLabel(k)}
-                            </Text>
+                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{sortLabel(k)}</Text>
                           </Pressable>
                         );
                       })}
@@ -1123,26 +1081,24 @@ export default function ReviewsIndex() {
                   </Text>
 
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-                    {(["all", "sativa", "indica", "hybrid", "unknown"] as const).map((v) => {
+                    {(["sativa", "indica", "hybrid"] as const).map((v) => {
                       const selected = draftStrainFilter === v;
                       return (
                         <Pressable
                           key={v}
-                          onPress={() => setDraftStrainFilter(v)}
+                          onPress={() => setDraftStrainFilter(selected ? null : v)}
                           style={({ pressed }) => ({
                             ...chipOnDark(selected),
                             opacity: pressed ? 0.85 : 1,
                           })}
                         >
-                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                            {v === "all" ? "All" : v}
-                          </Text>
+                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{v}</Text>
                         </Pressable>
                       );
                     })}
                   </View>
 
-                  {/* Product type */}
+                  {/* Terpenes */}
                   <Text
                     style={{
                       marginTop: 16,
@@ -1151,28 +1107,55 @@ export default function ReviewsIndex() {
                       fontWeight: "800",
                     }}
                   >
-                    Product type
+                    Terpenes (major)
                   </Text>
 
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-                    {(["all", "flower", "vape", "oil", "edible"] as const).map((v) => {
-                      const selected = draftProductTypeFilter === v;
-                      return (
-                        <Pressable
-                          key={v}
-                          onPress={() => setDraftProductTypeFilter(v)}
-                          style={({ pressed }) => ({
-                            ...chipOnDark(selected),
-                            opacity: pressed ? 0.85 : 1,
-                          })}
-                        >
-                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                            {v === "all" ? "All" : v}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+                    {terpeneOptions.length === 0 ? (
+                      <Text style={{ color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
+                        No terpene data found yet.
+                      </Text>
+                    ) : (
+                      terpeneOptions.map((t) => {
+                        const selected = draftTerpeneFilter.some((x) => safeLower(x) === safeLower(t));
+                        return (
+                          <Pressable
+                            key={t}
+                            onPress={() => {
+                              setDraftTerpeneFilter((prev) => {
+                                const exists = prev.some((x) => safeLower(x) === safeLower(t));
+                                if (exists) return prev.filter((x) => safeLower(x) !== safeLower(t));
+
+                                // max 3 selections (remove this block if you want unlimited)
+                                if (prev.length >= 3) return prev;
+
+                                return [...prev, t];
+                              });
+                            }}
+                            style={({ pressed }) => ({
+                              ...chipOnDark(selected),
+                              opacity: pressed ? 0.85 : 1,
+                            })}
+                          >
+                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{t}</Text>
+                          </Pressable>
+                        );
+                      })
+                    )}
                   </View>
+
+                  {draftTerpeneFilter.length >= 3 ? (
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        color: "rgba(255,255,255,0.55)",
+                        fontWeight: "700",
+                        fontSize: 12,
+                      }}
+                    >
+                      Max 3 terpenes selected.
+                    </Text>
+                  ) : null}
 
                   {/* Maker */}
                   <Text
@@ -1232,24 +1215,17 @@ export default function ReviewsIndex() {
                           borderRadius: 999,
                           paddingVertical: 10,
                           paddingHorizontal: 14,
-                          backgroundColor: !draftMakerFilter
-                            ? "rgba(255,255,255,0.16)"
-                            : "rgba(255,255,255,0.08)",
+                          backgroundColor: !draftMakerFilter ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)",
                           borderWidth: 1,
-                          borderColor: !draftMakerFilter
-                            ? "rgba(255,255,255,0.24)"
-                            : "rgba(255,255,255,0.12)",
+                          borderColor: !draftMakerFilter ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.12)",
                           opacity: pressed ? 0.9 : 1,
                         })}
                       >
-                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                          All makers
-                        </Text>
+                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>All makers</Text>
                       </Pressable>
 
                       {makers.slice(0, 40).map((m) => {
-                        const selected =
-                          draftMakerFilter && safeLower(draftMakerFilter) === safeLower(m);
+                        const selected = draftMakerFilter && safeLower(draftMakerFilter) === safeLower(m);
                         return (
                           <Pressable
                             key={m}
@@ -1262,21 +1238,14 @@ export default function ReviewsIndex() {
                               borderRadius: 999,
                               paddingVertical: 10,
                               paddingHorizontal: 14,
-                              backgroundColor: selected
-                                ? "rgba(255,255,255,0.16)"
-                                : "rgba(255,255,255,0.08)",
+                              backgroundColor: selected ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)",
                               borderWidth: 1,
-                              borderColor: selected
-                                ? "rgba(255,255,255,0.24)"
-                                : "rgba(255,255,255,0.12)",
+                              borderColor: selected ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.12)",
                               opacity: pressed ? 0.9 : 1,
                               maxWidth: "100%",
                             })}
                           >
-                            <Text
-                              style={{ color: theme.colors.textOnDark, fontWeight: "900" }}
-                              numberOfLines={1}
-                            >
+                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }} numberOfLines={1}>
                               {m}
                             </Text>
                           </Pressable>
