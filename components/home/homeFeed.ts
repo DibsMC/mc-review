@@ -8,12 +8,21 @@ type HomeFeedInput = {
     hasNewFlowers: boolean;
     hasUpdatedReviews: boolean;
 
+    // Trending / Top rated should ideally be a real product
     trendingTitle?: string;
+    trendingProductId?: string;
+    trendingRating?: number | null;
+    trendingRatingCount?: number | null;
+
     topRatedTitle?: string;
+    topRatedProductId?: string;
+    topRatedRating?: number | null;
+    topRatedRatingCount?: number | null;
 
     badgeTitle?: string;
     badgeOwnerName?: string;
 
+    // legacy (kept so nothing breaks if still passed)
     newsHeadline?: string;
     newsSource?: string;
 
@@ -35,20 +44,43 @@ function pickOne<T>(items: T[], seed: number) {
     return items[seed % items.length];
 }
 
-export function buildHomeCards(input: HomeFeedInput, handlers: {
-    goToNewReviews: () => void;
-    goToNewFlowers: () => void;
-    goToUpdatedReviews: () => void;
-    goToTrending: () => void;
-    goToTopRated: () => void;
-    goToBadges: () => void;
-    openNews: () => void;
-}): { primary: HomeCardModel[]; news?: HomeCardModel } {
+function safeRating(n: any): number | null {
+    if (typeof n !== "number" || !Number.isFinite(n)) return null;
+    if (n <= 0) return null;
+    // clamp 0..5 (HomeCard expects 0..5 but shows only when >0)
+    return Math.max(0, Math.min(5, n));
+}
+
+function safeCount(n: any): number | null {
+    if (typeof n !== "number" || !Number.isFinite(n)) return null;
+    if (n <= 0) return null;
+    return Math.floor(n);
+}
+
+export function buildHomeCards(
+    input: HomeFeedInput,
+    handlers: {
+        goToNewReviews: () => void;
+        goToNewFlowers: () => void;
+        goToUpdatedReviews: () => void;
+
+        // For specific flower navigation (Trending/Top Rated)
+        goToFlower: (productId: string) => void;
+
+        // Badges page
+        goToBadges: () => void;
+
+        // External link (MedBud Wiki stock)
+        openMcStock: () => void;
+    }
+): { primary: HomeCardModel[]; news?: HomeCardModel } {
     const seed = hashStringToInt(input.seedKey);
     const primary: HomeCardModel[] = [];
 
-    // Lane A: always fresh
+    /* ---------------- Lane A: always fresh ---------------- */
+
     const laneA: Array<{ type: HomeCardType; card: HomeCardModel }> = [];
+
     if (input.hasNewReviews) {
         laneA.push({
             type: "new_review",
@@ -62,6 +94,7 @@ export function buildHomeCards(input: HomeFeedInput, handlers: {
             },
         });
     }
+
     if (input.hasNewFlowers) {
         laneA.push({
             type: "new_flower",
@@ -75,6 +108,7 @@ export function buildHomeCards(input: HomeFeedInput, handlers: {
             },
         });
     }
+
     if (input.hasUpdatedReviews) {
         laneA.push({
             type: "review_updated",
@@ -90,36 +124,53 @@ export function buildHomeCards(input: HomeFeedInput, handlers: {
     }
 
     const laneAChoice = pickOne(laneA, seed);
-    if (laneAChoice) {
-        primary.push(laneAChoice.card);
-    }
+    if (laneAChoice) primary.push(laneAChoice.card);
 
-    // Lane B: community activity
+    /* ---------------- Lane B: community activity ---------------- */
+
     const laneB: HomeCardModel[] = [];
+
     if (input.trendingTitle) {
+        const pid = typeof input.trendingProductId === "string" ? input.trendingProductId : "";
         laneB.push({
             id: "laneB_trending",
             type: "trending",
             eyebrow: "Trending",
             title: input.trendingTitle,
             subtitle: "One of the most reviewed this week",
-            onPress: handlers.goToTrending,
+            rating: safeRating(input.trendingRating),
+            ratingCount: safeCount(input.trendingRatingCount),
+            onPress: () => {
+                // If we have a real productId, go to that flower
+                if (pid) handlers.goToFlower(pid);
+                // Otherwise default back to the main flowers list
+                else handlers.goToNewFlowers();
+            },
         });
     }
+
     if (input.topRatedTitle) {
+        const pid = typeof input.topRatedProductId === "string" ? input.topRatedProductId : "";
         laneB.push({
             id: "laneB_top_rated",
             type: "top_rated",
             eyebrow: "Top rated",
             title: input.topRatedTitle,
             subtitle: "Currently #1 by community reviews",
-            onPress: handlers.goToTopRated,
+            rating: safeRating(input.topRatedRating),
+            ratingCount: safeCount(input.topRatedRatingCount),
+            onPress: () => {
+                if (pid) handlers.goToFlower(pid);
+                else handlers.goToNewFlowers();
+            },
         });
     }
+
     const laneBChoice = pickOne(laneB, seed + 3);
     if (laneBChoice) primary.push(laneBChoice);
 
-    // Lane C: recognition
+    /* ---------------- Lane C: recognition ---------------- */
+
     if (input.badgeTitle) {
         primary.push({
             id: "laneC_badge",
@@ -127,11 +178,13 @@ export function buildHomeCards(input: HomeFeedInput, handlers: {
             eyebrow: "Badge earned",
             title: input.badgeTitle,
             subtitle: input.badgeOwnerName ? `Awarded to ${input.badgeOwnerName}` : "Awarded recently",
+            // This is a page, not a flower
             onPress: handlers.goToBadges,
         });
     }
 
-    // Lane D: discovery fallback
+    /* ---------------- Lane D: discovery fallback ---------------- */
+
     if (primary.length === 0) {
         primary.push({
             id: "caught_up",
@@ -143,19 +196,18 @@ export function buildHomeCards(input: HomeFeedInput, handlers: {
         });
     }
 
-    // News card
-    let news: HomeCardModel | undefined;
-    if (input.newsHeadline && input.newsSource) {
-        news = {
-            id: "news_1",
-            type: "news",
-            eyebrow: "Worth knowing",
-            title: input.newsHeadline,
-            subtitle: `Source: ${input.newsSource}`,
-            onPress: handlers.openNews,
-        };
-    }
+    /* ---------------- Bottom card: MC stock (replaces news) ----------------
+       Keeping type as "news" so UI doesn't need refactor right now.
+    */
+    const news: HomeCardModel = {
+        id: "mc_stock_1",
+        type: "news",
+        eyebrow: "MC stock",
+        title: "Check MC stock",
+        subtitle: "Check stock availability on MedBud Wiki",
+        meta: "Opens website",
+        onPress: handlers.openMcStock,
+    };
 
-    // Cap primary cards to a sensible amount
     return { primary: primary.slice(0, 5), news };
 }

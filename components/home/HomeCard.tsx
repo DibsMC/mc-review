@@ -1,8 +1,7 @@
 import React from "react";
-import { Image, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-
-const budImg = require("../../assets/icons/bud.png");
+import { JazzBudRating } from "../ui/JazzBudRating";
 
 export type HomeCardType =
     | "new_review"
@@ -22,6 +21,10 @@ export type HomeCardModel = {
     subtitle?: string;
     meta?: string;
     onPress?: () => void;
+
+    // NEW (optional): if you pass these from the home feed, the buds show nicely.
+    rating?: number | null; // 0..5
+    ratingCount?: number | null;
 };
 
 export function HomeCard({
@@ -33,16 +36,15 @@ export function HomeCard({
     hero?: boolean;
     style?: ViewStyle;
 }) {
+    const rating = typeof card.rating === "number" ? card.rating : null;
+    const ratingCount = typeof card.ratingCount === "number" ? card.ratingCount : null;
+    const showRating = rating !== null && Number.isFinite(rating) && rating > 0;
+
     return (
         <Pressable
             onPress={card.onPress}
             disabled={!card.onPress}
-            style={({ pressed }) => [
-                styles.wrap,
-                hero ? styles.wrapHero : null,
-                pressed ? styles.pressed : null,
-                style,
-            ]}
+            style={({ pressed }) => [styles.wrap, hero ? styles.wrapHero : null, pressed ? styles.pressed : null, style]}
         >
             <View style={styles.base}>
                 <LinearGradient
@@ -79,11 +81,21 @@ export function HomeCard({
                                     {card.meta}
                                 </Text>
                             ) : null}
+
+                            {/* Bud rating row (jazzier, bigger, earthy) */}
+                            {showRating ? (
+                                <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
+                                    <JazzBudRating value={rating!} size={hero ? 26 : 24} />
+                                    <Text style={styles.ratingText}>
+                                        {Number(rating).toFixed(1)}
+                                        {typeof ratingCount === "number" && ratingCount > 0 ? ` (${ratingCount})` : ""}
+                                    </Text>
+                                </View>
+                            ) : null}
                         </View>
 
-                        <View style={styles.iconPill}>
-                            <Image source={budImg} style={styles.icon} resizeMode="contain" />
-                        </View>
+                        {/* Right-side accent chip (keeps balance even if no rating) */}
+                        <View style={styles.sideChip} />
                     </View>
                 </LinearGradient>
             </View>
@@ -173,19 +185,18 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         color: "rgba(255,255,255,0.52)",
     },
-    iconPill: {
-        width: 44,
-        height: 44,
-        borderRadius: 999,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "rgba(235,237,240,0.92)",
-        borderWidth: 1,
-        borderColor: "rgba(0,0,0,0.08)",
+    ratingText: {
+        marginLeft: 10,
+        fontWeight: "900",
+        color: "rgba(255,255,255,0.88)",
+        fontSize: 14,
     },
-    icon: {
-        width: 22,
-        height: 22,
-        tintColor: "rgba(0,0,0,0.92)",
+    sideChip: {
+        width: 10,
+        alignSelf: "stretch",
+        borderRadius: 999,
+        backgroundColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.10)",
     },
 });
