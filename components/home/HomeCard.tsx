@@ -1,7 +1,8 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { JazzBudRating } from "../ui/JazzBudRating";
+
+const budImg = require("../../assets/icons/bud.png");
 
 export type HomeCardType =
     | "new_review"
@@ -22,10 +23,26 @@ export type HomeCardModel = {
     meta?: string;
     onPress?: () => void;
 
-    // NEW (optional): if you pass these from the home feed, the buds show nicely.
-    rating?: number | null; // 0..5
+    // optional (some cards may pass these, we simply ignore if not present)
+    rating?: number | null;
     ratingCount?: number | null;
 };
+
+function iconCircleForType(type: HomeCardType) {
+    // Muted earthy tones. Keep subtle, not danger.
+    switch (type) {
+        case "badge":
+            return ["rgba(232,220,208,0.96)", "rgba(220,205,192,0.96)"] as const; // warm beige
+        case "trending":
+            return ["rgba(190,210,205,0.96)", "rgba(172,196,190,0.96)"] as const; // sage
+        case "top_rated":
+            return ["rgba(200,216,190,0.96)", "rgba(182,204,170,0.96)"] as const; // moss
+        case "news":
+            return ["rgba(205,216,220,0.96)", "rgba(186,202,208,0.96)"] as const; // cool grey-blue
+        default:
+            return ["rgba(210,220,218,0.96)", "rgba(188,204,200,0.96)"] as const; // neutral sage
+    }
+}
 
 export function HomeCard({
     card,
@@ -36,15 +53,18 @@ export function HomeCard({
     hero?: boolean;
     style?: ViewStyle;
 }) {
-    const rating = typeof card.rating === "number" ? card.rating : null;
-    const ratingCount = typeof card.ratingCount === "number" ? card.ratingCount : null;
-    const showRating = rating !== null && Number.isFinite(rating) && rating > 0;
+    const circle = iconCircleForType(card.type);
 
     return (
         <Pressable
             onPress={card.onPress}
             disabled={!card.onPress}
-            style={({ pressed }) => [styles.wrap, hero ? styles.wrapHero : null, pressed ? styles.pressed : null, style]}
+            style={({ pressed }) => [
+                styles.wrap,
+                hero ? styles.wrapHero : null,
+                pressed ? styles.pressed : null,
+                style,
+            ]}
         >
             <View style={styles.base}>
                 <LinearGradient
@@ -81,21 +101,14 @@ export function HomeCard({
                                     {card.meta}
                                 </Text>
                             ) : null}
-
-                            {/* Bud rating row (jazzier, bigger, earthy) */}
-                            {showRating ? (
-                                <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
-                                    <JazzBudRating value={rating!} size={hero ? 26 : 24} />
-                                    <Text style={styles.ratingText}>
-                                        {Number(rating).toFixed(1)}
-                                        {typeof ratingCount === "number" && ratingCount > 0 ? ` (${ratingCount})` : ""}
-                                    </Text>
-                                </View>
-                            ) : null}
                         </View>
 
-                        {/* Right-side accent chip (keeps balance even if no rating) */}
-                        <View style={styles.sideChip} />
+                        {/* Earthy icon circle */}
+                        <View style={styles.iconWrap}>
+                            <LinearGradient colors={[...circle]} style={styles.iconCircle}>
+                                <Image source={budImg} style={styles.icon} resizeMode="contain" />
+                            </LinearGradient>
+                        </View>
                     </View>
                 </LinearGradient>
             </View>
@@ -132,8 +145,8 @@ const styles = StyleSheet.create({
     },
     surface: {
         borderRadius: R,
-        paddingVertical: 16,
-        paddingHorizontal: 16,
+        paddingVertical: 18,
+        paddingHorizontal: 18,
     },
     glowA: {
         position: "absolute",
@@ -156,7 +169,7 @@ const styles = StyleSheet.create({
     row: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 14,
+        gap: 16,
     },
     eyebrow: {
         fontSize: 12,
@@ -165,38 +178,52 @@ const styles = StyleSheet.create({
         fontWeight: "800",
     },
     title: {
-        marginTop: 8,
-        fontSize: 22,
+        marginTop: 10,
+        fontSize: 24,
         fontWeight: "900",
         color: "rgba(255,255,255,0.94)",
     },
     titleHero: {
-        fontSize: 26,
+        fontSize: 28,
     },
     subtitle: {
         marginTop: 6,
-        fontSize: 14,
-        fontWeight: "700",
-        color: "rgba(255,255,255,0.68)",
+        fontSize: 15,
+        fontWeight: "800",
+        color: "rgba(255,255,255,0.66)",
+        lineHeight: 20,
     },
     meta: {
-        marginTop: 8,
+        marginTop: 10,
         fontSize: 12,
         fontWeight: "800",
         color: "rgba(255,255,255,0.52)",
     },
-    ratingText: {
-        marginLeft: 10,
-        fontWeight: "900",
-        color: "rgba(255,255,255,0.88)",
-        fontSize: 14,
+
+    iconWrap: {
+        width: 78,
+        height: 78,
+        borderRadius: 39,
+        alignItems: "center",
+        justifyContent: "center",
     },
-    sideChip: {
-        width: 10,
-        alignSelf: "stretch",
-        borderRadius: 999,
-        backgroundColor: "rgba(255,255,255,0.08)",
+    iconCircle: {
+        width: 78,
+        height: 78,
+        borderRadius: 39,
+        alignItems: "center",
+        justifyContent: "center",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.10)",
+        borderColor: "rgba(0,0,0,0.08)",
+        shadowColor: "rgba(0,0,0,0.35)",
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 8,
+    },
+    icon: {
+        width: 34,
+        height: 34,
+        // No tint, we want the bud PNG to show naturally
     },
 });

@@ -1,112 +1,134 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+
 import { AmbientBackground } from "../../components/home/AmbientBackground";
 import { HomeCard } from "../../components/home/HomeCard";
 import { SkeletonCard } from "../../components/home/SkeletonCard";
 import { buildHomeCards } from "../../components/home/homeFeed";
+import { theme } from "../../lib/theme";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  // Replace these with real data later
-  const [loading] = useState(false);
-
-  const input = useMemo(() => {
-    const now = Date.now();
-
-    return {
-      now,
-      seedKey: new Date().toISOString().slice(0, 10), // daily rotation
-      lastSeenMs: undefined,
+  // Replace these with your real computed values if you already have them.
+  const input = useMemo(
+    () => ({
+      now: Date.now(),
+      lastSeenMs: undefined as number | undefined,
 
       hasNewReviews: true,
       hasNewFlowers: true,
-      hasUpdatedReviews: false,
+      hasUpdatedReviews: true,
 
       trendingTitle: "Northern Lights",
-      topRatedTitle: "Strawberry OG",
+      trendingProductId: "", // set to a real id to deep-link
+      trendingRating: null as number | null,
+      trendingRatingCount: null as number | null,
+
+      topRatedTitle: undefined as string | undefined,
+      topRatedProductId: undefined as string | undefined,
+      topRatedRating: null as number | null,
+      topRatedRatingCount: null as number | null,
 
       badgeTitle: "Consistent Reviewer",
       badgeOwnerName: "Alex",
 
-      newsHeadline: "UK prescribing guidance review proposed",
-      newsSource: "BBC News",
-    };
-  }, []);
+      // legacy fields ignored by the new homeFeed, kept for safety
+      newsHeadline: undefined as string | undefined,
+      newsSource: undefined as string | undefined,
 
-  const handlers = useMemo(() => {
-    return {
+      seedKey: "home",
+    }),
+    []
+  );
+
+  const handlers = useMemo(
+    () => ({
       goToNewReviews: () => router.push("/reviews"),
       goToNewFlowers: () => router.push("/reviews"),
       goToUpdatedReviews: () => router.push("/reviews"),
-      goToTrending: () => router.push("/reviews"),
-      goToTopRated: () => router.push("/reviews"),
+
+      goToFlower: (productId: string) => router.push(`/reviews/${productId}`),
+
       goToBadges: () => router.push("/user"),
-      openNews: () => {
-        const url = "https://www.bbc.co.uk";
+
+      openMcStock: () => {
+        const url = "https://medbud.wiki/";
         Alert.alert(
           "Leaving the app",
           "This link will open an external website in your browser.",
           [
             { text: "Cancel", style: "cancel" },
             {
-              text: "Continue",
+              text: "Open",
               onPress: async () => {
-                const supported = await Linking.canOpenURL(url);
-                if (supported) Linking.openURL(url);
+                try {
+                  await Linking.openURL(url);
+                } catch {
+                  Alert.alert("Could not open link");
+                }
               },
             },
           ]
         );
       },
-    };
-  }, [router]);
+    }),
+    [router]
+  );
 
   const feed = useMemo(() => buildHomeCards(input, handlers), [input, handlers]);
+
+  const loading = false;
 
   return (
     <View style={styles.screen}>
       <AmbientBackground />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          {/* Little “glam” glow behind the title */}
-          <View pointerEvents="none" style={styles.titleGlow} />
-          <Text style={styles.subtitle}>What’s happening ✨</Text>
-        </View>
-
-        {/* Cards */}
-        <View style={styles.stack}>
-          {loading ? (
-            <>
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </>
-          ) : (
-            <>
-              {feed.primary.map((c, index) => (
-                <HomeCard key={c.id} card={c} hero={index === 0} />
-              ))}
-            </>
-          )}
-        </View>
-
-        {/* News */}
-        {feed.news ? (
-          <View style={styles.newsBlock}>
-            <Text style={styles.sectionLabel}>Updates</Text>
-            <HomeCard card={feed.news} />
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom, theme.spacing.xl) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Centered header like screenshot */}
+          <View style={[styles.header, { paddingTop: Math.max(8, insets.top + 10) }]}>
+            <Text style={styles.headerTitle}>What’s happening ✨</Text>
           </View>
-        ) : null}
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
+          {/* Primary cards */}
+          <View style={styles.stack}>
+            {loading ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : (
+              <>
+                {feed.primary.map((c, index) => (
+                  <HomeCard key={c.id} card={c} hero={index === 0} />
+                ))}
+              </>
+            )}
+          </View>
+
+          {/* Updates label + bottom card */}
+          {feed.news ? (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.updatesLabel}>UPDATES</Text>
+
+              <View style={{ marginTop: 12 }}>
+                <HomeCard card={feed.news} />
+              </View>
+            </View>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 }
@@ -114,58 +136,38 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0B1220",
+    backgroundColor: "transparent",
   },
-
-  // Key change: centre vertically + keep nice padding
+  safe: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
   content: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 24,
+    paddingHorizontal: theme.spacing.xl,
+    gap: 14,
   },
 
   header: {
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "center",
+    paddingBottom: 12,
   },
-
-  // Subtle glow blob behind header text
-  titleGlow: {
-    position: "absolute",
-    width: 240,
-    height: 80,
-    borderRadius: 999,
-    backgroundColor: "rgba(130,255,210,0.10)",
-    top: -18,
-  },
-
-  subtitle: {
-    fontSize: 18,
+  headerTitle: {
+    fontSize: 28,
     fontWeight: "900",
-    letterSpacing: 0.4,
-    color: "rgba(255,255,255,0.90)",
-    textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.45)",
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 16,
+    color: "rgba(255,255,255,0.92)",
+    letterSpacing: 0.2,
   },
 
   stack: {
-    gap: 12,
+    gap: 14,
   },
 
-  newsBlock: {
-    marginTop: 18,
-    gap: 10,
-  },
-
-  sectionLabel: {
-    fontSize: 12,
-    letterSpacing: 0.8,
-    color: "rgba(255,255,255,0.55)",
-    textTransform: "uppercase",
+  updatesLabel: {
     textAlign: "center",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 2,
+    color: "rgba(255,255,255,0.55)",
   },
 });
