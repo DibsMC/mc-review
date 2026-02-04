@@ -1,5 +1,5 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -45,6 +45,10 @@ type Review = {
     text?: string | null;
     createdAt?: FirebaseFirestoreTypes.Timestamp | number | null;
 
+    // Helpful voting
+    helpfulCount?: number | null;
+    helpfulVoters?: string[] | null;
+
     // legacy effects
     sleepy?: number | null;
     calm?: number | null;
@@ -61,6 +65,8 @@ type Review = {
 
 type UserProfile = {
     displayName?: string | null;
+    isAdmin?: boolean | null;
+    favoriteProductIds?: string[] | null;
 };
 
 type SortMode = "recent" | "high" | "low";
@@ -154,7 +160,6 @@ function computeRobustProductScore(params: {
 
 /**
  * Per-review headline score:
- * We keep it simple and consistent with product scoring:
  * - base = rating
  * - add tiny effects delta (max +/-0.25) if effects exist
  * - apply tiny "super" penalty if this review is maxing everything
@@ -170,7 +175,11 @@ function computeRobustReviewScore(input: {
     const eDelta = clamp((input.effectsMean - 3) / 2, -1, 1);
     const effectsBoost = eDelta * 0.25;
 
-    const superPenalty = clamp(input.highEffectsCount >= 4 ? 0.06 * (input.highEffectsCount - 3) : 0, 0, 0.18);
+    const superPenalty = clamp(
+        input.highEffectsCount >= 4 ? 0.06 * (input.highEffectsCount - 3) : 0,
+        0,
+        0.18
+    );
 
     return round1(clamp(rating + effectsBoost - superPenalty, 1, 5));
 }
@@ -283,7 +292,16 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
                         <Image source={budImg} resizeMode="contain" style={{ width: size, height: size, opacity: 0.22 }} />
 
                         {fill > 0 ? (
-                            <View style={{ position: "absolute", left: 0, top: 0, width: px, height: size, overflow: "hidden" }}>
+                            <View
+                                style={{
+                                    position: "absolute",
+                                    left: 0,
+                                    top: 0,
+                                    width: px,
+                                    height: size,
+                                    overflow: "hidden",
+                                }}
+                            >
                                 <Image source={budImg} resizeMode="contain" style={{ width: size, height: size, opacity: 1 }} />
                             </View>
                         ) : null}
@@ -442,6 +460,63 @@ export default function FlowerDetail() {
     const currentUid = currentUser?.uid ?? "";
     const meName = safeName(currentUser?.displayName) || "You";
 
+    // Admin flag + favourites (from users/{uid})
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (!currentUid) {
+            setIsAdmin(false);
+            setFavoriteProductIds([]);
+            return;
+        }
+
+        const unsub = firestore()
+            .collection("users")
+            .doc(currentUid)
+            .onSnapshot(
+                (doc) => {
+                    const data = (doc.data() as UserProfile) ?? {};
+                    setIsAdmin(!!data?.isAdmin);
+
+                    const favs = Array.isArray(data?.favoriteProductIds)
+                        ? (data.favoriteProductIds as any[]).filter((x) => typeof x === "string")
+                        : [];
+                    setFavoriteProductIds(favs as string[]);
+                },
+                () => {
+                    setIsAdmin(false);
+                    setFavoriteProductIds([]);
+                }
+            );
+
+        return () => unsub();
+    }, [currentUid]);
+
+    const isFavorite = !!productId && favoriteProductIds.includes(productId);
+
+    const toggleFavorite = async () => {
+        const user = auth().currentUser;
+        if (!user) {
+            Alert.alert("Sign in required", "Please sign in to use favourites.");
+            return;
+        }
+        if (!productId) return;
+
+        const userRef = firestore().collection("users").doc(user.uid);
+
+        try {
+            if (isFavorite) {
+                await userRef.set({ favoriteProductIds: firestore.FieldValue.arrayRemove(productId) }, { merge: true });
+            } else {
+                await userRef.set({ favoriteProductIds: firestore.FieldValue.arrayUnion(productId) }, { merge: true });
+            }
+        } catch (e: any) {
+            console.log("toggleFavorite error:", e);
+            Alert.alert("Could not update favourite", e?.message ?? "Unknown error");
+        }
+    };
+
     const myLastReview = useMemo(() => {
         if (!currentUid) return null;
         const mine = reviews.filter((r) => r.userId === currentUid);
@@ -449,9 +524,7 @@ export default function FlowerDetail() {
         return [...mine].sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a))[0];
     }, [currentUid, reviews]);
 
-    // Global mean rating (within this product’s review set we can’t see whole DB,
-    // but we can still use a neutral/typical prior).
-    // You can tune this later if you add a global stats doc.
+    // Global mean rating: neutral prior
     const globalMeanRating = 3.6;
 
     const ratingsList = useMemo(() => {
@@ -466,7 +539,6 @@ export default function FlowerDetail() {
     }, [ratingsList]);
 
     const perReviewEffectsMean = useMemo(() => {
-        // per-review mean of all effects that exist on that review (ignore unset)
         return reviews.map((r) => {
             const m = avgEffects([
                 r.daytime,
@@ -540,7 +612,6 @@ export default function FlowerDetail() {
     }, [reviews]);
 
     const getReviewScore = (r: Review) => {
-        // Prefer explicit stored score if present (keeps compatibility)
         if (typeof r.score === "number" && Number.isFinite(r.score)) return r.score;
 
         const effectsMean = avgEffects([
@@ -663,6 +734,13 @@ export default function FlowerDetail() {
 
                         const ratingFromDb = typeof data.rating === "number" ? data.rating : 0;
 
+                        const helpfulCount =
+                            typeof data.helpfulCount === "number" && Number.isFinite(data.helpfulCount) ? data.helpfulCount : 0;
+
+                        const helpfulVoters = Array.isArray(data.helpfulVoters)
+                            ? data.helpfulVoters.filter((x: any) => typeof x === "string")
+                            : [];
+
                         return {
                             id: d.id,
                             productId: typeof data.productId === "string" ? data.productId : "",
@@ -671,6 +749,9 @@ export default function FlowerDetail() {
                             score: typeof data.score === "number" ? data.score : null,
                             text: typeof data.text === "string" ? data.text : null,
                             createdAt: (data.createdAt ?? null) as any,
+
+                            helpfulCount,
+                            helpfulVoters,
 
                             sleepy: typeof data.sleepy === "number" ? data.sleepy : null,
                             calm: typeof data.calm === "number" ? data.calm : null,
@@ -715,7 +796,10 @@ export default function FlowerDetail() {
                 const updates: Record<string, string> = {};
 
                 for (const chunk of chunks) {
-                    const snap = await firestore().collection("users").where(firestore.FieldPath.documentId(), "in", chunk).get();
+                    const snap = await firestore()
+                        .collection("users")
+                        .where(firestore.FieldPath.documentId(), "in", chunk)
+                        .get();
 
                     snap.docs.forEach((doc) => {
                         const data = doc.data() as UserProfile;
@@ -896,6 +980,9 @@ export default function FlowerDetail() {
                     score,
                     text: text.trim() ? text.trim() : null,
 
+                    helpfulCount: 0,
+                    helpfulVoters: [],
+
                     sleepy: sleepyInt,
                     calm: calmInt,
                     daytime: daytimeInt,
@@ -946,6 +1033,73 @@ export default function FlowerDetail() {
         });
     };
 
+    // Helpful vote (transaction)
+    const toggleHelpful = async (reviewId: string) => {
+        if (!currentUid) {
+            Alert.alert("Sign in required", "Please sign in to mark reviews as helpful.");
+            return;
+        }
+
+        try {
+            const ref = firestore().collection("reviews").doc(reviewId);
+
+            await firestore().runTransaction(async (tx) => {
+                const snap = await tx.get(ref);
+                if (!snap.exists) return;
+
+                const data = snap.data() as any;
+
+                const voters: string[] = Array.isArray(data?.helpfulVoters)
+                    ? data.helpfulVoters.filter((x: any) => typeof x === "string")
+                    : [];
+
+                const countRaw = typeof data?.helpfulCount === "number" ? data.helpfulCount : 0;
+                const count = Number.isFinite(countRaw) ? countRaw : 0;
+
+                const already = voters.includes(currentUid);
+
+                if (already) {
+                    const nextVoters = voters.filter((v) => v !== currentUid);
+                    const nextCount = Math.max(0, count - 1);
+                    tx.update(ref, { helpfulVoters: nextVoters, helpfulCount: nextCount });
+                } else {
+                    const nextVoters = [...voters, currentUid];
+                    const nextCount = count + 1;
+                    tx.update(ref, { helpfulVoters: nextVoters, helpfulCount: nextCount });
+                }
+            });
+        } catch (e: any) {
+            console.log("toggleHelpful error:", e);
+            Alert.alert("Could not update vote", e?.message ?? "Unknown error");
+        }
+    };
+
+    const deleteReview = async (reviewId: string) => {
+        try {
+            await firestore().collection("reviews").doc(reviewId).delete();
+        } catch (e: any) {
+            console.log("deleteReview error:", e);
+            Alert.alert("Could not delete review", e?.message ?? "Unknown error");
+        }
+    };
+
+    const confirmDelete = (reviewId: string, mode: "owner" | "admin") => {
+        const title = mode === "admin" ? "Admin delete" : "Delete review";
+        const msg =
+            mode === "admin"
+                ? "This will permanently remove this review from the community."
+                : "This will permanently remove your review.";
+
+        Alert.alert(title, msg, [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => deleteReview(reviewId),
+            },
+        ]);
+    };
+
     if (loadingProduct) {
         return (
             <SafeAreaView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 72, backgroundColor: "transparent" }}>
@@ -958,8 +1112,12 @@ export default function FlowerDetail() {
     if (!product) {
         return (
             <SafeAreaView style={{ flex: 1, padding: 16, backgroundColor: "transparent" }}>
-                <Text style={{ fontSize: 18, fontWeight: "900", marginTop: 16, color: theme.colors.textOnDark }}>Product not found</Text>
-                <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>That product id doesnt exist in Firestore.</Text>
+                <Text style={{ fontSize: 18, fontWeight: "900", marginTop: 16, color: theme.colors.textOnDark }}>
+                    Product not found
+                </Text>
+                <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>
+                    That product id doesnt exist in Firestore.
+                </Text>
             </SafeAreaView>
         );
     }
@@ -1012,7 +1170,11 @@ export default function FlowerDetail() {
                 </Pressable>
             </Modal>
 
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+            >
                 <FlatList
                     removeClippedSubviews={false}
                     data={sortedReviews}
@@ -1053,10 +1215,32 @@ export default function FlowerDetail() {
                                         formatPct(product.cbdPct)}
                                 </Text>
 
+                                {/* Favourite (star + rich ruby red) */}
+                                <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                    <Pressable
+                                        onPress={toggleFavorite}
+                                        hitSlop={10}
+                                        style={({ pressed }) => [
+                                            styles.favPill,
+                                            isFavorite ? styles.favPillActive : null,
+                                            pressed ? { opacity: 0.9 } : null,
+                                        ]}
+                                    >
+                                        <Text style={[styles.favStar, isFavorite ? styles.favStarOn : styles.favStarOff]}>
+                                            {isFavorite ? "★" : "☆"}
+                                        </Text>
+                                        <Text style={[styles.favText, isFavorite ? styles.favTextOn : styles.favTextOff]}>
+                                            {isFavorite ? "Favourited" : "Favourite"}
+                                        </Text>
+                                    </Pressable>
+                                </View>
+
                                 {/* Terpenes */}
                                 {terps.length > 0 ? (
                                     <View style={{ marginTop: 12 }}>
-                                        <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>Terpenes</Text>
+                                        <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>
+                                            Terpenes
+                                        </Text>
 
                                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                                             {terps.map((t) => {
@@ -1099,7 +1283,9 @@ export default function FlowerDetail() {
 
                                                         <Text style={{ color: chip.text, fontWeight: "900", fontSize: 13 }}>
                                                             {t.name}
-                                                            {t.strength ? <Text style={{ color: chip.subText, fontWeight: "900" }}> {t.strength}</Text> : null}
+                                                            {t.strength ? (
+                                                                <Text style={{ color: chip.subText, fontWeight: "900" }}> {t.strength}</Text>
+                                                            ) : null}
                                                         </Text>
                                                     </LinearGradient>
                                                 );
@@ -1118,7 +1304,9 @@ export default function FlowerDetail() {
                                             </Text>
                                         </>
                                     ) : (
-                                        <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDarkSecondary }}>No ratings yet</Text>
+                                        <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDarkSecondary }}>
+                                            No ratings yet
+                                        </Text>
                                     )}
                                 </View>
 
@@ -1138,10 +1326,14 @@ export default function FlowerDetail() {
                                         overflow: "hidden",
                                     }}
                                 >
-                                    <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDark }}>Summary of effects</Text>
+                                    <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                        Summary of effects
+                                    </Text>
 
                                     {effectsSummary.withAnySub === 0 ? (
-                                        <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>No effect ratings yet. Be the first to add them.</Text>
+                                        <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>
+                                            No effect ratings yet. Be the first to add them.
+                                        </Text>
                                     ) : (
                                         <View style={{ marginTop: 10 }}>
                                             {[
@@ -1165,7 +1357,9 @@ export default function FlowerDetail() {
                                                         paddingVertical: 8,
                                                     }}
                                                 >
-                                                    <Text style={{ fontWeight: "800", color: theme.colors.textOnDarkSecondary, flex: 1, marginRight: 12 }}>{row.label}</Text>
+                                                    <Text style={{ fontWeight: "800", color: theme.colors.textOnDarkSecondary, flex: 1, marginRight: 12 }}>
+                                                        {row.label}
+                                                    </Text>
 
                                                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                                                         <BudRating value={row.avg} size={16} />
@@ -1196,7 +1390,7 @@ export default function FlowerDetail() {
                                     <View style={{ marginTop: 16 }}>
                                         <BlingButton
                                             variant="gold"
-                                            label={isCooldown ? `You can edit again in ${secondsLeft}s` : primaryButtonLabel}
+                                            label={isCooldown ? `You can edit again in ${secondsLeft}s` : myLastReview ? "Edit last review" : "Write a review"}
                                             disabled={submitting || isCooldown}
                                             onPress={() => {
                                                 Keyboard.dismiss();
@@ -1232,7 +1426,7 @@ export default function FlowerDetail() {
                                         <RatingRow label="Overall rating" value={rating} onChange={setRating} disabled={submitting} />
 
                                         <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.72)", lineHeight: 18 }}>
-                                            Overall is your satisfaction score. Effects add a small adjustment and results are weighted to avoid “super strains”.
+                                            Overall is your satisfaction score. Effects add a small adjustment and results are weighted to avoid super strains.
                                         </Text>
 
                                         <RatingRow label="Daytime suitability" value={daytime} onChange={setDaytime} disabled={submitting} />
@@ -1246,7 +1440,9 @@ export default function FlowerDetail() {
                                         <RatingRow label="Headache relief" value={headacheRelief} onChange={setHeadacheRelief} disabled={submitting} />
                                         <RatingRow label="Racing thoughts relief" value={racingThoughts} onChange={setRacingThoughts} disabled={submitting} />
 
-                                        <Text style={{ marginTop: 18, marginBottom: 10, fontWeight: "900", color: theme.colors.textOnDark }}>Notes</Text>
+                                        <Text style={{ marginTop: 18, marginBottom: 10, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                            Notes
+                                        </Text>
 
                                         <TextInput
                                             value={text}
@@ -1263,26 +1459,28 @@ export default function FlowerDetail() {
 
                                         <View style={{ flexDirection: "row", marginTop: 12 }}>
                                             <Pressable
-                                                onPress={async () => {
-                                                    Keyboard.dismiss();
-                                                    await submitReview();
-                                                }}
-                                                disabled={submitting || isCooldown}
-                                                style={[styles.formBtn, { marginRight: 10, opacity: submitting || isCooldown ? 0.7 : 1 }]}
-                                            >
-                                                <Text style={styles.formBtnText}>{submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}</Text>
-                                            </Pressable>
-
-                                            <Pressable
                                                 onPress={() => {
                                                     Keyboard.dismiss();
                                                     setReviewOpen(false);
                                                     setEditingReviewId(null);
                                                 }}
                                                 disabled={submitting}
-                                                style={[styles.formBtnAlt, { opacity: submitting ? 0.7 : 1 }]}
+                                                style={[styles.formBtnAlt, { marginRight: 10, opacity: submitting ? 0.7 : 1 }]}
                                             >
                                                 <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Close</Text>
+                                            </Pressable>
+
+                                            <Pressable
+                                                onPress={async () => {
+                                                    Keyboard.dismiss();
+                                                    await submitReview();
+                                                }}
+                                                disabled={submitting || isCooldown}
+                                                style={[styles.formBtn, { opacity: submitting || isCooldown ? 0.7 : 1 }]}
+                                            >
+                                                <Text style={styles.formBtnText}>
+                                                    {submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}
+                                                </Text>
                                             </Pressable>
                                         </View>
 
@@ -1318,7 +1516,9 @@ export default function FlowerDetail() {
                                                 }}
                                                 style={styles.sortPill}
                                             >
-                                                <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, includeFontPadding: false }}>{sortLabel}</Text>
+                                                <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, includeFontPadding: false }}>
+                                                    {sortLabel}
+                                                </Text>
                                             </Pressable>
                                         </View>
                                     </View>
@@ -1342,6 +1542,19 @@ export default function FlowerDetail() {
                         const score = getReviewScore(item);
                         const dateMs = getCreatedAtMs(item);
 
+                        const helpfulCount =
+                            typeof item.helpfulCount === "number" && Number.isFinite(item.helpfulCount) ? item.helpfulCount : 0;
+
+                        const voters = Array.isArray(item.helpfulVoters)
+                            ? item.helpfulVoters.filter((x) => typeof x === "string")
+                            : [];
+
+                        const iVoted = currentUid ? voters.includes(currentUid) : false;
+
+                        const isMine = !!currentUid && item.userId === currentUid;
+                        const canOwnerDelete = isMine;
+                        const canAdminDelete = isAdmin;
+
                         return (
                             <View style={styles.reviewItem}>
                                 <LinearGradient
@@ -1364,12 +1577,53 @@ export default function FlowerDetail() {
 
                                 <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
                                     <BudRating value={score} size={18} />
-                                    <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>{round1(score).toFixed(1)}</Text>
+                                    <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
+                                        {round1(score).toFixed(1)}
+                                    </Text>
                                 </View>
 
                                 {item.text ? (
-                                    <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 20, color: theme.colors.textOnDarkSecondary }}>{item.text}</Text>
+                                    <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 20, color: theme.colors.textOnDarkSecondary }}>
+                                        {item.text}
+                                    </Text>
                                 ) : null}
+
+                                {/* Actions: Helpful + Delete/Admin delete */}
+                                <View style={styles.actionsRow}>
+                                    <Pressable
+                                        onPress={() => toggleHelpful(item.id)}
+                                        style={({ pressed }) => [
+                                            styles.actionPill,
+                                            iVoted ? styles.actionPillActive : null,
+                                            pressed ? { opacity: 0.9 } : null,
+                                        ]}
+                                    >
+                                        <Text style={[styles.actionPillText, iVoted ? { color: "rgba(12,12,14,0.94)" } : null]}>
+                                            {iVoted ? "Helpful, thanks" : "Mark as helpful"}
+                                        </Text>
+                                        <View style={styles.countPill}>
+                                            <Text style={styles.countPillText}>{String(helpfulCount)}</Text>
+                                        </View>
+                                    </Pressable>
+
+                                    {canOwnerDelete ? (
+                                        <Pressable
+                                            onPress={() => confirmDelete(item.id, "owner")}
+                                            style={({ pressed }) => [styles.dangerPill, pressed ? { opacity: 0.9 } : null]}
+                                        >
+                                            <Text style={styles.dangerPillText}>Delete</Text>
+                                        </Pressable>
+                                    ) : null}
+
+                                    {canAdminDelete && !canOwnerDelete ? (
+                                        <Pressable
+                                            onPress={() => confirmDelete(item.id, "admin")}
+                                            style={({ pressed }) => [styles.adminPill, pressed ? { opacity: 0.9 } : null]}
+                                        >
+                                            <Text style={styles.adminPillText}>Admin delete</Text>
+                                        </Pressable>
+                                    ) : null}
+                                </View>
                             </View>
                         );
                     }}
@@ -1424,6 +1678,48 @@ const styles = StyleSheet.create({
         backgroundColor: "rgba(246,247,248,0.14)",
     },
 
+    favPill: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(255,255,255,0.08)",
+        alignSelf: "flex-start",
+    },
+    favPillActive: {
+        borderColor: "rgba(185,70,95,0.45)",
+        backgroundColor: "rgba(185,70,95,0.14)",
+    },
+    favStar: {
+        fontSize: 18,
+        lineHeight: 18,
+        marginRight: 10,
+        fontWeight: "900",
+    },
+    favStarOn: {
+        // rich ruby red (not hazard red)
+        color: "rgba(185,70,95,0.98)",
+        textShadowColor: "rgba(185,70,95,0.22)",
+        textShadowOffset: { width: 0, height: 6 },
+        textShadowRadius: 12,
+    },
+    favStarOff: {
+        color: "rgba(255,255,255,0.55)",
+    },
+    favText: {
+        fontWeight: "900",
+        includeFontPadding: false,
+    },
+    favTextOn: {
+        color: "rgba(255,255,255,0.92)",
+    },
+    favTextOff: {
+        color: "rgba(255,255,255,0.78)",
+    },
+
     reviewItem: {
         marginHorizontal: 16,
         padding: 14,
@@ -1432,6 +1728,76 @@ const styles = StyleSheet.create({
         borderColor: "rgba(255,255,255,0.16)",
         backgroundColor: "rgba(246,247,248,0.14)",
         overflow: "hidden",
+    },
+
+    actionsRow: {
+        marginTop: 12,
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 10,
+        alignItems: "center",
+    },
+
+    actionPill: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(255,255,255,0.10)",
+    },
+    actionPillActive: {
+        borderColor: "rgba(212,175,55,0.55)",
+        backgroundColor: "rgba(212,175,55,0.90)",
+    },
+    actionPillText: {
+        fontWeight: "900",
+        color: theme.colors.textOnDark,
+    },
+    countPill: {
+        marginLeft: 10,
+        minWidth: 28,
+        height: 22,
+        paddingHorizontal: 8,
+        borderRadius: 999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(0,0,0,0.32)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+    },
+    countPillText: {
+        color: "rgba(255,255,255,0.90)",
+        fontWeight: "900",
+        fontSize: 12,
+    },
+
+    dangerPill: {
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,120,120,0.32)",
+        backgroundColor: "rgba(255,120,120,0.14)",
+    },
+    dangerPillText: {
+        fontWeight: "900",
+        color: "rgba(255,160,160,1)",
+    },
+
+    adminPill: {
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(0,0,0,0.25)",
+    },
+    adminPillText: {
+        fontWeight: "900",
+        color: "rgba(255,255,255,0.78)",
     },
 
     reviewCard: {

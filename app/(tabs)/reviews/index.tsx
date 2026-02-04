@@ -1,6 +1,8 @@
+// app/(tabs)/reviews/index.tsx
+
 import { CinematicCard } from "../../../components/ui/CinematicCard";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Feather } from "@expo/vector-icons";
 import {
   ActivityIndicator,
@@ -16,9 +18,11 @@ import {
   Text,
   TextInput,
   View,
+  FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
 import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
 import { theme } from "../../../lib/theme";
 
 const budImg = require("../../../assets/icons/bud.png");
@@ -29,7 +33,7 @@ type Product = {
   maker: string;
   variant?: string | null;
   strainType?: string | null; // "indica" | "sativa" | "hybrid"
-  productType?: string | null; // kept for backward compat in DB, but we don't filter on it now
+  productType?: string | null; // backward compat
   thcPct?: number | null;
   cbdPct?: number | null;
   terpenes?: string | null; // "limonene:major|caryophyllene:major|linalool:minor"
@@ -117,7 +121,6 @@ function prettyTerpeneName(raw: string) {
 
 function parseTerpenes(input: string | null | undefined) {
   if (!input) return [];
-  // "limonene:major|caryophyllene:major|linalool:minor"
   return input
     .split("|")
     .map((part) => part.trim())
@@ -135,7 +138,6 @@ function parseTerpenes(input: string | null | undefined) {
 
 function BudRating({ value, size = 18 }: { value: number; size?: number }) {
   const safe = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
-
   const SCALE = 1.1;
 
   return (
@@ -155,15 +157,7 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
               marginRight: i === 4 ? 0 : 6,
             }}
           >
-            <Image
-              source={budImg}
-              style={{
-                width: size,
-                height: size,
-                opacity: 0.22,
-              }}
-              resizeMode="contain"
-            />
+            <Image source={budImg} style={{ width: size, height: size, opacity: 0.22 }} resizeMode="contain" />
 
             {fill > 0 ? (
               <View
@@ -185,7 +179,7 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
                     width: size + 8,
                     height: size + 8,
                     borderRadius: 999,
-                    shadowColor: "rgba(130, 255, 210, 0.9)",
+                    shadowColor: "rgba(130,255,210,0.9)",
                     shadowOpacity: 1,
                     shadowRadius: 8,
                     shadowOffset: { width: 0, height: 0 },
@@ -195,12 +189,7 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
                 />
                 <Image
                   source={budImg}
-                  style={{
-                    width: size,
-                    height: size,
-                    opacity: 1,
-                    transform: [{ scale: SCALE }],
-                  }}
+                  style={{ width: size, height: size, opacity: 1, transform: [{ scale: SCALE }] }}
                   resizeMode="contain"
                 />
               </View>
@@ -216,6 +205,8 @@ export default function ReviewsIndex() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const listRef = useRef<FlatList<Product> | null>(null);
+
   const [items, setItems] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingReviews, setLoadingReviews] = useState(true);
@@ -223,35 +214,67 @@ export default function ReviewsIndex() {
 
   const [statsByProductId, setStatsByProductId] = useState<Record<string, Stat>>({});
 
-  // Search + applied sort/filters (what the list actually uses)
+  // Auth + favourites
+  const [currentUid, setCurrentUid] = useState<string>("");
+  const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("atoz");
 
-  // Strain: only sativa/indica/hybrid, null means "no strain filter"
   const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
-
-  // Maker
   const [makerFilter, setMakerFilter] = useState<string | null>(null);
-
-  // Terpenes: multi-select, majors only for now
   const [terpeneFilter, setTerpeneFilter] = useState<string[]>([]);
+
+  // Favourites-only filter (applied)
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
 
   // Modal open
   const [panelOpen, setPanelOpen] = useState(false);
 
-  // Draft values inside the modal (close with X saves these to applied state)
+  // Draft values inside modal
   const [draftSortKey, setDraftSortKey] = useState<SortKey>("atoz");
   const [draftStrainFilter, setDraftStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
   const [draftMakerFilter, setDraftMakerFilter] = useState<string | null>(null);
   const [draftTerpeneFilter, setDraftTerpeneFilter] = useState<string[]>([]);
+  const [draftFavouritesOnly, setDraftFavouritesOnly] = useState(false);
 
-  // Expand sections in modal
   const [sortOpen, setSortOpen] = useState(false);
   const [makerOpen, setMakerOpen] = useState(false);
 
-  // Header is static (always visible)
   const headerOpacity = useRef(new Animated.Value(1)).current;
   const [headerH, setHeaderH] = useState(170);
+
+  useEffect(() => {
+    const unsub = auth().onAuthStateChanged((u) => {
+      setCurrentUid(u?.uid ?? "");
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUid) {
+      setFavoriteProductIds([]);
+      return;
+    }
+
+    const unsub = firestore()
+      .collection("users")
+      .doc(currentUid)
+      .onSnapshot(
+        (doc) => {
+          const data = (doc.data() as any) ?? {};
+          const favs = Array.isArray(data?.favoriteProductIds)
+            ? data.favoriteProductIds.filter((x: any) => typeof x === "string")
+            : [];
+          setFavoriteProductIds(favs);
+        },
+        () => setFavoriteProductIds([])
+      );
+
+    return () => unsub();
+  }, [currentUid]);
+
+  const isFavorite = (productId: string) => favoriteProductIds.includes(productId);
 
   // Products
   useEffect(() => {
@@ -297,7 +320,6 @@ export default function ReviewsIndex() {
       (snapshot) => {
         const rows: Review[] = snapshot.docs.map((d) => {
           const data = d.data() as any;
-
           const rating = typeof data?.rating === "number" ? data.rating : 0;
           const score = typeof data?.score === "number" ? data.score : null;
 
@@ -349,56 +371,53 @@ export default function ReviewsIndex() {
 
   const terpeneOptions = useMemo(() => {
     const set = new Set<string>();
-
     for (const it of items) {
       const terps = parseTerpenes(it.terpenes);
-      // majors only for now
-      terps
-        .filter((t) => t.strength === "major")
-        .forEach((t) => set.add(t.name));
+      terps.filter((t) => t.strength === "major").forEach((t) => set.add(t.name));
     }
-
     return Array.from(set).sort((a, b) => (safeLower(a) < safeLower(b) ? -1 : 1));
   }, [items]);
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
+    if (favouritesOnly) n += 1;
     if (strainFilter) n += 1;
     if (makerFilter) n += 1;
     if (terpeneFilter.length > 0) n += 1;
     return n;
-  }, [strainFilter, makerFilter, terpeneFilter]);
+  }, [strainFilter, makerFilter, terpeneFilter, favouritesOnly]);
 
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
+    if (favouritesOnly) labels.push("Favourites only");
     if (strainFilter) labels.push(`Strain: ${strainFilter}`);
     if (makerFilter) labels.push(`Maker: ${makerFilter}`);
     if (terpeneFilter.length > 0) labels.push(`Terpenes: ${terpeneFilter.join(", ")}`);
     return labels;
-  }, [strainFilter, makerFilter, terpeneFilter]);
+  }, [strainFilter, makerFilter, terpeneFilter, favouritesOnly]);
 
   const displayItems = useMemo(() => {
     const q = query.trim().toLowerCase();
 
     const filtered = items.filter((it) => {
-      // Search
       if (q) {
         const hay = `${it.name} ${it.variant ?? ""} ${it.maker}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
 
-      // Strain
+      if (favouritesOnly) {
+        if (!isFavorite(it.id)) return false;
+      }
+
       if (strainFilter) {
         const st = normalizeStrainType(it.strainType);
         if (st !== strainFilter) return false;
       }
 
-      // Maker
       if (makerFilter) {
         if (safeLower(it.maker) !== safeLower(makerFilter)) return false;
       }
 
-      // Terpenes (majors only)
       if (terpeneFilter.length > 0) {
         const majors = parseTerpenes(it.terpenes)
           .filter((t) => t.strength === "major")
@@ -441,7 +460,6 @@ export default function ReviewsIndex() {
         if (am !== bm) return am < bm ? -1 : 1;
       }
 
-      // Tie-break: A to Z
       const an = safeLower(a.name);
       const bn = safeLower(b.name);
       if (an !== bn) return an < bn ? -1 : 1;
@@ -454,14 +472,31 @@ export default function ReviewsIndex() {
     });
 
     return copy;
-  }, [items, statsByProductId, query, sortKey, strainFilter, makerFilter, terpeneFilter]);
+  }, [
+    items,
+    statsByProductId,
+    query,
+    sortKey,
+    strainFilter,
+    makerFilter,
+    terpeneFilter,
+    favouritesOnly,
+    favoriteProductIds,
+  ]);
+
+  const onChangeSearch = (text: string) => {
+    setQuery(text);
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+  };
 
   const openFilters = () => {
-    // Copy applied -> draft
     setDraftSortKey(sortKey);
     setDraftStrainFilter(strainFilter);
     setDraftMakerFilter(makerFilter);
     setDraftTerpeneFilter(terpeneFilter);
+    setDraftFavouritesOnly(favouritesOnly);
 
     setSortOpen(false);
     setMakerOpen(false);
@@ -469,11 +504,11 @@ export default function ReviewsIndex() {
   };
 
   const closeAndSaveFilters = () => {
-    // Apply draft -> applied
     setSortKey(draftSortKey);
     setStrainFilter(draftStrainFilter);
     setMakerFilter(draftMakerFilter);
     setTerpeneFilter(draftTerpeneFilter);
+    setFavouritesOnly(draftFavouritesOnly);
 
     setSortOpen(false);
     setMakerOpen(false);
@@ -485,33 +520,20 @@ export default function ReviewsIndex() {
     setDraftStrainFilter(null);
     setDraftMakerFilter(null);
     setDraftTerpeneFilter([]);
+    setDraftFavouritesOnly(false);
     setSortOpen(false);
     setMakerOpen(false);
   };
 
   const windowH = Dimensions.get("window").height;
-
-  // Floating button position (higher up, smaller)
   const floatingSize = 46;
   const floatingTop = Math.max(insets.top + 68, Math.round(windowH * 0.2));
 
   if (loadingProducts) {
     return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          backgroundColor: "transparent",
-          padding: theme.spacing.xl,
-        }}
-      >
+      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent", padding: theme.spacing.xl }}>
         <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
-        <Text
-          style={{
-            marginTop: 12,
-            color: theme.colors.textOnDarkSecondary,
-            ...theme.typography.body,
-          }}
-        >
+        <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary, ...theme.typography.body }}>
           Loading products...
         </Text>
       </SafeAreaView>
@@ -520,30 +542,11 @@ export default function ReviewsIndex() {
 
   if (errorMsg) {
     return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          backgroundColor: "transparent",
-          padding: theme.spacing.xl,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 18,
-            fontWeight: "800",
-            marginBottom: 8,
-            color: theme.colors.textOnDark,
-          }}
-        >
+      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent", padding: theme.spacing.xl }}>
+        <Text style={{ fontSize: 18, fontWeight: "800", marginBottom: 8, color: theme.colors.textOnDark }}>
           Could not load products
         </Text>
-        <Text
-          style={{
-            marginBottom: 14,
-            color: theme.colors.textOnDarkSecondary,
-            ...theme.typography.body,
-          }}
-        >
+        <Text style={{ marginBottom: 14, color: theme.colors.textOnDarkSecondary, ...theme.typography.body }}>
           {errorMsg}
         </Text>
       </SafeAreaView>
@@ -554,6 +557,9 @@ export default function ReviewsIndex() {
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
         <Animated.FlatList
+          ref={(r) => {
+            listRef.current = r as any;
+          }}
           data={displayItems}
           keyExtractor={(item) => item.id}
           style={{ flex: 1, backgroundColor: "transparent" }}
@@ -563,22 +569,8 @@ export default function ReviewsIndex() {
           scrollEventThrottle={16}
           ListEmptyComponent={
             <View style={{ paddingTop: 26, paddingHorizontal: theme.spacing.xl }}>
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "900",
-                  color: theme.colors.textOnDark,
-                }}
-              >
-                No matches
-              </Text>
-              <Text
-                style={{
-                  marginTop: 8,
-                  color: theme.colors.textOnDarkSecondary,
-                  ...theme.typography.body,
-                }}
-              >
+              <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDark }}>No matches</Text>
+              <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, ...theme.typography.body }}>
                 Try clearing filters or changing your search.
               </Text>
             </View>
@@ -589,25 +581,29 @@ export default function ReviewsIndex() {
             const avg = hasRatings ? stat.avg : 0;
 
             const maker = item.maker?.trim() ? item.maker.trim() : "Unknown maker";
-
-            // Build a clean meta line: "Maker · THC 20% · CBD 0.1%"
             const parts = [maker, `THC ${formatPct(item.thcPct)}`, `CBD ${formatPct(item.cbdPct)}`].filter(Boolean);
             const metaLine = parts.join(" · ");
+
+            const fav = isFavorite(item.id);
 
             return (
               <CinematicCard
                 onPress={() => router.push(`/reviews/${item.id}`)}
-                style={{
-                  marginHorizontal: theme.spacing.xl,
-                  overflow: "hidden",
-                }}
+                style={{ marginHorizontal: theme.spacing.xl, overflow: "hidden" }}
               >
                 <View style={{ padding: 18 }}>
+                  {fav ? (
+                    <View style={styles.favBadge}>
+                      <Feather name="star" size={14} color="rgba(255,255,255,0.96)" />
+                    </View>
+                  ) : null}
+
                   <Text
                     style={{
                       fontSize: 22,
                       fontWeight: "900",
                       color: theme.colors.textOnDark,
+                      paddingRight: 34,
                     }}
                     numberOfLines={1}
                   >
@@ -632,35 +628,18 @@ export default function ReviewsIndex() {
                     {hasRatings ? (
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                         <BudRating value={avg} size={16} />
-                        <Text
-                          style={{
-                            fontWeight: "900",
-                            marginLeft: 10,
-                            color: theme.colors.textOnDark,
-                          }}
-                        >
+                        <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
                           {round1(avg).toFixed(1)} ({stat.count})
                         </Text>
 
                         {loadingReviews ? (
-                          <Text
-                            style={{
-                              marginLeft: 8,
-                              color: theme.colors.textOnDarkSecondary,
-                              ...theme.typography.caption,
-                            }}
-                          >
+                          <Text style={{ marginLeft: 8, color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
                             (loading...)
                           </Text>
                         ) : null}
                       </View>
                     ) : (
-                      <Text
-                        style={{
-                          fontWeight: "800",
-                          color: theme.colors.textOnDarkSecondary,
-                        }}
-                      >
+                      <Text style={{ fontWeight: "800", color: theme.colors.textOnDarkSecondary }}>
                         No ratings yet{loadingReviews ? " (loading...)" : ""}
                       </Text>
                     )}
@@ -671,7 +650,7 @@ export default function ReviewsIndex() {
           }}
         />
 
-        {/* Overlay header (appears when not scrolling) */}
+        {/* Overlay header */}
         <Animated.View
           onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
           pointerEvents="box-none"
@@ -685,7 +664,6 @@ export default function ReviewsIndex() {
             elevation: 50,
           }}
         >
-          {/* Opaque mask so list content can't show through behind search */}
           <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
             <View style={{ flex: 1, backgroundColor: "rgba(10,11,15,0.96)" }} />
           </View>
@@ -700,13 +678,7 @@ export default function ReviewsIndex() {
               borderBottomColor: "rgba(255,255,255,0.10)",
             }}
           >
-            <Text
-              style={{
-                ...theme.typography.title,
-                color: theme.colors.accent,
-                marginBottom: theme.spacing.xs,
-              }}
-            >
+            <Text style={{ ...theme.typography.title, color: theme.colors.accent, marginBottom: theme.spacing.xs }}>
               Reviews
             </Text>
 
@@ -732,14 +704,10 @@ export default function ReviewsIndex() {
             >
               <TextInput
                 value={query}
-                onChangeText={setQuery}
+                onChangeText={onChangeSearch}
                 placeholder="Search by name or maker"
                 placeholderTextColor="rgba(255,255,255,0.40)"
-                style={{
-                  color: theme.colors.textOnDark,
-                  fontSize: 15,
-                  fontWeight: "600",
-                }}
+                style={{ color: theme.colors.textOnDark, fontSize: 15, fontWeight: "600" }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
@@ -747,26 +715,13 @@ export default function ReviewsIndex() {
             </View>
 
             <View style={{ marginTop: theme.spacing.sm }}>
-              <Text
-                style={{
-                  color: "rgba(255,255,255,0.65)",
-                  fontWeight: "700",
-                  fontSize: 12,
-                }}
-              >
+              <Text style={{ color: "rgba(255,255,255,0.65)", fontWeight: "700", fontSize: 12 }}>
                 Sort: {sortLabel(sortKey)}
                 {activeFilterCount > 0 ? ` | Filters: ${activeFilterCount}` : ""}
               </Text>
 
               {activeFilterCount > 0 ? (
-                <Text
-                  style={{
-                    marginTop: 4,
-                    color: "rgba(255,255,255,0.55)",
-                    fontWeight: "700",
-                    fontSize: 12,
-                  }}
-                >
+                <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontWeight: "700", fontSize: 12 }}>
                   {activeFilterLabels.join(" | ")}
                 </Text>
               ) : null}
@@ -795,11 +750,9 @@ export default function ReviewsIndex() {
               alignItems: "center",
               justifyContent: "center",
               opacity: pressed ? 0.88 : 1,
-
               backgroundColor: "rgba(235,237,240,0.96)",
               borderWidth: 1,
               borderColor: "rgba(0,0,0,0.08)",
-
               shadowColor: "rgba(0,0,0,0.35)",
               shadowOpacity: 0.45,
               shadowRadius: 12,
@@ -843,14 +796,11 @@ export default function ReviewsIndex() {
                   height: 18,
                   paddingHorizontal: 6,
                   borderRadius: 999,
-
                   backgroundColor: "rgba(12,12,12,0.95)",
                   borderWidth: 1,
                   borderColor: "rgba(255,255,255,0.22)",
-
                   alignItems: "center",
                   justifyContent: "center",
-
                   shadowColor: "rgba(0,0,0,0.35)",
                   shadowOpacity: 0.35,
                   shadowRadius: 8,
@@ -858,13 +808,7 @@ export default function ReviewsIndex() {
                   elevation: 10,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: "900",
-                    color: "rgba(235,237,240,0.98)",
-                  }}
-                >
+                <Text style={{ fontSize: 11, fontWeight: "900", color: "rgba(235,237,240,0.98)" }}>
                   {activeFilterCount}
                 </Text>
               </View>
@@ -872,7 +816,7 @@ export default function ReviewsIndex() {
           </Pressable>
         </Animated.View>
 
-        {/* Filters modal (tap backdrop or X saves draft) */}
+        {/* Filters modal */}
         <Modal visible={panelOpen} transparent animationType="fade" onRequestClose={closeAndSaveFilters}>
           <View style={{ flex: 1, justifyContent: "flex-end" }}>
             <Pressable
@@ -890,26 +834,15 @@ export default function ReviewsIndex() {
                 overflow: "hidden",
               }}
             >
-              <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}>
+              <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={24}>
                 <ScrollView
                   style={{ maxHeight: Dimensions.get("window").height * 0.82 }}
-                  contentContainerStyle={{
-                    padding: 18,
-                    paddingBottom: Math.max(insets.bottom, 18) + 18,
-                  }}
+                  contentContainerStyle={{ padding: 18, paddingBottom: Math.max(insets.bottom, 18) + 18 }}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                 >
-                  {/* Header row + X (saves) */}
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text
-                      style={{
-                        fontSize: 26,
-                        fontWeight: "900",
-                        color: theme.colors.textOnDark,
-                        flex: 1,
-                      }}
-                    >
+                    <Text style={{ fontSize: 26, fontWeight: "900", color: theme.colors.textOnDark, flex: 1 }}>
                       Filters
                     </Text>
 
@@ -927,19 +860,10 @@ export default function ReviewsIndex() {
                         opacity: pressed ? 0.9 : 1,
                       })}
                     >
-                      <Text
-                        style={{
-                          color: theme.colors.textOnDark,
-                          fontWeight: "900",
-                          fontSize: 16,
-                        }}
-                      >
-                        ✕
-                      </Text>
+                      <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>✕</Text>
                     </Pressable>
                   </View>
 
-                  {/* Reset */}
                   <Pressable
                     onPress={resetDraft}
                     style={({ pressed }) => ({
@@ -957,8 +881,10 @@ export default function ReviewsIndex() {
                     <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Reset</Text>
                   </Pressable>
 
-                  {/* Active (draft) summary */}
-                  {(draftStrainFilter || !!draftMakerFilter || draftTerpeneFilter.length > 0) ? (
+                  {(draftFavouritesOnly ||
+                    draftStrainFilter ||
+                    !!draftMakerFilter ||
+                    draftTerpeneFilter.length > 0) ? (
                     <View
                       style={{
                         marginTop: 12,
@@ -970,14 +896,9 @@ export default function ReviewsIndex() {
                       }}
                     >
                       <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Active</Text>
-                      <Text
-                        style={{
-                          marginTop: 6,
-                          color: theme.colors.textOnDarkSecondary,
-                          ...theme.typography.caption,
-                        }}
-                      >
+                      <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
                         {[
+                          draftFavouritesOnly ? "Favourites only" : "",
                           draftStrainFilter ? `Strain: ${draftStrainFilter}` : "",
                           draftTerpeneFilter.length > 0 ? `Terpenes: ${draftTerpeneFilter.join(", ")}` : "",
                           draftMakerFilter ? `Maker: ${draftMakerFilter}` : "",
@@ -988,15 +909,39 @@ export default function ReviewsIndex() {
                     </View>
                   ) : null}
 
+                  {/* Favourites quick filter */}
+                  <Text style={{ marginTop: 18, fontSize: 16, fontWeight: "900", color: theme.colors.textOnDark }}>
+                    Quick filters
+                  </Text>
+
+                  <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <Pressable
+                      onPress={() => setDraftFavouritesOnly((v) => !v)}
+                      style={({ pressed }) => ({
+                        ...chipOnDark(draftFavouritesOnly),
+                        opacity: pressed ? 0.85 : 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                      })}
+                    >
+                      <Feather
+                        name="star"
+                        size={14}
+                        color={draftFavouritesOnly ? "rgba(185,70,95,0.98)" : "rgba(255,255,255,0.55)"}
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Favourites only</Text>
+                    </Pressable>
+
+                    {!currentUid ? (
+                      <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "700", fontSize: 12, alignSelf: "center" }}>
+                        Sign in to use favourites.
+                      </Text>
+                    ) : null}
+                  </View>
+
                   {/* Sort */}
-                  <Text
-                    style={{
-                      marginTop: 18,
-                      fontSize: 16,
-                      fontWeight: "900",
-                      color: theme.colors.textOnDark,
-                    }}
-                  >
+                  <Text style={{ marginTop: 22, fontSize: 16, fontWeight: "900", color: theme.colors.textOnDark }}>
                     Sort
                   </Text>
 
@@ -1016,55 +961,44 @@ export default function ReviewsIndex() {
                     <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
                       {sortLabel(draftSortKey)}
                     </Text>
-                    <Text
-                      style={{
-                        marginTop: 4,
-                        color: theme.colors.textOnDarkSecondary,
-                        ...theme.typography.caption,
-                      }}
-                    >
+                    <Text style={{ marginTop: 4, color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
                       Tap to change
                     </Text>
                   </Pressable>
 
                   {sortOpen ? (
                     <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                      {(["mostReviewed", "highestRated", "thcHighLow", "thcLowHigh", "maker", "atoz"] as SortKey[]).map((k) => {
-                        const selected = draftSortKey === k;
-                        return (
-                          <Pressable
-                            key={k}
-                            onPress={() => {
-                              setDraftSortKey(k);
-                              setSortOpen(false);
-                            }}
-                            style={({ pressed }) => ({
-                              alignSelf: "flex-start",
-                              borderRadius: 999,
-                              paddingVertical: 10,
-                              paddingHorizontal: 14,
-                              backgroundColor: selected ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)",
-                              borderWidth: 1,
-                              borderColor: selected ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.12)",
-                              opacity: pressed ? 0.9 : 1,
-                            })}
-                          >
-                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{sortLabel(k)}</Text>
-                          </Pressable>
-                        );
-                      })}
+                      {(["mostReviewed", "highestRated", "thcHighLow", "thcLowHigh", "maker", "atoz"] as SortKey[]).map(
+                        (k) => {
+                          const selected = draftSortKey === k;
+                          return (
+                            <Pressable
+                              key={k}
+                              onPress={() => {
+                                setDraftSortKey(k);
+                                setSortOpen(false);
+                              }}
+                              style={({ pressed }) => ({
+                                alignSelf: "flex-start",
+                                borderRadius: 999,
+                                paddingVertical: 10,
+                                paddingHorizontal: 14,
+                                backgroundColor: selected ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)",
+                                borderWidth: 1,
+                                borderColor: selected ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.12)",
+                                opacity: pressed ? 0.9 : 1,
+                              })}
+                            >
+                              <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{sortLabel(k)}</Text>
+                            </Pressable>
+                          );
+                        }
+                      )}
                     </View>
                   ) : null}
 
                   {/* Filters */}
-                  <Text
-                    style={{
-                      marginTop: 22,
-                      fontSize: 16,
-                      fontWeight: "900",
-                      color: theme.colors.textOnDark,
-                    }}
-                  >
+                  <Text style={{ marginTop: 22, fontSize: 16, fontWeight: "900", color: theme.colors.textOnDark }}>
                     Filters
                   </Text>
 
@@ -1087,10 +1021,7 @@ export default function ReviewsIndex() {
                         <Pressable
                           key={v}
                           onPress={() => setDraftStrainFilter(selected ? null : v)}
-                          style={({ pressed }) => ({
-                            ...chipOnDark(selected),
-                            opacity: pressed ? 0.85 : 1,
-                          })}
+                          style={({ pressed }) => ({ ...chipOnDark(selected), opacity: pressed ? 0.85 : 1 })}
                         >
                           <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{v}</Text>
                         </Pressable>
@@ -1125,17 +1056,11 @@ export default function ReviewsIndex() {
                               setDraftTerpeneFilter((prev) => {
                                 const exists = prev.some((x) => safeLower(x) === safeLower(t));
                                 if (exists) return prev.filter((x) => safeLower(x) !== safeLower(t));
-
-                                // max 3 selections (remove this block if you want unlimited)
                                 if (prev.length >= 3) return prev;
-
                                 return [...prev, t];
                               });
                             }}
-                            style={({ pressed }) => ({
-                              ...chipOnDark(selected),
-                              opacity: pressed ? 0.85 : 1,
-                            })}
+                            style={({ pressed }) => ({ ...chipOnDark(selected), opacity: pressed ? 0.85 : 1 })}
                           >
                             <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{t}</Text>
                           </Pressable>
@@ -1145,14 +1070,7 @@ export default function ReviewsIndex() {
                   </View>
 
                   {draftTerpeneFilter.length >= 3 ? (
-                    <Text
-                      style={{
-                        marginTop: 6,
-                        color: "rgba(255,255,255,0.55)",
-                        fontWeight: "700",
-                        fontSize: 12,
-                      }}
-                    >
+                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontWeight: "700", fontSize: 12 }}>
                       Max 3 terpenes selected.
                     </Text>
                   ) : null}
@@ -1182,23 +1100,10 @@ export default function ReviewsIndex() {
                       opacity: pressed ? 0.9 : 1,
                     })}
                   >
-                    <Text
-                      style={{
-                        color: theme.colors.textOnDark,
-                        fontWeight: "900",
-                        fontSize: 16,
-                      }}
-                      numberOfLines={1}
-                    >
+                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }} numberOfLines={1}>
                       {draftMakerFilter ? draftMakerFilter : "All makers"}
                     </Text>
-                    <Text
-                      style={{
-                        marginTop: 4,
-                        color: theme.colors.textOnDarkSecondary,
-                        ...theme.typography.caption,
-                      }}
-                    >
+                    <Text style={{ marginTop: 4, color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
                       Tap to change
                     </Text>
                   </Pressable>
@@ -1225,7 +1130,8 @@ export default function ReviewsIndex() {
                       </Pressable>
 
                       {makers.slice(0, 40).map((m) => {
-                        const selected = draftMakerFilter && safeLower(draftMakerFilter) === safeLower(m);
+                        const selected = !!draftMakerFilter && safeLower(draftMakerFilter) === safeLower(m);
+
                         return (
                           <Pressable
                             key={m}
@@ -1274,3 +1180,25 @@ export default function ReviewsIndex() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  // Rich red, not "danger"
+  favBadge: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(185,70,95,0.95)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    shadowColor: "rgba(0,0,0,0.35)",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+});

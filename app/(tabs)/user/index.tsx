@@ -1,19 +1,12 @@
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-    Alert,
-    Image,
-    Modal,
-    Pressable,
-    ScrollView,
-    Text,
-    View,
-} from "react-native";
+import { Alert, Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import { theme } from "../../../lib/theme";
+import { getUnlockedBadges } from "../../../lib/communityBadges";
 
 const budImg = require("../../../assets/icons/bud.png");
 
@@ -199,10 +192,7 @@ function AvatarCircle({
     photoURL?: string | null;
     size?: number;
 }) {
-    const picked = useMemo(
-        () => AVATARS.find((a) => a.id === avatarId) ?? null,
-        [avatarId]
-    );
+    const picked = useMemo(() => AVATARS.find((a) => a.id === avatarId) ?? null, [avatarId]);
 
     return (
         <View
@@ -257,6 +247,54 @@ function maskEmail(email: string) {
     return `${first}***@${domain}`;
 }
 
+function StatRow({ label, value }: { label: string; value: number }) {
+    return (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10 }}>
+            <Text style={{ color: "rgba(255,255,255,0.70)", fontSize: 18, fontWeight: "900" }}>
+                {label}
+            </Text>
+            <Text style={{ color: theme.colors.textOnDark, fontSize: 26, fontWeight: "900" }}>
+                {String(value)}
+            </Text>
+        </View>
+    );
+}
+
+function BadgeRow({ title, subtitle }: { title: string; subtitle: string }) {
+    return (
+        <View
+            style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+                borderRadius: 18,
+                backgroundColor: "rgba(0,0,0,0.14)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+            }}
+        >
+            <View
+                style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: 7,
+                    backgroundColor: "rgba(212,175,55,0.85)",
+                    marginRight: 14,
+                }}
+            />
+            <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.colors.textOnDark, fontSize: 24, fontWeight: "900", lineHeight: 26 }}>
+                    {title}
+                </Text>
+                <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 18, fontWeight: "800" }}>
+                    {subtitle}
+                </Text>
+            </View>
+        </View>
+    );
+}
+
 export default function UserMenuScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
@@ -264,9 +302,7 @@ export default function UserMenuScreen() {
     const user = auth().currentUser;
     const uid = user?.uid ?? "";
 
-    const displayName = user?.displayName?.trim()
-        ? user.displayName
-        : "Anonymous";
+    const displayName = user?.displayName?.trim() ? user.displayName : "Anonymous";
 
     const photoURL = user?.photoURL ?? null;
     const emailMasked = user?.email ? maskEmail(user.email) : "";
@@ -279,6 +315,14 @@ export default function UserMenuScreen() {
     const [reviewCount, setReviewCount] = useState<number | null>(null);
     const [productCount, setProductCount] = useState<number | null>(null);
     const [lastActiveLabel, setLastActiveLabel] = useState<string | null>(null);
+
+    // Extra stats (safe defaults)
+    const [helpfulReceived, setHelpfulReceived] = useState<number>(0);
+    const [helpfulGiven, setHelpfulGiven] = useState<number>(0);
+    const [favouritesCount, setFavouritesCount] = useState<number>(0);
+
+    // Community stats fallback state
+    const [reviewCountLoading, setReviewCountLoading] = useState<boolean>(false);
 
     useEffect(() => {
         if (!uid) return;
@@ -306,12 +350,15 @@ export default function UserMenuScreen() {
                     setReviewCount(rc);
                     setProductCount(pc);
 
-                    // Keep this simple for now. If you later store lastActive as a timestamp, format it here.
-                    const la =
-                        typeof data?.lastActiveLabel === "string"
-                            ? data.lastActiveLabel
-                            : null;
+                    const la = typeof data?.lastActiveLabel === "string" ? data.lastActiveLabel : null;
                     setLastActiveLabel(la);
+
+                    const hr = typeof data?.helpfulReceived === "number" ? data.helpfulReceived : 0;
+                    const hg = typeof data?.helpfulGiven === "number" ? data.helpfulGiven : 0;
+                    const fav = typeof data?.favouritesCount === "number" ? data.favouritesCount : 0;
+                    setHelpfulReceived(hr);
+                    setHelpfulGiven(hg);
+                    setFavouritesCount(fav);
                 },
                 () => {
                     // ignore
@@ -321,13 +368,36 @@ export default function UserMenuScreen() {
         return () => unsub();
     }, [uid]);
 
+    // Fallback: if users/{uid}.reviewCount isn't present, count reviews once
+    useEffect(() => {
+        if (!uid) return;
+        if (typeof reviewCount === "number") return;
+
+        let cancelled = false;
+
+        const run = async () => {
+            setReviewCountLoading(true);
+            try {
+                const snap = await firestore().collection("reviews").where("userId", "==", uid).get();
+                if (!cancelled) setReviewCount(snap.size);
+            } catch {
+                // keep resilient: leave reviewCount as null if this fails
+            } finally {
+                if (!cancelled) setReviewCountLoading(false);
+            }
+        };
+
+        run();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [uid, reviewCount]);
+
     const saveAvatar = async (next: string | null) => {
         if (!uid) return;
         try {
-            await firestore().collection("users").doc(uid).set(
-                { avatarId: next ?? null },
-                { merge: true }
-            );
+            await firestore().collection("users").doc(uid).set({ avatarId: next ?? null }, { merge: true });
             setAvatarId(next);
         } catch (e: any) {
             Alert.alert("Could not save avatar", e?.message ?? "Unknown error");
@@ -346,15 +416,16 @@ export default function UserMenuScreen() {
     const headerBg = theme.colors.goldGlass;
     const editRightLabel = photoURL ? "Photo" : avatarId ? "Avatar" : "Set up";
 
-    const headerOneLiner = joinYear
-        ? `Part of the community since ${joinYear}`
-        : "Sharing honest experiences with the community";
+    const headerOneLiner = joinYear ? `Part of the community since ${joinYear}` : "Sharing honest experiences with the community";
 
     const statsBits: string[] = [];
     if (typeof reviewCount === "number") statsBits.push(`${reviewCount} reviews`);
     if (typeof productCount === "number") statsBits.push(`${productCount} products`);
     if (lastActiveLabel) statsBits.push(`Last active ${lastActiveLabel}`);
     const statsLine = statsBits.length ? statsBits.join(" · ") : null;
+
+    const safeReviewCount = typeof reviewCount === "number" ? reviewCount : 0;
+    const unlockedBadges = getUnlockedBadges(safeReviewCount);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
@@ -486,29 +557,51 @@ export default function UserMenuScreen() {
                     </View>
                 </GlassCard>
 
-                {/* Community Impact */}
+                {/* YOUR STATS */}
                 <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel>Your impact</SectionLabel>
+                    <SectionLabel>Your stats</SectionLabel>
+
+                    <StatRow label="Reviews written" value={reviewCountLoading ? 0 : safeReviewCount} />
+                    <StatRow label="Helpful received" value={helpfulReceived} />
+                    <StatRow label="Helpful given" value={helpfulGiven} />
+                    <StatRow label="Favourites" value={favouritesCount} />
 
                     <Text
                         style={{
-                            color: theme.colors.textOnDarkSecondary,
-                            lineHeight: 18,
+                            marginTop: 14,
+                            color: "rgba(255,255,255,0.55)",
+                            lineHeight: 22,
+                            fontSize: 16,
+                            fontWeight: "700",
                         }}
                     >
-                        Your reviews help others make informed choices. Community ratings are built from honest
-                        experiences like yours.
+                        Your reviewsWritten is the number of reviews you have posted. Helpful received is the total
+                        number of helpful votes on all of your reviews.
                     </Text>
+                </GlassCard>
 
-                    <Text
-                        style={{
-                            marginTop: 10,
-                            color: theme.colors.textOnDarkSecondary,
-                            lineHeight: 18,
-                        }}
-                    >
-                        Every review improves the accuracy of recommendations over time.
-                    </Text>
+                {/* COMMUNITY BADGES */}
+                <GlassCard style={{ marginBottom: 14 }}>
+                    <SectionLabel>Community badges</SectionLabel>
+
+                    {unlockedBadges.length > 0 ? (
+                        <View style={{ gap: 12 }}>
+                            {unlockedBadges.map((b) => (
+                                <BadgeRow key={b.id} title={b.title} subtitle={b.subtitle} />
+                            ))}
+                        </View>
+                    ) : (
+                        <Text
+                            style={{
+                                color: "rgba(255,255,255,0.55)",
+                                lineHeight: 22,
+                                fontSize: 16,
+                                fontWeight: "700",
+                            }}
+                        >
+                            No badges yet. Write your first review to unlock one.
+                        </Text>
+                    )}
                 </GlassCard>
 
                 {/* Preferences & Personalisation */}
