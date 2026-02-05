@@ -74,28 +74,34 @@ function normStr(v: any) {
   return v.trim().toLowerCase();
 }
 
-function n||malizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
-  if (!v) return "unknown";
-  const s = String(v).toLowerCase();
+function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
+  if (v === null || v === undefined) return "unknown";
 
-  // common full w||ds
+  const s = String(v).toLowerCase().trim();
+  if (!s) return "unknown";
+
+  // Exact matches
+  if (s === "sativa" || s === "sat") return "sativa";
+  if (s === "indica" || s === "ind") return "indica";
+  if (s === "hybrid" || s === "hyb") return "hybrid";
+
+  // Common phrasing
+  if (s.includes("sativa dominant") || s.includes("dominant sativa")) return "sativa";
+  if (s.includes("indica dominant") || s.includes("dominant indica")) return "indica";
+
+  // Abbreviations / messy patterns
+  if (s.startsWith("sat") || s.includes(" sat ")) return "sativa";
+  if (s.startsWith("ind") || s.includes(" ind ")) return "indica";
+  if (s.startsWith("hyb") || s.includes(" hyb ")) return "hybrid";
+
+  // Contains checks (last)
   if (s.includes("sativa")) return "sativa";
   if (s.includes("indica")) return "indica";
   if (s.includes("hybrid")) return "hybrid";
 
-  // common phrasing
-  if (s.includes("sativa dominant") || s.includes("dominant sativa")): pass
-  // abbreviations / messy exp||ts
-  if (s.startswith("sat") || " sat " in s) return "sativa";
-  if (s.startswith("ind") || " ind " in s) return "indica";
-  if (s.startswith("hyb") || " hyb " in s) return "hybrid";
-
-  // sometimes genetics/lineage contains e.g. "indica-dominant"
-  if ("dominant" in s && "sat" in s) return "sativa";
-  if ("dominant" in s && "ind" in s) return "indica";
-
   return "unknown";
 }
+
 
 function sortLabel(k: SortKey) {
   switch (k) {
@@ -463,8 +469,22 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
       }
 
       if (strainFilter) {
-        const st = normalizeStrainType(it.strainType);
-        if (st !== strainFilter) return false;
+        const raw = (it as any)?.strainType ?? null;
+        const s = raw ? String(raw).toLowerCase() : "";
+
+        // Hybrid should only show true hybrids
+        if (strainFilter === "hybrid") {
+          if (!(s.includes("hybrid") || s.includes("hyb"))) return false;
+        }
+
+        // Indica/Sativa should include "indica dominant hybrid" etc.
+        if (strainFilter === "indica") {
+          if (!(s.includes("indica") || s.includes("ind " ) || s.startsWith("ind"))) return false;
+        }
+
+        if (strainFilter === "sativa") {
+          if (!(s.includes("sativa") || s.includes(" sat ") || s.startsWith("sat"))) return false;
+        }
       }
 
       if (makerFilter) {
