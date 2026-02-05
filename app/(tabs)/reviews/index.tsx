@@ -77,27 +77,22 @@ function normStr(v: any) {
 function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
   if (v === null || v === undefined) return "unknown";
 
-  const s = String(v).toLowerCase().trim();
+  const s = String(v).trim().toLowerCase();
   if (!s) return "unknown";
 
-  // Exact matches
-  if (s === "sativa" || s === "sat") return "sativa";
-  if (s === "indica" || s === "ind") return "indica";
-  if (s === "hybrid" || s === "hyb") return "hybrid";
-
-  // Common phrasing
-  if (s.includes("sativa dominant") || s.includes("dominant sativa")) return "sativa";
-  if (s.includes("indica dominant") || s.includes("dominant indica")) return "indica";
-
-  // Abbreviations / messy patterns
-  if (s.startsWith("sat") || s.includes(" sat ")) return "sativa";
-  if (s.startsWith("ind") || s.includes(" ind ")) return "indica";
-  if (s.startsWith("hyb") || s.includes(" hyb ")) return "hybrid";
-
-  // Contains checks (last)
+  // direct matches
   if (s.includes("sativa")) return "sativa";
   if (s.includes("indica")) return "indica";
   if (s.includes("hybrid")) return "hybrid";
+
+  // common phrasing / abbreviations
+  if (s.startsWith("sat") || s.includes(" sat ") || s == "s") return "sativa";
+  if (s.startsWith("ind") || s.includes(" ind ") || s == "i") return "indica";
+  if (s.startsWith("hyb") || s.includes(" hyb ") || s == "h") return "hybrid";
+
+  // genetics / dominance strings
+  if (s.includes("dominant") && (s.includes("sat") || s.includes("sativ"))) return "sativa";
+  if (s.includes("dominant") && (s.includes("ind") || s.includes("indic"))) return "indica";
 
   return "unknown";
 }
@@ -229,7 +224,23 @@ export default function ReviewsIndex() {
 
   const [items, setItems] = useState<Product[]>([]);
 
-  // STRain_DEBUG_COUNTS (safe: top-level hook)
+  
+  // STRAIN_DEBUG (safe hook)
+  useEffect(() => {
+    if (!__DEV__) return;
+    if (!items.length) return;
+
+    const counts: Record<string, number> = {};
+    for (const it of items as any[]) {
+      const raw = it?.strainType ?? null;
+      const k = raw === null ? "null" : String(raw);
+      counts[k] = (counts[k] || 0) + 1;
+    }
+
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    console.log("DEBUG strainType top values:", top);
+  }, [items]);
+// STRain_DEBUG_COUNTS (safe: top-level hook)
   useEffect(() => {
     if (!items.length) return;
 
@@ -338,16 +349,21 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
             name: typeof data?.name === "string" ? data.name : "",
             maker: typeof data?.maker === "string" ? data.maker : "",
             variant: data?.variant ?? null,
-            strainType:
-              typeof data?.strainType === "string"
-                ? data.strainType
-                : typeof data?.strain === "string"
-                ? data.strain
-                : typeof data?.dominance === "string"
-                ? data.dominance
-                : typeof data?.category === "string"
-                ? data.category
-                : null,
+            strainType: (() => {
+              // Prefer explicit fields
+              const candidates = [data?.strainType, data?.strain, data?.dominance, data?.genetics];
+
+              // Some datasets incorrectly store strain in `type`. Only accept it if it actually looks like strain.
+              const t = typeof data?.type === "string" ? data.type : null;
+              if (t) candidates.push(t);
+
+              for (const c of candidates) {
+                const norm = normalizeStrainType(c);
+                if (norm !== "unknown") return norm; // store normalized to simplify filtering
+              }
+
+              return null;
+            })(),
             productType: typeof data?.productType === "string" ? data.productType : null,
             thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
             cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
