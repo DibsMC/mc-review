@@ -370,26 +370,17 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
             maker: typeof data?.maker === "string" ? data.maker : "",
             variant: data?.variant ?? null,
             strainType: (() => {
-            // Pull from a bunch of possible field names.
-            const candidates: any[] = [
-              (data as any)?.strainType,
-              (data as any)?.strain,
-              (data as any)?.dominance,
-              (data as any)?.type,      // some datasets use "type" for indica/sativa/hybrid
-              (data as any)?.genetics,
-              (data as any)?.lineage,
-              (data as any)?.category,
-            ];
+              // Only accept true strain fields. Never use product type (e.g. "flower").
+              const raw =
+                (data as any)?.strainType ??
+                (data as any)?.strain ??
+                (data as any)?.dominance ??
+                (data as any)?.genetics ??
+                null;
 
-            const tags = (data as any)?.tags;
-            if (Array.isArray(tags)) candidates.push(...tags);
-
-            // First non-empty string wins (store RAW, we normalize later in filtering)
-            for (const c of candidates) {
-              if (typeof c === "string" && c.trim()) return c.trim();
-            }
-            return null;
-          })(),
+              const norm = normalizeStrainType(raw);
+              return norm === "unknown" ? null : norm;
+            })(),
             productType: typeof data?.productType === "string" ? data.productType : null,
             thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
             cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
