@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Image, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { JazzBudRating } from "../ui/JazzBudRating";
+import { typography } from "../../lib/typography";
 
 const budImg = require("../../assets/icons/bud.png");
 
@@ -90,11 +91,15 @@ export function HomeCard({
     hero?: boolean;
     style?: ViewStyle;
 }) {
-    const theme = useMemo(() => pillThemeForType(card.type), [card.type]);
+    const pill = useMemo(() => pillThemeForType(card.type), [card.type]);
 
-    const showRating = typeof card.rating === "number" && Number.isFinite(card.rating) && (card.rating ?? 0) > 0;
+    const showRating =
+        typeof card.rating === "number" && Number.isFinite(card.rating) && (card.rating ?? 0) > 0;
+
     const ratingCount =
-        typeof card.ratingCount === "number" && Number.isFinite(card.ratingCount) && (card.ratingCount ?? 0) > 0
+        typeof card.ratingCount === "number" &&
+            Number.isFinite(card.ratingCount) &&
+            (card.ratingCount ?? 0) > 0
             ? Math.floor(card.ratingCount as number)
             : null;
 
@@ -102,12 +107,20 @@ export function HomeCard({
         <Pressable
             onPress={card.onPress}
             disabled={!card.onPress}
-            style={({ pressed }) => [styles.wrap, hero ? styles.wrapHero : null, pressed ? styles.pressed : null, style]}
+            style={({ pressed }) => [
+                styles.wrap,
+                hero ? styles.wrapHero : null,
+                pressed ? styles.pressed : null,
+                style,
+            ]}
         >
             <View style={styles.base}>
-                {/* more glossy, more depth */}
                 <LinearGradient
-                    colors={hero ? ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.06)"] : ["rgba(255,255,255,0.14)", "rgba(255,255,255,0.05)"]}
+                    colors={
+                        hero
+                            ? ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.06)"]
+                            : ["rgba(255,255,255,0.14)", "rgba(255,255,255,0.05)"]
+                    }
                     start={{ x: 0.08, y: 0.05 }}
                     end={{ x: 0.95, y: 1 }}
                     style={styles.surface}
@@ -115,7 +128,6 @@ export function HomeCard({
                     <View pointerEvents="none" style={styles.glowA} />
                     <View pointerEvents="none" style={styles.glowB} />
 
-                    {/* top specular sheen */}
                     <LinearGradient
                         pointerEvents="none"
                         colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.00)"]}
@@ -128,7 +140,7 @@ export function HomeCard({
                         <View style={{ flex: 1 }}>
                             {!!card.eyebrow ? (
                                 <Text style={styles.eyebrow} numberOfLines={1}>
-                                    {String(card.eyebrow).toUpperCase()}
+                                    {String(card.eyebrow)}
                                 </Text>
                             ) : null}
 
@@ -159,14 +171,12 @@ export function HomeCard({
                             ) : null}
                         </View>
 
-                        {/* Right pill: pastel + glossy + bigger bud */}
                         <LinearGradient
-                            colors={theme.bg}
+                            colors={pill.bg}
                             start={{ x: 0.15, y: 0.1 }}
                             end={{ x: 0.9, y: 1 }}
-                            style={[styles.iconPill, { borderColor: theme.ring }]}
+                            style={[styles.iconPill, { borderColor: pill.ring }]}
                         >
-                            {/* glossy highlight */}
                             <LinearGradient
                                 pointerEvents="none"
                                 colors={["rgba(255,255,255,0.42)", "rgba(255,255,255,0.00)"]}
@@ -175,13 +185,10 @@ export function HomeCard({
                                 style={styles.iconGloss}
                             />
 
-                            {/* inner ring for 3D */}
-                            <View pointerEvents="none" style={[styles.iconInnerRing, { borderColor: theme.inner }]} />
+                            <View pointerEvents="none" style={[styles.iconInnerRing, { borderColor: pill.inner }]} />
 
-                            {/* subtle glow */}
-                            <View pointerEvents="none" style={[styles.iconGlow, { shadowColor: theme.glow }]} />
+                            <View pointerEvents="none" style={[styles.iconGlow, { shadowColor: pill.glow }]} />
 
-                            {/* IMPORTANT: no tintColor so we keep the green bud */}
                             <Image source={budImg} style={styles.bud} resizeMode="contain" />
                         </LinearGradient>
                     </View>
@@ -220,7 +227,7 @@ const styles = StyleSheet.create({
     },
     surface: {
         borderRadius: R,
-        paddingVertical: 14, // slightly tighter so everything fits on screen
+        paddingVertical: 14,
         paddingHorizontal: 16,
     },
     sheen: {
@@ -254,30 +261,38 @@ const styles = StyleSheet.create({
         alignItems: "center",
         gap: 14,
     },
+
     eyebrow: {
-        fontSize: 12,
-        letterSpacing: 1,
+        ...typography.sectionLabel,
         color: "rgba(255,255,255,0.55)",
+        letterSpacing: 1,
         fontWeight: "800",
     },
     title: {
         marginTop: 8,
+        ...typography.heading,
         fontSize: 22,
+        lineHeight: 28,
         fontWeight: "900",
         color: "rgba(255,255,255,0.94)",
     },
     titleHero: {
         fontSize: 26,
+        lineHeight: 32,
     },
     subtitle: {
         marginTop: 6,
+        ...typography.body,
         fontSize: 14,
+        lineHeight: 20,
         fontWeight: "700",
         color: "rgba(255,255,255,0.68)",
     },
     meta: {
         marginTop: 8,
+        ...typography.secondary,
         fontSize: 12,
+        lineHeight: 16,
         fontWeight: "800",
         color: "rgba(255,255,255,0.52)",
     },
@@ -289,12 +304,13 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     ratingText: {
+        ...typography.secondary,
         color: "rgba(255,255,255,0.85)",
         fontWeight: "900",
         fontSize: 13,
+        lineHeight: 18,
     },
 
-    // Bigger circle and bigger bud with sensible padding
     iconPill: {
         width: 64,
         height: 64,
@@ -341,7 +357,7 @@ const styles = StyleSheet.create({
         opacity: 0.25,
     },
     bud: {
-        width: 40, // approx 2x what you had
+        width: 40,
         height: 40,
     },
 });

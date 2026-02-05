@@ -1,16 +1,13 @@
 import { Tabs } from "expo-router";
-import { theme } from "../../lib/theme";
-import AppBackground from "../../components/AppBackground";
-import { Ionicons } from "@expo/vector-icons";
 import { Image } from "react-native";
-
+import { Ionicons } from "@expo/vector-icons";
+import AppBackground from "../../components/AppBackground";
+import { theme } from "../../lib/theme";
 
 export default function TabsLayout() {
   return (
     <AppBackground>
       <Tabs
-        // @ts-expect-error expo-router types lag behind runtime support
-        sceneContainerStyle={{ backgroundColor: "transparent" }}
         screenOptions={{
           headerShown: false,
           tabBarStyle: {
@@ -30,6 +27,7 @@ export default function TabsLayout() {
             ),
           }}
         />
+
         <Tabs.Screen
           name="reviews"
           options={{
@@ -43,6 +41,7 @@ export default function TabsLayout() {
             ),
           }}
         />
+
         <Tabs.Screen
           name="user"
           options={{

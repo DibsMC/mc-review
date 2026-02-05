@@ -1,6 +1,6 @@
 // lib/typography.ts
 import { TextStyle } from "react-native";
-import { theme } from "./theme";
+import { theme } from "./theme"; // ONLY if your theme file is actually lib/theme.ts (not .tsx)
 
 export const typography = {
     screenTitle: {

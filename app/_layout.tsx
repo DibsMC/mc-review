@@ -1,10 +1,9 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
+import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import AppBackground from "../components/AppBackground";
-
-import { ThemeProvider, DefaultTheme } from "@react-navigation/native";
 
 export default function RootLayout() {
   const router = useRouter();
