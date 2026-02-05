@@ -9,10 +9,10 @@ export default function ReviewsLayout() {
         contentStyle: { backgroundColor: "rgba(10,11,15,0.35)" },
       }}
     >
-
-      <Stack.Screen name="index" options={{ title: "Reviews" }} />
+      <Stack.Screen name="index" options={{ title: "Reviews", headerShown: false }} />
       <Stack.Screen name="[flowerId]" options={{ title: "" }} />
-      <Stack.Screen name="product/[productId]" options={{ title: "Product" }} />
+      {/* NOTE: do not register product/[productId] here.
+          The file still exists to safely redirect legacy links. */}
     </Stack>
   );
 }
