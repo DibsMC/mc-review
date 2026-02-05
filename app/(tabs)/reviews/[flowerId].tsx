@@ -995,7 +995,8 @@ export default function FlowerDetail() {
                     racingThoughts: racingThoughtsInt,
 
                     editedAt: firestore.FieldValue.serverTimestamp(),
-                });
+                    updatedAt: firestore.FieldValue.serverTimestamp(),
+});
             } else {
                 await firestore().collection("reviews").add({
                     productId: String(productId),
@@ -1019,7 +1020,8 @@ export default function FlowerDetail() {
                     racingThoughts: racingThoughtsInt,
 
                     createdAt: firestore.FieldValue.serverTimestamp(),
-                });
+                    updatedAt: firestore.FieldValue.serverTimestamp(),
+});
             }
 
             await maybeAwardDebugBadge(user.uid);

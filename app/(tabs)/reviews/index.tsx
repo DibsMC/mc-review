@@ -221,7 +221,9 @@ export default function ReviewsIndex() {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("atoz");
 
-  const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
+  
+
+const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
   const [makerFilter, setMakerFilter] = useState<string | null>(null);
   const [terpeneFilter, setTerpeneFilter] = useState<string[]>([]);
 
@@ -291,7 +293,16 @@ export default function ReviewsIndex() {
             name: typeof data?.name === "string" ? data.name : "",
             maker: typeof data?.maker === "string" ? data.maker : "",
             variant: data?.variant ?? null,
-            strainType: typeof data?.type === "string" ? data.type : null,
+            strainType:
+              typeof data?.strainType === "string"
+                ? data.strainType
+                : typeof data?.strain === "string"
+                ? data.strain
+                : typeof data?.dominance === "string"
+                ? data.dominance
+                : typeof data?.category === "string"
+                ? data.category
+                : null,
             productType: typeof data?.productType === "string" ? data.productType : null,
             thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
             cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
@@ -300,6 +311,9 @@ export default function ReviewsIndex() {
         });
 
         setItems(list);
+
+
+
         setLoadingProducts(false);
       },
       (err) => {
