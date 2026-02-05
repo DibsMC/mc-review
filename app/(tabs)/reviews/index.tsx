@@ -75,25 +75,46 @@ function normStr(v: any) {
 }
 
 function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
-  if (v == null) return "unknown";
+  if (v === null || v === undefined) return "unknown";
+
   const s = String(v).toLowerCase().trim();
   if (!s) return "unknown";
 
-  // most common
+  // direct matches
   if (s.includes("sativa")) return "sativa";
   if (s.includes("indica")) return "indica";
   if (s.includes("hybrid")) return "hybrid";
 
-  // slightly messy/abbreviated inputs
-  if (s.startsWith("sat") || s.includes(" sat ")) return "sativa";
-  if (s.startsWith("ind") || s.includes(" ind ")) return "indica";
-  if (s.startsWith("hyb") || s.includes(" hyb ")) return "hybrid";
-
-  // dominant phrasing
-    if (s.includes("dominant") && (s.includes("sat") || s.includes("sativa"))) return "sativa";
+  // common phrasing
+  if (s.includes("dominant") && (s.includes("sat") || s.includes("sativa"))) return "sativa";
   if (s.includes("dominant") && (s.includes("ind") || s.includes("indica"))) return "indica";
 
+  // abbreviations / sloppy values
+  if (s.startsWith("sat") || s === "s") return "sativa";
+  if (s.startsWith("ind") || s === "i") return "indica";
+  if (s.startsWith("hyb") || s === "h") return "hybrid";
+
   return "unknown";
+}
+
+
+function pickStrainType(data: any): string | null {
+  // ONLY look at strain-ish fields, never at generic "type" (which is often "flower")
+  const candidates = [
+    data?.strainType,
+    data?.strain,
+    data?.dominance,
+    data?.genetics,
+    data?.category,
+  ]
+
+  for (const c of candidates) {
+    if (typeof c !== "string") continue;
+    const norm = normalizeStrainType(c);
+    if (norm !== "unknown") return norm; // store normalized value for consistent filtering
+  }
+
+  return null;
 }
 
 
@@ -369,7 +390,7 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
             }
             return null;
           })(),
-            productType: typeof data?.productType === "string" ? data.productType : null,
+            productType: typeof data?.productType === "string" ? data.productType : typeof data?.type === "string" ? data.type : null,
             thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
             cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
             terpenes: typeof data?.terpenes === "string" ? data.terpenes : null,
