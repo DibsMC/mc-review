@@ -1,13 +1,5 @@
-import React from "react";
-import {
-    ColorValue,
-    Image,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-    ViewStyle,
-} from "react-native";
+import React, { useMemo } from "react";
+import { Image, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { JazzBudRating } from "../ui/JazzBudRating";
 
@@ -30,63 +22,61 @@ export type HomeCardModel = {
     title: string;
     subtitle?: string;
     meta?: string;
-    onPress?: () => void;
 
-    // OPTIONAL: used by Trending / Top rated
-    rating?: number | null; // 0..5
+    // optional: shown on trending/top rated
+    rating?: number | null;
     ratingCount?: number | null;
+
+    onPress?: () => void;
 };
 
-function pillTheme(
-    type: HomeCardType
-): {
-    bg: readonly [ColorValue, ColorValue];
-    ring: ColorValue;
-    innerRing: ColorValue;
-} {
+type PillTheme = {
+    // IMPORTANT: tuple, not string[]
+    bg: readonly [string, string, ...string[]];
+    ring: string;
+    inner: string;
+    glow: string;
+};
+
+function pillThemeForType(type: HomeCardType): PillTheme {
+    // pastel, muted, earthy. Badge specifically is toned down to green family.
     switch (type) {
         case "badge":
             return {
-                bg: ["rgba(206, 214, 210, 0.92)", "rgba(180, 194, 188, 0.92)"] as const,
-                ring: "rgba(255,255,255,0.22)",
-                innerRing: "rgba(0,0,0,0.10)",
+                bg: ["rgba(205, 225, 210, 0.95)", "rgba(170, 205, 182, 0.92)"],
+                ring: "rgba(65, 110, 82, 0.38)",
+                inner: "rgba(255,255,255,0.30)",
+                glow: "rgba(120, 255, 210, 0.18)",
             };
-
         case "trending":
             return {
-                bg: ["rgba(198, 220, 210, 0.92)", "rgba(165, 198, 182, 0.92)"] as const,
-                ring: "rgba(255,255,255,0.22)",
-                innerRing: "rgba(0,0,0,0.10)",
+                bg: ["rgba(210, 230, 224, 0.95)", "rgba(176, 210, 200, 0.92)"],
+                ring: "rgba(80, 135, 120, 0.36)",
+                inner: "rgba(255,255,255,0.28)",
+                glow: "rgba(120, 200, 255, 0.16)",
             };
-
         case "top_rated":
             return {
-                bg: ["rgba(200, 216, 226, 0.92)", "rgba(168, 190, 206, 0.92)"] as const,
-                ring: "rgba(255,255,255,0.22)",
-                innerRing: "rgba(0,0,0,0.10)",
+                bg: ["rgba(220, 232, 214, 0.95)", "rgba(185, 215, 170, 0.92)"],
+                ring: "rgba(95, 135, 70, 0.34)",
+                inner: "rgba(255,255,255,0.28)",
+                glow: "rgba(160, 255, 150, 0.16)",
             };
-
         case "new_flower":
             return {
-                bg: ["rgba(210, 226, 206, 0.92)", "rgba(176, 204, 174, 0.92)"] as const,
-                ring: "rgba(255,255,255,0.22)",
-                innerRing: "rgba(0,0,0,0.10)",
+                bg: ["rgba(220, 236, 232, 0.95)", "rgba(180, 215, 208, 0.92)"],
+                ring: "rgba(70, 120, 120, 0.34)",
+                inner: "rgba(255,255,255,0.28)",
+                glow: "rgba(120, 255, 230, 0.14)",
             };
-
-        case "new_review":
         case "review_updated":
-            return {
-                bg: ["rgba(214, 214, 222, 0.92)", "rgba(186, 188, 202, 0.92)"] as const,
-                ring: "rgba(255,255,255,0.22)",
-                innerRing: "rgba(0,0,0,0.10)",
-            };
-
-        case "news":
+        case "new_review":
         default:
             return {
-                bg: ["rgba(208, 220, 226, 0.92)", "rgba(176, 196, 206, 0.92)"] as const,
-                ring: "rgba(255,255,255,0.22)",
-                innerRing: "rgba(0,0,0,0.10)",
+                bg: ["rgba(210, 220, 235, 0.95)", "rgba(178, 190, 220, 0.92)"],
+                ring: "rgba(95, 110, 150, 0.34)",
+                inner: "rgba(255,255,255,0.26)",
+                glow: "rgba(160, 180, 255, 0.16)",
             };
     }
 }
@@ -100,35 +90,39 @@ export function HomeCard({
     hero?: boolean;
     style?: ViewStyle;
 }) {
-    const pill = pillTheme(card.type);
+    const theme = useMemo(() => pillThemeForType(card.type), [card.type]);
 
-    const showRating =
-        typeof card.rating === "number" &&
-        Number.isFinite(card.rating) &&
-        card.rating > 0;
+    const showRating = typeof card.rating === "number" && Number.isFinite(card.rating) && (card.rating ?? 0) > 0;
+    const ratingCount =
+        typeof card.ratingCount === "number" && Number.isFinite(card.ratingCount) && (card.ratingCount ?? 0) > 0
+            ? Math.floor(card.ratingCount as number)
+            : null;
 
     return (
         <Pressable
             onPress={card.onPress}
             disabled={!card.onPress}
-            style={({ pressed }) => [
-                styles.wrap,
-                hero ? styles.wrapHero : null,
-                pressed ? styles.pressed : null,
-                style,
-            ]}
+            style={({ pressed }) => [styles.wrap, hero ? styles.wrapHero : null, pressed ? styles.pressed : null, style]}
         >
             <View style={styles.base}>
+                {/* more glossy, more depth */}
                 <LinearGradient
-                    colors={
-                        hero
-                            ? ["rgba(255,255,255,0.16)", "rgba(255,255,255,0.06)"]
-                            : ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.05)"]
-                    }
+                    colors={hero ? ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.06)"] : ["rgba(255,255,255,0.14)", "rgba(255,255,255,0.05)"]}
+                    start={{ x: 0.08, y: 0.05 }}
+                    end={{ x: 0.95, y: 1 }}
                     style={styles.surface}
                 >
                     <View pointerEvents="none" style={styles.glowA} />
                     <View pointerEvents="none" style={styles.glowB} />
+
+                    {/* top specular sheen */}
+                    <LinearGradient
+                        pointerEvents="none"
+                        colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.00)"]}
+                        start={{ x: 0.2, y: 0 }}
+                        end={{ x: 0.2, y: 1 }}
+                        style={styles.sheen}
+                    />
 
                     <View style={styles.row}>
                         <View style={{ flex: 1 }}>
@@ -138,10 +132,7 @@ export function HomeCard({
                                 </Text>
                             ) : null}
 
-                            <Text
-                                style={[styles.title, hero ? styles.titleHero : null]}
-                                numberOfLines={1}
-                            >
+                            <Text style={[styles.title, hero ? styles.titleHero : null]} numberOfLines={1}>
                                 {card.title}
                             </Text>
 
@@ -151,55 +142,48 @@ export function HomeCard({
                                 </Text>
                             ) : null}
 
-                            {/* Rating row for Trending / Top rated */}
-                            {showRating ? (
-                                <View style={styles.ratingRow}>
-                                    <JazzBudRating value={card.rating ?? 0} size={16} />
-                                    <Text style={styles.ratingText}>
-                                        {Number(card.rating).toFixed(1)}
-                                        {typeof card.ratingCount === "number" && card.ratingCount > 0
-                                            ? ` (${card.ratingCount})`
-                                            : ""}
-                                    </Text>
-                                </View>
-                            ) : null}
-
                             {!!card.meta ? (
                                 <Text style={styles.meta} numberOfLines={1}>
                                     {card.meta}
                                 </Text>
                             ) : null}
+
+                            {showRating ? (
+                                <View style={styles.ratingRow}>
+                                    <JazzBudRating value={card.rating as number} size={18} />
+                                    <Text style={styles.ratingText}>
+                                        {Number(card.rating).toFixed(1)}
+                                        {ratingCount ? ` (${ratingCount})` : ""}
+                                    </Text>
+                                </View>
+                            ) : null}
                         </View>
 
-                        {/* Bud pill */}
-                        <View style={styles.pillWrap}>
+                        {/* Right pill: pastel + glossy + bigger bud */}
+                        <LinearGradient
+                            colors={theme.bg}
+                            start={{ x: 0.15, y: 0.1 }}
+                            end={{ x: 0.9, y: 1 }}
+                            style={[styles.iconPill, { borderColor: theme.ring }]}
+                        >
+                            {/* glossy highlight */}
                             <LinearGradient
-                                colors={pill.bg}
-                                style={styles.pill}
-                                start={{ x: 0.18, y: 0.18 }}
-                                end={{ x: 0.82, y: 0.82 }}
-                            >
-                                <View
-                                    pointerEvents="none"
-                                    style={[styles.pillRing, { borderColor: pill.ring }]}
-                                />
-                                <View
-                                    pointerEvents="none"
-                                    style={[styles.pillInnerRing, { borderColor: pill.innerRing }]}
-                                />
+                                pointerEvents="none"
+                                colors={["rgba(255,255,255,0.42)", "rgba(255,255,255,0.00)"]}
+                                start={{ x: 0.2, y: 0 }}
+                                end={{ x: 0.6, y: 1 }}
+                                style={styles.iconGloss}
+                            />
 
-                                <LinearGradient
-                                    pointerEvents="none"
-                                    colors={["rgba(255,255,255,0.42)", "rgba(255,255,255,0.00)"]}
-                                    style={styles.pillHighlight}
-                                    start={{ x: 0.15, y: 0.1 }}
-                                    end={{ x: 0.75, y: 0.85 }}
-                                />
+                            {/* inner ring for 3D */}
+                            <View pointerEvents="none" style={[styles.iconInnerRing, { borderColor: theme.inner }]} />
 
-                                {/* IMPORTANT: no tintColor so the green bud stays green */}
-                                <Image source={budImg} style={styles.bud} resizeMode="contain" />
-                            </LinearGradient>
-                        </View>
+                            {/* subtle glow */}
+                            <View pointerEvents="none" style={[styles.iconGlow, { shadowColor: theme.glow }]} />
+
+                            {/* IMPORTANT: no tintColor so we keep the green bud */}
+                            <Image source={budImg} style={styles.bud} resizeMode="contain" />
+                        </LinearGradient>
                     </View>
                 </LinearGradient>
             </View>
@@ -213,19 +197,19 @@ const styles = StyleSheet.create({
     wrap: {
         borderRadius: R,
         shadowColor: "#000",
-        shadowOpacity: 0.22,
-        shadowRadius: 26,
-        shadowOffset: { width: 0, height: 14 },
-        elevation: 6,
+        shadowOpacity: 0.28,
+        shadowRadius: 28,
+        shadowOffset: { width: 0, height: 16 },
+        elevation: 7,
     },
     wrapHero: {
-        shadowOpacity: 0.32,
+        shadowOpacity: 0.34,
         shadowRadius: 34,
-        elevation: 8,
+        elevation: 9,
     },
     pressed: {
-        transform: [{ scale: 0.985 }],
-        opacity: 0.96,
+        transform: [{ scale: 0.988 }],
+        opacity: 0.97,
     },
     base: {
         borderRadius: R,
@@ -236,24 +220,32 @@ const styles = StyleSheet.create({
     },
     surface: {
         borderRadius: R,
-        paddingVertical: 16,
+        paddingVertical: 14, // slightly tighter so everything fits on screen
         paddingHorizontal: 16,
+    },
+    sheen: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        height: 46,
+        opacity: 0.55,
     },
     glowA: {
         position: "absolute",
         right: -70,
         top: -80,
-        width: 200,
-        height: 200,
+        width: 220,
+        height: 220,
         borderRadius: 999,
         backgroundColor: "rgba(130,255,210,0.10)",
     },
     glowB: {
         position: "absolute",
-        left: -80,
-        bottom: -90,
-        width: 220,
-        height: 220,
+        left: -90,
+        bottom: -110,
+        width: 260,
+        height: 260,
         borderRadius: 999,
         backgroundColor: "rgba(120,160,255,0.08)",
     },
@@ -283,18 +275,6 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         color: "rgba(255,255,255,0.68)",
     },
-
-    ratingRow: {
-        marginTop: 10,
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    ratingText: {
-        marginLeft: 10,
-        fontWeight: "900",
-        color: "rgba(255,255,255,0.90)",
-    },
-
     meta: {
         marginTop: 8,
         fontSize: 12,
@@ -302,44 +282,66 @@ const styles = StyleSheet.create({
         color: "rgba(255,255,255,0.52)",
     },
 
-    pillWrap: {
-        width: 74,
-        height: 74,
-        borderRadius: 999,
-        overflow: "hidden",
+    ratingRow: {
+        marginTop: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
     },
-    pill: {
-        width: "100%",
-        height: "100%",
+    ratingText: {
+        color: "rgba(255,255,255,0.85)",
+        fontWeight: "900",
+        fontSize: 13,
+    },
+
+    // Bigger circle and bigger bud with sensible padding
+    iconPill: {
+        width: 64,
+        height: 64,
         borderRadius: 999,
         alignItems: "center",
         justifyContent: "center",
-    },
-    pillRing: {
-        position: "absolute",
-        inset: 0,
-        borderRadius: 999,
         borderWidth: 1,
+        shadowColor: "rgba(0,0,0,0.55)",
+        shadowOpacity: 0.35,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 12,
     },
-    pillInnerRing: {
+    iconGloss: {
         position: "absolute",
-        inset: 7,
+        left: 6,
+        right: 6,
+        top: 6,
+        height: 22,
         borderRadius: 999,
-        borderWidth: 1,
         opacity: 0.9,
     },
-    pillHighlight: {
+    iconInnerRing: {
         position: "absolute",
-        left: 8,
-        top: 8,
-        width: 40,
-        height: 40,
+        left: 6,
+        right: 6,
+        top: 6,
+        bottom: 6,
         borderRadius: 999,
-        opacity: 0.65,
+        borderWidth: 1,
+        opacity: 0.7,
+    },
+    iconGlow: {
+        position: "absolute",
+        left: 10,
+        right: 10,
+        top: 10,
+        bottom: 10,
+        borderRadius: 999,
+        shadowOpacity: 0.9,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 0 },
+        elevation: 10,
+        opacity: 0.25,
     },
     bud: {
-        width: 46,
-        height: 46,
-        opacity: 0.98,
+        width: 40, // approx 2x what you had
+        height: 40,
     },
 });

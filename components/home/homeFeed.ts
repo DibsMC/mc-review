@@ -22,10 +22,6 @@ type HomeFeedInput = {
     badgeTitle?: string;
     badgeOwnerName?: string;
 
-    // legacy (kept so nothing breaks if still passed)
-    newsHeadline?: string;
-    newsSource?: string;
-
     // Used for deterministic rotation
     seedKey: string;
 };
@@ -47,7 +43,6 @@ function pickOne<T>(items: T[], seed: number) {
 function safeRating(n: any): number | null {
     if (typeof n !== "number" || !Number.isFinite(n)) return null;
     if (n <= 0) return null;
-    // clamp 0..5 (HomeCard expects 0..5 but shows only when >0)
     return Math.max(0, Math.min(5, n));
 }
 
@@ -67,8 +62,8 @@ export function buildHomeCards(
         // For specific flower navigation (Trending/Top Rated)
         goToFlower: (productId: string) => void;
 
-        // Badges page
-        goToBadges: () => void;
+        // Badge click should go to a user profile
+        goToBadgeOwner: (ownerName?: string) => void;
 
         // External link (MedBud Wiki stock)
         openMcStock: () => void;
@@ -81,16 +76,16 @@ export function buildHomeCards(
 
     const laneA: Array<{ type: HomeCardType; card: HomeCardModel }> = [];
 
-    if (input.hasNewReviews) {
+    if (input.hasUpdatedReviews) {
         laneA.push({
-            type: "new_review",
+            type: "review_updated",
             card: {
-                id: "laneA_new_review",
-                type: "new_review",
-                eyebrow: "New review",
-                title: "New reviews",
-                subtitle: "See what the community has posted",
-                onPress: handlers.goToNewReviews,
+                id: "laneA_review_updated",
+                type: "review_updated",
+                eyebrow: "Review updated",
+                title: "Updated reviews",
+                subtitle: "Fresh notes have been added",
+                onPress: handlers.goToUpdatedReviews,
             },
         });
     }
@@ -109,16 +104,16 @@ export function buildHomeCards(
         });
     }
 
-    if (input.hasUpdatedReviews) {
+    if (input.hasNewReviews) {
         laneA.push({
-            type: "review_updated",
+            type: "new_review",
             card: {
-                id: "laneA_review_updated",
-                type: "review_updated",
-                eyebrow: "Review updated",
-                title: "Updated reviews",
-                subtitle: "New notes have been added",
-                onPress: handlers.goToUpdatedReviews,
+                id: "laneA_new_review",
+                type: "new_review",
+                eyebrow: "New review",
+                title: "New reviews",
+                subtitle: "See what the community has posted",
+                onPress: handlers.goToNewReviews,
             },
         });
     }
@@ -141,9 +136,7 @@ export function buildHomeCards(
             rating: safeRating(input.trendingRating),
             ratingCount: safeCount(input.trendingRatingCount),
             onPress: () => {
-                // If we have a real productId, go to that flower
                 if (pid) handlers.goToFlower(pid);
-                // Otherwise default back to the main flowers list
                 else handlers.goToNewFlowers();
             },
         });
@@ -178,25 +171,35 @@ export function buildHomeCards(
             eyebrow: "Badge earned",
             title: input.badgeTitle,
             subtitle: input.badgeOwnerName ? `Awarded to ${input.badgeOwnerName}` : "Awarded recently",
-            // This is a page, not a flower
-            onPress: handlers.goToBadges,
+            onPress: () => handlers.goToBadgeOwner(input.badgeOwnerName),
         });
     }
 
-    /* ---------------- Bottom card: MC stock (replaces news) ----------------
-       Keeping type as "news" so UI doesn't need refactor right now.
-    */
+    /* ---------------- Lane D: fallback ---------------- */
+
+    if (primary.length === 0) {
+        primary.push({
+            id: "caught_up",
+            type: "caught_up",
+            eyebrow: "All caught up",
+            title: "Nothing new since your last visit",
+            subtitle: "Browse flowers or write a review",
+            onPress: handlers.goToNewFlowers,
+        });
+    }
+
+    /* ---------------- Bottom card: MC stock ---------------- */
+
     const news: HomeCardModel = {
         id: "mc_stock_1",
         type: "news",
-        // remove eyebrow to avoid repeating "MC stock" twice
-        eyebrow: undefined,
+        // no eyebrow to avoid repeating "MC stock"
         title: "Check MC stock",
         subtitle: "Availability on MedBud Wiki",
         meta: "Opens website",
         onPress: handlers.openMcStock,
     };
 
-    return { primary: primary.slice(0, 5), news };
-
+    // Limit to 3 cards so the MC stock card fits without scroll
+    return { primary: primary.slice(0, 3), news };
 }

@@ -1,46 +1,42 @@
 import React, { useMemo } from "react";
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
-import { AmbientBackground } from "../../components/home/AmbientBackground";
 import { HomeCard } from "../../components/home/HomeCard";
-import { SkeletonCard } from "../../components/home/SkeletonCard";
 import { buildHomeCards } from "../../components/home/homeFeed";
-import { theme } from "../../lib/theme";
+import { AmbientBackground } from "../../components/home/AmbientBackground";
+import { SkeletonCard } from "../../components/home/SkeletonCard";
 
+// If you already have real data wiring for these inputs, keep it.
+// This file is focused on layout + handlers correctness.
 export default function HomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
-  // Replace these with your real computed values if you already have them.
+  // TODO: replace these with your real derived values
   const input = useMemo(
     () => ({
       now: Date.now(),
-      lastSeenMs: undefined as number | undefined,
+      lastSeenMs: undefined,
 
       hasNewReviews: true,
       hasNewFlowers: true,
       hasUpdatedReviews: true,
 
       trendingTitle: "Northern Lights",
-      trendingProductId: "", // set to a real id to deep-link
-      trendingRating: null as number | null,
-      trendingRatingCount: null as number | null,
+      trendingProductId: "demo_product_id",
+      trendingRating: 4.2,
+      trendingRatingCount: 12,
 
-      topRatedTitle: undefined as string | undefined,
-      topRatedProductId: undefined as string | undefined,
-      topRatedRating: null as number | null,
-      topRatedRatingCount: null as number | null,
+      topRatedTitle: undefined,
+      topRatedProductId: undefined,
+      topRatedRating: null,
+      topRatedRatingCount: null,
 
       badgeTitle: "Consistent Reviewer",
       badgeOwnerName: "Alex",
 
-      // legacy fields ignored by the new homeFeed, kept for safety
-      newsHeadline: undefined as string | undefined,
-      newsSource: undefined as string | undefined,
-
-      seedKey: "home",
+      seedKey: "home-feed",
     }),
     []
   );
@@ -53,27 +49,25 @@ export default function HomeScreen() {
 
       goToFlower: (productId: string) => router.push(`/reviews/${productId}`),
 
-      goToBadges: () => router.push("/user"),
+      goToBadgeOwner: (ownerName?: string) => {
+        // If you have a better mapping (ownerName -> uid), swap this later.
+        // For now, send them to User tab/profile area.
+        router.push("/user");
+      },
 
-      openMcStock: () => {
+      openMcStock: async () => {
+        // MedBud Wiki - you can swap to the exact URL you want.
         const url = "https://medbud.wiki/";
-        Alert.alert(
-          "Leaving the app",
-          "This link will open an external website in your browser.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Open",
-              onPress: async () => {
-                try {
-                  await Linking.openURL(url);
-                } catch {
-                  Alert.alert("Could not open link");
-                }
-              },
-            },
-          ]
-        );
+        try {
+          const supported = await Linking.canOpenURL(url);
+          if (!supported) {
+            Alert.alert("Cannot open link", "Your device cannot open this link.");
+            return;
+          }
+          await Linking.openURL(url);
+        } catch (e) {
+          Alert.alert("Cannot open link", "Something went wrong opening the website.");
+        }
       },
     }),
     [router]
@@ -81,26 +75,23 @@ export default function HomeScreen() {
 
   const feed = useMemo(() => buildHomeCards(input, handlers), [input, handlers]);
 
+  // If you have a real loading state, wire it in. Kept simple here.
   const loading = false;
 
   return (
     <View style={styles.screen}>
       <AmbientBackground />
 
-      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
         <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: Math.max(insets.bottom, theme.spacing.xl) },
-          ]}
+          contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          {/* Centered header like screenshot */}
-          <View style={[styles.header, { paddingTop: Math.max(8, insets.top + 10) }]}>
-            <Text style={styles.headerTitle}>What’s happening ✨</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>What&apos;s happening ✨</Text>
           </View>
 
-          {/* Primary cards */}
           <View style={styles.stack}>
             {loading ? (
               <>
@@ -117,16 +108,14 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* Updates label + bottom card */}
-          {feed.news ? (
-            <View style={{ marginTop: 16 }}>
-              <Text style={styles.updatesLabel}>UPDATES</Text>
+          <Text style={styles.section}>UPDATES</Text>
 
-              <View style={{ marginTop: 12 }}>
-                <HomeCard card={feed.news} />
-              </View>
-            </View>
-          ) : null}
+          <View style={styles.stack}>
+            {feed.news ? <HomeCard card={feed.news} /> : null}
+          </View>
+
+          {/* tiny bottom spacer so it breathes above tab bar */}
+          <View style={{ height: 10 }} />
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -134,40 +123,32 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
-  safe: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
+  screen: { flex: 1, backgroundColor: "transparent" },
+  safe: { flex: 1 },
   content: {
-    paddingHorizontal: theme.spacing.xl,
-    gap: 14,
+    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
   },
-
   header: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 12,
+    marginBottom: 12,
   },
-  headerTitle: {
-    fontSize: 28,
+  title: {
+    fontSize: 44,
     fontWeight: "900",
-    color: "rgba(255,255,255,0.92)",
-    letterSpacing: 0.2,
+    color: "rgba(255,255,255,0.94)",
+    letterSpacing: -0.6,
   },
-
-  stack: {
-    gap: 14,
-  },
-
-  updatesLabel: {
+  section: {
+    marginTop: 16,
+    marginBottom: 10,
     textAlign: "center",
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 2,
-    color: "rgba(255,255,255,0.55)",
+    fontSize: 14,
+    letterSpacing: 2.2,
+    fontWeight: "800",
+    color: "rgba(255,255,255,0.45)",
+  },
+  stack: {
+    gap: 14, // tighter so MC stock fits without scroll
   },
 });

@@ -1,6 +1,17 @@
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import {
+    Alert,
+    Image,
+    Modal,
+    Pressable,
+    ScrollView,
+    Text,
+    View,
+    LayoutAnimation,
+    Platform,
+    UIManager,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import auth from "@react-native-firebase/auth";
@@ -39,6 +50,10 @@ const AVATARS: AvatarOption[] = [
     { id: "juice", emoji: "🧃", label: "Juice" },
 ];
 
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 function Divider() {
     return (
         <View
@@ -51,20 +66,28 @@ function Divider() {
     );
 }
 
-function SectionLabel({ children }: { children: string }) {
+function SectionLabel({
+    children,
+    icon,
+}: {
+    children: string;
+    icon?: React.ReactNode;
+}) {
     return (
-        <Text
-            style={{
-                fontSize: 12,
-                letterSpacing: 0.9,
-                textTransform: "uppercase",
-                color: "rgba(255,255,255,0.55)",
-                marginBottom: 10,
-                fontWeight: "900",
-            }}
-        >
-            {children}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+            {icon ? <View style={{ marginRight: 8 }}>{icon}</View> : null}
+            <Text
+                style={{
+                    fontSize: 12,
+                    letterSpacing: 0.9,
+                    textTransform: "uppercase",
+                    color: "rgba(255,255,255,0.55)",
+                    fontWeight: "900",
+                }}
+            >
+                {children}
+            </Text>
+        </View>
     );
 }
 
@@ -249,7 +272,14 @@ function maskEmail(email: string) {
 
 function StatRow({ label, value }: { label: string; value: number }) {
     return (
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10 }}>
+        <View
+            style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingVertical: 10,
+            }}
+        >
             <Text style={{ color: "rgba(255,255,255,0.70)", fontSize: 18, fontWeight: "900" }}>
                 {label}
             </Text>
@@ -260,37 +290,174 @@ function StatRow({ label, value }: { label: string; value: number }) {
     );
 }
 
-function BadgeRow({ title, subtitle }: { title: string; subtitle: string }) {
+type BadgeTier = "bronze" | "silver" | "gold" | "emerald" | "platinum";
+
+function tierStyle(tier: BadgeTier) {
+    switch (tier) {
+        case "bronze":
+            return {
+                dot: "rgba(205,127,50,0.90)",
+                border: "rgba(205,127,50,0.35)",
+                bg: "rgba(205,127,50,0.10)",
+            };
+        case "silver":
+            return {
+                dot: "rgba(200,200,210,0.95)",
+                border: "rgba(200,200,210,0.35)",
+                bg: "rgba(200,200,210,0.10)",
+            };
+        case "gold":
+            return {
+                dot: "rgba(212,175,55,0.95)",
+                border: "rgba(212,175,55,0.40)",
+                bg: "rgba(212,175,55,0.10)",
+            };
+        case "emerald":
+            return {
+                dot: "rgba(80,220,160,0.95)",
+                border: "rgba(80,220,160,0.35)",
+                bg: "rgba(80,220,160,0.10)",
+            };
+        case "platinum":
+            return {
+                dot: "rgba(235,235,245,0.95)",
+                border: "rgba(235,235,245,0.45)",
+                bg: "rgba(255,255,255,0.10)",
+            };
+    }
+}
+
+function BadgeRow({
+    title,
+    subtitle,
+    emoji,
+    tier,
+}: {
+    title: string;
+    subtitle: string;
+    emoji: string;
+    tier: BadgeTier;
+}) {
+    const t = tierStyle(tier);
+
     return (
         <View
             style={{
                 flexDirection: "row",
                 alignItems: "center",
-                paddingVertical: 16,
-                paddingHorizontal: 16,
+                paddingVertical: 14,
+                paddingHorizontal: 14,
                 borderRadius: 18,
-                backgroundColor: "rgba(0,0,0,0.14)",
+                backgroundColor: t.bg,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
+                borderColor: t.border,
             }}
         >
             <View
                 style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 7,
-                    backgroundColor: "rgba(212,175,55,0.85)",
-                    marginRight: 14,
+                    width: 44,
+                    height: 44,
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(0,0,0,0.14)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                    marginRight: 12,
                 }}
-            />
+            >
+                <Text style={{ fontSize: 22 }}>{emoji}</Text>
+            </View>
+
             <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.colors.textOnDark, fontSize: 24, fontWeight: "900", lineHeight: 26 }}>
+                <Text
+                    style={{
+                        color: theme.colors.textOnDark,
+                        fontSize: 18,
+                        fontWeight: "900",
+                        lineHeight: 22,
+                    }}
+                >
                     {title}
                 </Text>
-                <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 18, fontWeight: "800" }}>
+                <Text
+                    style={{
+                        marginTop: 4,
+                        color: "rgba(255,255,255,0.70)",
+                        fontSize: 14,
+                        fontWeight: "800",
+                        lineHeight: 18,
+                    }}
+                >
                     {subtitle}
                 </Text>
             </View>
+
+            <View
+                style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: t.dot,
+                    opacity: 0.95,
+                }}
+            />
+        </View>
+    );
+}
+
+function InfoParagraph({ children }: { children: string }) {
+    return (
+        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 20, fontSize: 14, marginTop: 8 }}>
+            {children}
+        </Text>
+    );
+}
+
+function AccordionItem({
+    title,
+    isOpen,
+    onToggle,
+    children,
+}: {
+    title: string;
+    isOpen: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <View
+            style={{
+                borderRadius: 18,
+                overflow: "hidden",
+                backgroundColor: "rgba(0,0,0,0.12)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+            }}
+        >
+            <Pressable
+                onPress={onToggle}
+                style={({ pressed }) => ({
+                    paddingVertical: 14,
+                    paddingHorizontal: 14,
+                    opacity: pressed ? 0.8 : 1,
+                })}
+            >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ flex: 1, color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
+                        {title}
+                    </Text>
+                    <Text style={{ color: "rgba(255,255,255,0.60)", fontSize: 18 }}>
+                        {isOpen ? "–" : "+"}
+                    </Text>
+                </View>
+            </Pressable>
+
+            {isOpen ? (
+                <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 2 }}>
+                    {children}
+                </View>
+            ) : null}
         </View>
     );
 }
@@ -323,6 +490,8 @@ export default function UserMenuScreen() {
 
     // Community stats fallback state
     const [reviewCountLoading, setReviewCountLoading] = useState<boolean>(false);
+
+    const [openInfoKey, setOpenInfoKey] = useState<string | null>(null);
 
     useEffect(() => {
         if (!uid) return;
@@ -416,7 +585,9 @@ export default function UserMenuScreen() {
     const headerBg = theme.colors.goldGlass;
     const editRightLabel = photoURL ? "Photo" : avatarId ? "Avatar" : "Set up";
 
-    const headerOneLiner = joinYear ? `Part of the community since ${joinYear}` : "Sharing honest experiences with the community";
+    const headerOneLiner = joinYear
+        ? `Part of the community since ${joinYear}`
+        : "Sharing honest experiences with the community";
 
     const statsBits: string[] = [];
     if (typeof reviewCount === "number") statsBits.push(`${reviewCount} reviews`);
@@ -425,7 +596,16 @@ export default function UserMenuScreen() {
     const statsLine = statsBits.length ? statsBits.join(" · ") : null;
 
     const safeReviewCount = typeof reviewCount === "number" ? reviewCount : 0;
-    const unlockedBadges = getUnlockedBadges(safeReviewCount);
+    const unlockedBadges = getUnlockedBadges({
+        reviewsWritten: safeReviewCount,
+        helpfulReceived,
+    });
+
+
+    const toggleInfo = (key: string) => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setOpenInfoKey((prev) => (prev === key ? null : key));
+    };
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
@@ -448,11 +628,7 @@ export default function UserMenuScreen() {
                     }}
                 >
                     <LinearGradient
-                        colors={[
-                            "rgba(212,175,55,0.18)",
-                            "rgba(255,255,255,0.06)",
-                            "rgba(0,0,0,0.10)",
-                        ]}
+                        colors={["rgba(212,175,55,0.18)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.10)"]}
                         start={{ x: 0.05, y: 0 }}
                         end={{ x: 0.95, y: 1 }}
                         style={{
@@ -512,54 +688,19 @@ export default function UserMenuScreen() {
                     </LinearGradient>
                 </View>
 
-                {/* Your Activity */}
+                {/* YOUR STATS (moved directly under header) */}
                 <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel>Your activity</SectionLabel>
-
-                    <Text
-                        style={{
-                            color: theme.colors.textOnDark,
-                            fontWeight: "900",
-                            fontSize: 16,
-                            marginBottom: 6,
-                        }}
+                    <SectionLabel
+                        icon={
+                            <Image
+                                source={budImg}
+                                resizeMode="contain"
+                                style={{ width: 14, height: 14, opacity: 0.9 }}
+                            />
+                        }
                     >
-                        Your recent reviews
-                    </Text>
-
-                    <Text
-                        style={{
-                            color: theme.colors.textOnDarkSecondary,
-                            lineHeight: 18,
-                        }}
-                    >
-                        {typeof reviewCount === "number"
-                            ? `You’ve shared ${reviewCount} review${reviewCount === 1 ? "" : "s"} so far.`
-                            : "Your reviews will show up here once you post a few."}
-                    </Text>
-
-                    <Text
-                        style={{
-                            marginTop: 10,
-                            color: theme.colors.textOnDarkSecondary,
-                            lineHeight: 18,
-                        }}
-                    >
-                        This is about contribution, not competition.
-                    </Text>
-
-                    <View style={{ marginTop: 12 }}>
-                        <MenuRow
-                            title="Reviews and scale"
-                            subtitle="How the bud score works and how to write reviews that actually help."
-                            onPress={() => router.push("/(tabs)/user/reviews-info")}
-                        />
-                    </View>
-                </GlassCard>
-
-                {/* YOUR STATS */}
-                <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel>Your stats</SectionLabel>
+                        Your stats
+                    </SectionLabel>
 
                     <StatRow label="Reviews written" value={reviewCountLoading ? 0 : safeReviewCount} />
                     <StatRow label="Helpful received" value={helpfulReceived} />
@@ -575,9 +716,115 @@ export default function UserMenuScreen() {
                             fontWeight: "700",
                         }}
                     >
-                        Your reviewsWritten is the number of reviews you have posted. Helpful received is the total
+                        Reviews written is the number of reviews you have posted. Helpful received is the total
                         number of helpful votes on all of your reviews.
                     </Text>
+                </GlassCard>
+
+                {/* HELPFUL INFORMATION */}
+                <GlassCard style={{ marginBottom: 14 }}>
+                    <SectionLabel>Helpful information</SectionLabel>
+
+                    <View style={{ gap: 10 }}>
+                        <AccordionItem
+                            title="Reviews & Scale"
+                            isOpen={openInfoKey === "reviewsScale"}
+                            onToggle={() => toggleInfo("reviewsScale")}
+                        >
+                            <InfoParagraph>
+                                Every review includes a bud rating and written notes. The bud rating is a quick signal, while the written review is where the useful detail lives.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                If you are deciding between products, look for repeated themes across multiple reviews rather than relying on a single opinion.
+                            </InfoParagraph>
+
+                            <View style={{ marginTop: 10 }}>
+                                <MenuRow
+                                    title="Read the scoring guide"
+                                    subtitle="How the bud score works and how to write reviews that actually help."
+                                    onPress={() => router.push("/(tabs)/user/reviews-info")}
+                                />
+                            </View>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            title="About the App"
+                            isOpen={openInfoKey === "about"}
+                            onToggle={() => toggleInfo("about")}
+                        >
+                            <InfoParagraph>
+                                This app started as a simple idea: make it easier to learn from real patient experiences.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                Medical cannabis reviews are often scattered across YouTube, Facebook groups, Reddit, and word of mouth. That makes it hard to compare products and spot consistent patterns.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                By bringing reviews into one place, we can aggregate experiences. For example, if lots of people report a product helps with migraines, that pattern can be useful, while still acknowledging that everyone responds differently.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                The goal is a community-driven platform that helps people navigate options with more confidence, using shared experience as a guide.
+                            </InfoParagraph>
+
+                            <View style={{ marginTop: 10 }}>
+                                <MenuRow
+                                    title="More about the app"
+                                    subtitle="The longer version, plus the community angle."
+                                    onPress={() => router.push("/(tabs)/user/about")}
+                                />
+                            </View>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            title="What’s Coming"
+                            isOpen={openInfoKey === "coming"}
+                            onToggle={() => toggleInfo("coming")}
+                        >
+                            <InfoParagraph>
+                                This is the first launch of the app, and it will evolve.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                We are open to feedback, especially when it is constructive and helps improve the experience for everyone.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                The app was built based on the creator’s own experience as a medical cannabis patient, with the aim of expanding over time to support more people, more products, and more use cases.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                Plans, not promises.
+                            </InfoParagraph>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            title="What This App Is Not"
+                            isOpen={openInfoKey === "not"}
+                            onToggle={() => toggleInfo("not")}
+                        >
+                            <InfoParagraph>
+                                This app is not medical advice.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                Reviews are personal experiences, not clinical guidance.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                Always take responsibility for your own decisions and speak to a qualified professional if you need medical support or advice, especially if you have underlying conditions, take other medications, or experience side effects.
+                            </InfoParagraph>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            title="Why Reviews Matter"
+                            isOpen={openInfoKey === "matter"}
+                            onToggle={() => toggleInfo("matter")}
+                        >
+                            <InfoParagraph>
+                                Peer insight can be valuable because it reflects real-world use.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                One review is just one experience, but patterns across many reviews can help guide decisions and set expectations.
+                            </InfoParagraph>
+                            <InfoParagraph>
+                                Use reviews to learn what to look out for, what tends to help others, and what might not suit you.
+                            </InfoParagraph>
+                        </AccordionItem>
+                    </View>
                 </GlassCard>
 
                 {/* COMMUNITY BADGES */}
@@ -585,9 +832,15 @@ export default function UserMenuScreen() {
                     <SectionLabel>Community badges</SectionLabel>
 
                     {unlockedBadges.length > 0 ? (
-                        <View style={{ gap: 12 }}>
+                        <View>
                             {unlockedBadges.map((b) => (
-                                <BadgeRow key={b.id} title={b.title} subtitle={b.subtitle} />
+                                <BadgeRow
+                                    key={b.id}
+                                    title={b.title}
+                                    subtitle={b.subtitle}
+                                    emoji={b.emoji}
+                                    tier={b.tier}
+                                />
                             ))}
                         </View>
                     ) : (
@@ -620,7 +873,7 @@ export default function UserMenuScreen() {
 
                     <MenuRow
                         title="Edit profile"
-                        subtitle="Update your display name, set a photo, or choose an avatar."
+                        subtitle="Update your display name - More features coming soon."
                         rightLabel={editRightLabel}
                         onPress={() => router.push("/(tabs)/user/edit-profile")}
                     />
@@ -645,33 +898,6 @@ export default function UserMenuScreen() {
                         subtitle="Bugs, ideas, features, new products. Anything welcome."
                         onPress={() => router.push("/(tabs)/user/feedback")}
                     />
-                </GlassCard>
-
-                {/* Future Features (soft teaser) */}
-                <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel>What’s coming</SectionLabel>
-
-                    <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                        More ways to personalise your experience
-                    </Text>
-                    <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                        Expanded profiles and community features
-                    </Text>
-                    <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                        Smarter recommendations over time
-                    </Text>
-
-                    <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", lineHeight: 18 }}>
-                        Plans, not promises.
-                    </Text>
-
-                    <View style={{ marginTop: 12 }}>
-                        <MenuRow
-                            title="About"
-                            subtitle="Where the app is heading and why the community side matters."
-                            onPress={() => router.push("/(tabs)/user/about")}
-                        />
-                    </View>
                 </GlassCard>
 
                 {/* Account & Security */}
@@ -742,12 +968,7 @@ export default function UserMenuScreen() {
             </ScrollView>
 
             {/* Avatar Picker */}
-            <Modal
-                visible={avatarPickerOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setAvatarPickerOpen(false)}
-            >
+            <Modal visible={avatarPickerOpen} transparent animationType="fade" onRequestClose={() => setAvatarPickerOpen(false)}>
                 <Pressable
                     onPress={() => setAvatarPickerOpen(false)}
                     style={{
@@ -768,29 +989,13 @@ export default function UserMenuScreen() {
                         }}
                     >
                         <LinearGradient
-                            colors={[
-                                "rgba(212,175,55,0.14)",
-                                "rgba(255,255,255,0.06)",
-                                "rgba(0,0,0,0.18)",
-                            ]}
+                            colors={["rgba(212,175,55,0.14)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.18)"]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                             style={{ padding: 16 }}
                         >
-                            <View
-                                style={{
-                                    flexDirection: "row",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                }}
-                            >
-                                <Text
-                                    style={{
-                                        fontSize: 22,
-                                        fontWeight: "900",
-                                        color: theme.colors.textOnDark,
-                                    }}
-                                >
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>
                                     Pick an avatar
                                 </Text>
 
@@ -806,9 +1011,7 @@ export default function UserMenuScreen() {
                                         opacity: pressed ? 0.8 : 1,
                                     })}
                                 >
-                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                                        Close
-                                    </Text>
+                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Close</Text>
                                 </Pressable>
                             </View>
 
@@ -838,13 +1041,9 @@ export default function UserMenuScreen() {
                                                     borderRadius: 18,
                                                     alignItems: "center",
                                                     justifyContent: "center",
-                                                    backgroundColor: active
-                                                        ? "rgba(212,175,55,0.20)"
-                                                        : "rgba(255,255,255,0.08)",
+                                                    backgroundColor: active ? "rgba(212,175,55,0.20)" : "rgba(255,255,255,0.08)",
                                                     borderWidth: 1,
-                                                    borderColor: active
-                                                        ? "rgba(212,175,55,0.55)"
-                                                        : "rgba(255,255,255,0.14)",
+                                                    borderColor: active ? "rgba(212,175,55,0.55)" : "rgba(255,255,255,0.14)",
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 26 }}>{a.emoji}</Text>
@@ -870,9 +1069,7 @@ export default function UserMenuScreen() {
                                     opacity: pressed ? 0.8 : 1,
                                 })}
                             >
-                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                                    Use default bud
-                                </Text>
+                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Use default bud</Text>
                             </Pressable>
                         </LinearGradient>
                     </Pressable>
