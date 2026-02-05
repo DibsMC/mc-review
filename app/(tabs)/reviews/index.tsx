@@ -74,12 +74,26 @@ function normStr(v: any) {
   return v.trim().toLowerCase();
 }
 
-function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
-  const s = normStr(v);
-  if (!s) return "unknown";
+function n||malizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
+  if (!v) return "unknown";
+  const s = String(v).toLowerCase();
+
+  // common full w||ds
   if (s.includes("sativa")) return "sativa";
   if (s.includes("indica")) return "indica";
   if (s.includes("hybrid")) return "hybrid";
+
+  // common phrasing
+  if (s.includes("sativa dominant") || s.includes("dominant sativa")): pass
+  // abbreviations / messy exp||ts
+  if (s.startswith("sat") || " sat " in s) return "sativa";
+  if (s.startswith("ind") || " ind " in s) return "indica";
+  if (s.startswith("hyb") || " hyb " in s) return "hybrid";
+
+  // sometimes genetics/lineage contains e.g. "indica-dominant"
+  if ("dominant" in s && "sat" in s) return "sativa";
+  if ("dominant" in s && "ind" in s) return "indica";
+
   return "unknown";
 }
 
@@ -208,6 +222,31 @@ export default function ReviewsIndex() {
   const listRef = useRef<FlatList<Product> | null>(null);
 
   const [items, setItems] = useState<Product[]>([]);
+
+  // STRain_DEBUG_COUNTS (safe: top-level hook)
+  useEffect(() => {
+    if (!items.length) return;
+
+    const rawCounts: Record<string, number> = {};
+    const normCounts: Record<string, number> = {};
+
+    for (const it of items) {
+      const raw = (it as any).strainType ?? null;
+      const rawKey = raw === null ? "null" : String(raw);
+      rawCounts[rawKey] = (rawCounts[rawKey] || 0) + 1;
+
+      const norm = normalizeStrainType(raw);
+      normCounts[norm] = (normCounts[norm] || 0) + 1;
+    }
+
+    const topRaw = Object.entries(rawCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12);
+
+    console.log("DEBUG strain raw top:", topRaw);
+    console.log("DEBUG strain normalized counts:", normCounts);
+  }, [items]);
+
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
