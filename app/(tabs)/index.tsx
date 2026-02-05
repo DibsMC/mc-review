@@ -1,19 +1,88 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import firestore from "@react-native-firebase/firestore";
 
 import { HomeCard } from "../../components/home/HomeCard";
 import { buildHomeCards } from "../../components/home/homeFeed";
 import { AmbientBackground } from "../../components/home/AmbientBackground";
 import { SkeletonCard } from "../../components/home/SkeletonCard";
 
-// If you already have real data wiring for these inputs, keep it.
-// This file is focused on layout + handlers correctness.
+type LatestBadge = {
+  badgeTitle: string;
+  badgeOwnerName: string;
+  badgeOwnerUid?: string;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
 
-  // TODO: replace these with your real derived values
+  const [latestBadge, setLatestBadge] = useState<LatestBadge | null>(null);
+  const [badgeLoading, setBadgeLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = firestore()
+      .collection("badgeAwards")
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .onSnapshot(
+        async (snap) => {
+          try {
+            const doc = snap.docs[0];
+            if (!doc) {
+              setLatestBadge(null);
+              setBadgeLoading(false);
+              return;
+            }
+
+            const data = doc.data() as any;
+
+            const badgeTitle =
+              typeof data.badgeTitle === "string" && data.badgeTitle.trim()
+                ? data.badgeTitle
+                : "Badge earned";
+
+            const uid = typeof data.userId === "string" ? data.userId : "";
+
+            if (!uid) {
+              setLatestBadge({ badgeTitle, badgeOwnerName: "Someone" });
+              setBadgeLoading(false);
+              return;
+            }
+
+            const userDoc = await firestore().collection("users").doc(uid).get();
+
+            const existsValue = (userDoc as any).exists;
+            const exists = typeof existsValue === "function" ? existsValue.call(userDoc) : !!existsValue;
+
+            const displayName = exists ? (userDoc.data() as any)?.displayName : null;
+
+
+            setLatestBadge({
+              badgeTitle,
+              badgeOwnerUid: uid,
+              badgeOwnerName:
+                typeof displayName === "string" && displayName.trim() ? displayName : "Someone",
+            });
+
+            setBadgeLoading(false);
+          } catch (e) {
+            console.log("Failed resolving latest badge award:", e);
+            setLatestBadge(null);
+            setBadgeLoading(false);
+          }
+        },
+        (err) => {
+          console.log("badgeAwards listener error:", err?.message || err);
+          setLatestBadge(null);
+          setBadgeLoading(false);
+        }
+      );
+
+    return () => unsub();
+  }, []);
+
   const input = useMemo(
     () => ({
       now: Date.now(),
@@ -33,12 +102,12 @@ export default function HomeScreen() {
       topRatedRating: null,
       topRatedRatingCount: null,
 
-      badgeTitle: "Consistent Reviewer",
-      badgeOwnerName: "Alex",
+      badgeTitle: latestBadge?.badgeTitle ?? "No badges yet",
+      badgeOwnerName: latestBadge?.badgeOwnerName ?? "",
 
       seedKey: "home-feed",
     }),
-    []
+    [latestBadge]
   );
 
   const handlers = useMemo(
@@ -49,14 +118,15 @@ export default function HomeScreen() {
 
       goToFlower: (productId: string) => router.push(`/reviews/${productId}`),
 
-      goToBadgeOwner: (ownerName?: string) => {
-        // If you have a better mapping (ownerName -> uid), swap this later.
-        // For now, send them to User tab/profile area.
+      goToBadgeOwner: () => {
+        if (latestBadge?.badgeOwnerUid) {
+          router.push(`/(tabs)/user/profile/${encodeURIComponent(latestBadge.badgeOwnerUid)}`);
+          return;
+        }
         router.push("/user");
       },
 
       openMcStock: async () => {
-        // MedBud Wiki - you can swap to the exact URL you want.
         const url = "https://medbud.wiki/";
         try {
           const supported = await Linking.canOpenURL(url);
@@ -70,12 +140,11 @@ export default function HomeScreen() {
         }
       },
     }),
-    [router]
+    [router, latestBadge?.badgeOwnerUid]
   );
 
   const feed = useMemo(() => buildHomeCards(input, handlers), [input, handlers]);
 
-  // If you have a real loading state, wire it in. Kept simple here.
   const loading = false;
 
   return (
@@ -112,9 +181,9 @@ export default function HomeScreen() {
 
           <View style={styles.stack}>
             {feed.news ? <HomeCard card={feed.news} /> : null}
+            {badgeLoading ? <Text style={styles.hint}>Updating badges…</Text> : null}
           </View>
 
-          {/* tiny bottom spacer so it breathes above tab bar */}
           <View style={{ height: 10 }} />
         </ScrollView>
       </SafeAreaView>
@@ -149,6 +218,14 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.45)",
   },
   stack: {
-    gap: 14, // tighter so MC stock fits without scroll
+    gap: 14,
+  },
+  hint: {
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+    color: "rgba(255,255,255,0.35)",
+    marginTop: 2,
   },
 });
