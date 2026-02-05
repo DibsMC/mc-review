@@ -10,6 +10,20 @@ const path = require("path");
 const admin = require("firebase-admin");
 const { parse } = require("csv-parse/sync");
 
+
+function normalizeStrainType(v) {
+  if (!v) return null;
+  const s = String(v).toLowerCase().trim();
+  if (s.includes("sativa")) return "sativa";
+  if (s.includes("indica")) return "indica";
+  if (s.includes("hybrid")) return "hybrid";
+  if (s.startsWith("sat")) return "sativa";
+  if (s.startsWith("ind")) return "indica";
+  if (s.startsWith("hyb")) return "hybrid";
+  return null;
+}
+
+
 const serviceAccountPath = path.join(__dirname, "serviceAccountKey.json");
 
 if (!fs.existsSync(serviceAccountPath)) {
@@ -122,7 +136,9 @@ async function main() {
                 maker: toNullIfBlank(row.maker) ?? "",
                 variant: toNullIfBlank(row.variant),
                 type: (toNullIfBlank(row.type) || "flower").toLowerCase(),
-                thcPct: toNumberOrNull(row.thcPct),
+                
+            strainType: normalizeStrainType(row.strainType),
+thcPct: toNumberOrNull(row.thcPct),
                 cbdPct: toNumberOrNull(row.cbdPct),
                 terpenes: toNullIfBlank(row.terpenes),
                 isActive: true,
