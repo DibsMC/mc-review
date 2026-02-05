@@ -75,24 +75,23 @@ function normStr(v: any) {
 }
 
 function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
-  if (v === null || v === undefined) return "unknown";
-
-  const s = String(v).trim().toLowerCase();
+  if (v == null) return "unknown";
+  const s = String(v).toLowerCase().trim();
   if (!s) return "unknown";
 
-  // direct matches
+  // most common
   if (s.includes("sativa")) return "sativa";
   if (s.includes("indica")) return "indica";
   if (s.includes("hybrid")) return "hybrid";
 
-  // common phrasing / abbreviations
-  if (s.startsWith("sat") || s.includes(" sat ") || s == "s") return "sativa";
-  if (s.startsWith("ind") || s.includes(" ind ") || s == "i") return "indica";
-  if (s.startsWith("hyb") || s.includes(" hyb ") || s == "h") return "hybrid";
+  // slightly messy/abbreviated inputs
+  if (s.startsWith("sat") || s.includes(" sat ")) return "sativa";
+  if (s.startsWith("ind") || s.includes(" ind ")) return "indica";
+  if (s.startsWith("hyb") || s.includes(" hyb ")) return "hybrid";
 
-  // genetics / dominance strings
-  if (s.includes("dominant") && (s.includes("sat") || s.includes("sativ"))) return "sativa";
-  if (s.includes("dominant") && (s.includes("ind") || s.includes("indic"))) return "indica";
+  // dominant phrasing
+    if (s.includes("dominant") && (s.includes("sat") || s.includes("sativa"))) return "sativa";
+  if (s.includes("dominant") && (s.includes("ind") || s.includes("indica"))) return "indica";
 
   return "unknown";
 }
@@ -350,20 +349,26 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
             maker: typeof data?.maker === "string" ? data.maker : "",
             variant: data?.variant ?? null,
             strainType: (() => {
-              // Prefer explicit fields
-              const candidates = [data?.strainType, data?.strain, data?.dominance, data?.genetics];
+            // Pull from a bunch of possible field names.
+            const candidates: any[] = [
+              (data as any)?.strainType,
+              (data as any)?.strain,
+              (data as any)?.dominance,
+              (data as any)?.type,      // some datasets use "type" for indica/sativa/hybrid
+              (data as any)?.genetics,
+              (data as any)?.lineage,
+              (data as any)?.category,
+            ];
 
-              // Some datasets incorrectly store strain in `type`. Only accept it if it actually looks like strain.
-              const t = typeof data?.type === "string" ? data.type : null;
-              if (t) candidates.push(t);
+            const tags = (data as any)?.tags;
+            if (Array.isArray(tags)) candidates.push(...tags);
 
-              for (const c of candidates) {
-                const norm = normalizeStrainType(c);
-                if (norm !== "unknown") return norm; // store normalized to simplify filtering
-              }
-
-              return null;
-            })(),
+            // First non-empty string wins (store RAW, we normalize later in filtering)
+            for (const c of candidates) {
+              if (typeof c === "string" && c.trim()) return c.trim();
+            }
+            return null;
+          })(),
             productType: typeof data?.productType === "string" ? data.productType : null,
             thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
             cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
