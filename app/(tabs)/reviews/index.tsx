@@ -390,7 +390,7 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
             }
             return null;
           })(),
-            productType: typeof data?.productType === "string" ? data.productType : typeof data?.type === "string" ? data.type : null,
+            productType: typeof data?.productType === "string" ? data.productType : null,
             thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
             cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
             terpenes: typeof data?.terpenes === "string" ? data.terpenes : null,
