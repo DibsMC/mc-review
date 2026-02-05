@@ -183,31 +183,20 @@ export function buildHomeCards(
         });
     }
 
-    /* ---------------- Lane D: discovery fallback ---------------- */
-
-    if (primary.length === 0) {
-        primary.push({
-            id: "caught_up",
-            type: "caught_up",
-            eyebrow: "All caught up",
-            title: "Nothing new since your last visit",
-            subtitle: "Browse flowers or write a review",
-            onPress: handlers.goToNewFlowers,
-        });
-    }
-
     /* ---------------- Bottom card: MC stock (replaces news) ----------------
        Keeping type as "news" so UI doesn't need refactor right now.
     */
     const news: HomeCardModel = {
         id: "mc_stock_1",
         type: "news",
-        eyebrow: "MC stock",
+        // remove eyebrow to avoid repeating "MC stock" twice
+        eyebrow: undefined,
         title: "Check MC stock",
-        subtitle: "Check stock availability on MedBud Wiki",
+        subtitle: "Availability on MedBud Wiki",
         meta: "Opens website",
         onPress: handlers.openMcStock,
     };
 
     return { primary: primary.slice(0, 5), news };
+
 }

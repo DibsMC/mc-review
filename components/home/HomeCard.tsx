@@ -1,6 +1,15 @@
 import React from "react";
-import { Image, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import {
+    ColorValue,
+    Image,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+    ViewStyle,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { JazzBudRating } from "../ui/JazzBudRating";
 
 const budImg = require("../../assets/icons/bud.png");
 
@@ -23,24 +32,62 @@ export type HomeCardModel = {
     meta?: string;
     onPress?: () => void;
 
-    // optional (some cards may pass these, we simply ignore if not present)
-    rating?: number | null;
+    // OPTIONAL: used by Trending / Top rated
+    rating?: number | null; // 0..5
     ratingCount?: number | null;
 };
 
-function iconCircleForType(type: HomeCardType) {
-    // Muted earthy tones. Keep subtle, not danger.
+function pillTheme(
+    type: HomeCardType
+): {
+    bg: readonly [ColorValue, ColorValue];
+    ring: ColorValue;
+    innerRing: ColorValue;
+} {
     switch (type) {
         case "badge":
-            return ["rgba(232,220,208,0.96)", "rgba(220,205,192,0.96)"] as const; // warm beige
+            return {
+                bg: ["rgba(206, 214, 210, 0.92)", "rgba(180, 194, 188, 0.92)"] as const,
+                ring: "rgba(255,255,255,0.22)",
+                innerRing: "rgba(0,0,0,0.10)",
+            };
+
         case "trending":
-            return ["rgba(190,210,205,0.96)", "rgba(172,196,190,0.96)"] as const; // sage
+            return {
+                bg: ["rgba(198, 220, 210, 0.92)", "rgba(165, 198, 182, 0.92)"] as const,
+                ring: "rgba(255,255,255,0.22)",
+                innerRing: "rgba(0,0,0,0.10)",
+            };
+
         case "top_rated":
-            return ["rgba(200,216,190,0.96)", "rgba(182,204,170,0.96)"] as const; // moss
+            return {
+                bg: ["rgba(200, 216, 226, 0.92)", "rgba(168, 190, 206, 0.92)"] as const,
+                ring: "rgba(255,255,255,0.22)",
+                innerRing: "rgba(0,0,0,0.10)",
+            };
+
+        case "new_flower":
+            return {
+                bg: ["rgba(210, 226, 206, 0.92)", "rgba(176, 204, 174, 0.92)"] as const,
+                ring: "rgba(255,255,255,0.22)",
+                innerRing: "rgba(0,0,0,0.10)",
+            };
+
+        case "new_review":
+        case "review_updated":
+            return {
+                bg: ["rgba(214, 214, 222, 0.92)", "rgba(186, 188, 202, 0.92)"] as const,
+                ring: "rgba(255,255,255,0.22)",
+                innerRing: "rgba(0,0,0,0.10)",
+            };
+
         case "news":
-            return ["rgba(205,216,220,0.96)", "rgba(186,202,208,0.96)"] as const; // cool grey-blue
         default:
-            return ["rgba(210,220,218,0.96)", "rgba(188,204,200,0.96)"] as const; // neutral sage
+            return {
+                bg: ["rgba(208, 220, 226, 0.92)", "rgba(176, 196, 206, 0.92)"] as const,
+                ring: "rgba(255,255,255,0.22)",
+                innerRing: "rgba(0,0,0,0.10)",
+            };
     }
 }
 
@@ -53,7 +100,12 @@ export function HomeCard({
     hero?: boolean;
     style?: ViewStyle;
 }) {
-    const circle = iconCircleForType(card.type);
+    const pill = pillTheme(card.type);
+
+    const showRating =
+        typeof card.rating === "number" &&
+        Number.isFinite(card.rating) &&
+        card.rating > 0;
 
     return (
         <Pressable
@@ -86,7 +138,10 @@ export function HomeCard({
                                 </Text>
                             ) : null}
 
-                            <Text style={[styles.title, hero ? styles.titleHero : null]} numberOfLines={1}>
+                            <Text
+                                style={[styles.title, hero ? styles.titleHero : null]}
+                                numberOfLines={1}
+                            >
                                 {card.title}
                             </Text>
 
@@ -96,6 +151,19 @@ export function HomeCard({
                                 </Text>
                             ) : null}
 
+                            {/* Rating row for Trending / Top rated */}
+                            {showRating ? (
+                                <View style={styles.ratingRow}>
+                                    <JazzBudRating value={card.rating ?? 0} size={16} />
+                                    <Text style={styles.ratingText}>
+                                        {Number(card.rating).toFixed(1)}
+                                        {typeof card.ratingCount === "number" && card.ratingCount > 0
+                                            ? ` (${card.ratingCount})`
+                                            : ""}
+                                    </Text>
+                                </View>
+                            ) : null}
+
                             {!!card.meta ? (
                                 <Text style={styles.meta} numberOfLines={1}>
                                     {card.meta}
@@ -103,10 +171,33 @@ export function HomeCard({
                             ) : null}
                         </View>
 
-                        {/* Earthy icon circle */}
-                        <View style={styles.iconWrap}>
-                            <LinearGradient colors={[...circle]} style={styles.iconCircle}>
-                                <Image source={budImg} style={styles.icon} resizeMode="contain" />
+                        {/* Bud pill */}
+                        <View style={styles.pillWrap}>
+                            <LinearGradient
+                                colors={pill.bg}
+                                style={styles.pill}
+                                start={{ x: 0.18, y: 0.18 }}
+                                end={{ x: 0.82, y: 0.82 }}
+                            >
+                                <View
+                                    pointerEvents="none"
+                                    style={[styles.pillRing, { borderColor: pill.ring }]}
+                                />
+                                <View
+                                    pointerEvents="none"
+                                    style={[styles.pillInnerRing, { borderColor: pill.innerRing }]}
+                                />
+
+                                <LinearGradient
+                                    pointerEvents="none"
+                                    colors={["rgba(255,255,255,0.42)", "rgba(255,255,255,0.00)"]}
+                                    style={styles.pillHighlight}
+                                    start={{ x: 0.15, y: 0.1 }}
+                                    end={{ x: 0.75, y: 0.85 }}
+                                />
+
+                                {/* IMPORTANT: no tintColor so the green bud stays green */}
+                                <Image source={budImg} style={styles.bud} resizeMode="contain" />
                             </LinearGradient>
                         </View>
                     </View>
@@ -145,8 +236,8 @@ const styles = StyleSheet.create({
     },
     surface: {
         borderRadius: R,
-        paddingVertical: 18,
-        paddingHorizontal: 18,
+        paddingVertical: 16,
+        paddingHorizontal: 16,
     },
     glowA: {
         position: "absolute",
@@ -169,7 +260,7 @@ const styles = StyleSheet.create({
     row: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 16,
+        gap: 14,
     },
     eyebrow: {
         fontSize: 12,
@@ -178,52 +269,77 @@ const styles = StyleSheet.create({
         fontWeight: "800",
     },
     title: {
-        marginTop: 10,
-        fontSize: 24,
+        marginTop: 8,
+        fontSize: 22,
         fontWeight: "900",
         color: "rgba(255,255,255,0.94)",
     },
     titleHero: {
-        fontSize: 28,
+        fontSize: 26,
     },
     subtitle: {
         marginTop: 6,
-        fontSize: 15,
-        fontWeight: "800",
-        color: "rgba(255,255,255,0.66)",
-        lineHeight: 20,
+        fontSize: 14,
+        fontWeight: "700",
+        color: "rgba(255,255,255,0.68)",
     },
-    meta: {
+
+    ratingRow: {
         marginTop: 10,
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    ratingText: {
+        marginLeft: 10,
+        fontWeight: "900",
+        color: "rgba(255,255,255,0.90)",
+    },
+
+    meta: {
+        marginTop: 8,
         fontSize: 12,
         fontWeight: "800",
         color: "rgba(255,255,255,0.52)",
     },
 
-    iconWrap: {
-        width: 78,
-        height: 78,
-        borderRadius: 39,
+    pillWrap: {
+        width: 74,
+        height: 74,
+        borderRadius: 999,
+        overflow: "hidden",
+    },
+    pill: {
+        width: "100%",
+        height: "100%",
+        borderRadius: 999,
         alignItems: "center",
         justifyContent: "center",
     },
-    iconCircle: {
-        width: 78,
-        height: 78,
-        borderRadius: 39,
-        alignItems: "center",
-        justifyContent: "center",
+    pillRing: {
+        position: "absolute",
+        inset: 0,
+        borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(0,0,0,0.08)",
-        shadowColor: "rgba(0,0,0,0.35)",
-        shadowOpacity: 0.25,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 8,
     },
-    icon: {
-        width: 34,
-        height: 34,
-        // No tint, we want the bud PNG to show naturally
+    pillInnerRing: {
+        position: "absolute",
+        inset: 7,
+        borderRadius: 999,
+        borderWidth: 1,
+        opacity: 0.9,
+    },
+    pillHighlight: {
+        position: "absolute",
+        left: 8,
+        top: 8,
+        width: 40,
+        height: 40,
+        borderRadius: 999,
+        opacity: 0.65,
+    },
+    bud: {
+        width: 46,
+        height: 46,
+        opacity: 0.98,
     },
 });
