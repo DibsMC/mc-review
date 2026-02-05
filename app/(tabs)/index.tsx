@@ -24,7 +24,7 @@ export default function HomeScreen() {
   useEffect(() => {
     const unsub = firestore()
       .collection("badgeAwards")
-      .orderBy("createdAt", "desc")
+      .orderBy("createdAtMs", "desc")
       .limit(1)
       .onSnapshot(
         async (snap) => {

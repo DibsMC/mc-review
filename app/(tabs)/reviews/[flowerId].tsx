@@ -887,6 +887,30 @@ export default function FlowerDetail() {
         setSortOpen(false);
     };
 
+
+    const maybeAwardDebugBadge = async (uid: string) => {
+        try {
+            const awardsRef = firestore().collection("badgeAwards");
+            const now = Date.now();
+
+            const docRef = await awardsRef.add({
+                badgeKey: `debug_${now}`,
+                badgeTitle: "Debug Award",
+                userId: uid,
+                createdAtMs: now,
+                createdAt: firestore.FieldValue.serverTimestamp(),
+            });
+
+            console.log("DEBUG badgeAwards wrote:", docRef.id);
+        } catch (e: any) {
+            console.log("DEBUG badgeAwards write failed:", e?.code || e?.message || e);
+        }
+    };
+
+
+
+
+
     const submitReview = async () => {
         if (submitting || isCooldown) return;
 
@@ -997,6 +1021,10 @@ export default function FlowerDetail() {
                     createdAt: firestore.FieldValue.serverTimestamp(),
                 });
             }
+
+            await maybeAwardDebugBadge(user.uid);
+
+
 
             Keyboard.dismiss();
             resetFormDefaults();
