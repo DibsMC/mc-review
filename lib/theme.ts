@@ -26,6 +26,8 @@ export const theme = {
         dividerOnDark: "rgba(255,255,255,0.10)",
         dividerOnLight: "rgba(15,17,21,0.10)",
         iconMuted: "#8C909D",
+        danger: "#FF5A5F",
+
 
         // Gold button
         primaryGold: "rgba(212, 175, 55, 1)",          // rich gold
