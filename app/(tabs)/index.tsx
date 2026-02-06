@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import firestore from "@react-native-firebase/firestore";
 
 import { HomeCard } from "../../components/home/HomeCard";
+import { BrandLogo } from "../../components/ui/BrandLogo";
 import { buildHomeCards } from "../../components/home/homeFeed";
 import { AmbientBackground } from "../../components/home/AmbientBackground";
 import { SkeletonCard } from "../../components/home/SkeletonCard";
@@ -45,6 +46,8 @@ export default function HomeScreen() {
 
   const [updated, setUpdated] = useState<Updated>(null);
   const [updatedLoading, setUpdatedLoading] = useState(true);
+  <BrandLogo size={72} top={6} right={14} opacity={0.95} />
+
 
   // ----------------------------
   // Badge earned (badgeAwards)
@@ -82,7 +85,7 @@ export default function HomeScreen() {
                 const u = userSnap.data() as any;
                 displayName = safeStr(u?.displayName);
               }
-            } catch {}
+            } catch { }
 
             setLatestBadge({
               badgeTitle,
@@ -142,7 +145,7 @@ export default function HomeScreen() {
                 const pData = prodSnap.data() as any;
                 title = safeStr(pData?.name) || title;
               }
-            } catch {}
+            } catch { }
 
             const snippet = clampSnippet(reviewText) || "Fresh notes have been added";
 
@@ -234,7 +237,7 @@ export default function HomeScreen() {
               const pData = prodSnap.data() as any;
               title = safeStr(pData?.name) || title;
             }
-          } catch {}
+          } catch { }
 
           const n = ns.get(topProductId) ?? 0;
           const sum = sums.get(topProductId) ?? 0;

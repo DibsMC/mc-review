@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Alert,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BrandLogo } from "../../../components/ui/BrandLogo";
 import auth from "@react-native-firebase/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 

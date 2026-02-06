@@ -1,0 +1,51 @@
+import React from "react";
+import { Image, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const logoImg = require("../../assets/brand/review-budz-logo.png");
+
+type Props = {
+    size?: number;
+    top?: number;
+    right?: number;
+    opacity?: number;
+};
+
+export function BrandLogo({
+    size = 92,
+    top = 8,
+    right = 14,
+    opacity = 1,
+}: Props) {
+    const insets = useSafeAreaInsets();
+
+    return (
+        <View
+      pointerEvents= "none"
+    style = {
+        [
+        styles.wrap,
+        {
+            top: insets.top + top,
+            right,
+            width: size,
+            height: size,
+            opacity,
+        },
+      ]}
+        >
+        <Image source={ logoImg } style = { styles.img } resizeMode = "contain" />
+            </View>
+  );
+}
+
+const styles = StyleSheet.create({
+    wrap: {
+        position: "absolute",
+        zIndex: 50,
+    },
+    img: {
+        width: "100%",
+        height: "100%",
+    },
+});
