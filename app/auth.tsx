@@ -17,8 +17,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { BrandLogo } from "../components/ui/BrandLogo";
-
 const LAST_EMAIL_KEY = "lastEmail";
 
 // Visual constants (keeps auth screen immune to "wash" overlays)
@@ -217,7 +215,6 @@ export default function AuthScreen() {
       </ImageBackground>
 
       {/* Logo must be OUTSIDE ImageBackground so it sits above it */}
-      <BrandLogo size={86} top={10} right={16} opacity={0.98} />
     </SafeAreaView>
   );
 }
