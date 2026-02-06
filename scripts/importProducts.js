@@ -89,7 +89,44 @@ async function main() {
         process.exit(1);
     }
 
-    const csvPath = path.isAbsolute(csvPathArg)
+    
+// --- Optional strainType overrides ---
+// Put overrides in: data/strainType_overrides.csv
+// Format:
+// id,strainType
+// some-id,sativa
+// other-id,indica
+function loadStrainOverrides() {
+  try {
+    const overridePath = path.join(process.cwd(), "data", "strainType_overrides.csv");
+    if (!fs.existsSync(overridePath)) return {};
+    const txt = fs.readFileSync(overridePath, "utf8");
+    const lines = txt.split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return {};
+    const header = lines[0].split(",");
+    const idIdx = header.indexOf("id");
+    const stIdx = header.indexOf("strainType");
+    if (idIdx === -1 || stIdx === -1) return {};
+
+    const map = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(",");
+      const id = (cols[idIdx] || "").trim();
+      const st = (cols[stIdx] || "").trim().toLowerCase();
+      if (!id) continue;
+      if (st !== "sativa" && st !== "indica" && st !== "hybrid") continue;
+      map[id] = st;
+    }
+    return map;
+  } catch (e) {
+    console.log("strain overrides load failed:", e?.message || e);
+    return {};
+  }
+}
+
+const strainOverrides = loadStrainOverrides();
+
+const csvPath = path.isAbsolute(csvPathArg)
         ? csvPathArg
         : path.join(process.cwd(), csvPathArg);
 
