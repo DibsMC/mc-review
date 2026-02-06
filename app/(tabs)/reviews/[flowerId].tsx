@@ -288,6 +288,7 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
                         style={{
                             width: size,
                             height: size,
+                            position: "relative",
                             marginRight: i === 4 ? 0 : 8,
                         }}
                     >
@@ -295,6 +296,7 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
 
                         {fill > 0 ? (
                             <View
+                                pointerEvents="none"
                                 style={{
                                     position: "absolute",
                                     left: 0,
@@ -537,7 +539,7 @@ const styles = StyleSheet.create({
     },
     actionPillActive: {
         borderColor: "rgba(212,175,55,0.55)",
-        backgroundColor: "rgba(212,175,55,0.90)",
+        backgroundColor: "rgba(212, 175, 55, 0.77)",
     },
     actionPillText: {
         fontWeight: "900",
@@ -1847,12 +1849,14 @@ export default function FlowerDetail() {
                                                         paddingVertical: 8,
                                                     }}
                                                 >
-                                                    <Text style={{
-                                                        fontWeight: "800",
-                                                        color: theme.colors.textOnDark, // changed this to dark for better visibility
-                                                        flex: 1,
-                                                        marginRight: 12,
-                                                    }}>
+                                                    <Text
+                                                        style={{
+                                                            fontWeight: "800",
+                                                            color: theme.colors.textOnDark, // changed this to dark for better visibility
+                                                            flex: 1,
+                                                            marginRight: 12,
+                                                        }}
+                                                    >
                                                         {row.label}
                                                     </Text>
 
@@ -1868,6 +1872,9 @@ export default function FlowerDetail() {
                                                         >
                                                             {round1(row.avg).toFixed(1)}
                                                         </Text>
+
+                                                        {/* BudRating */}
+                                                        <BudRating value={Number.isFinite(row.avg) ? row.avg : 0} size={14} />
                                                     </View>
                                                 </View>
                                             ))}
