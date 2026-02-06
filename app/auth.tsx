@@ -14,9 +14,10 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BrandLogo } from "../../../components/ui/BrandLogo";
 import auth from "@react-native-firebase/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
+
+import { BrandLogo } from "../components/ui/BrandLogo";
 
 const LAST_EMAIL_KEY = "lastEmail";
 
@@ -116,7 +117,7 @@ export default function AuthScreen() {
         style={StyleSheet.absoluteFill}
       >
         <View style={styles.scrim} pointerEvents="none" />
-        {/* Solid background prevents the dim "overlay wash" */}
+
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -207,11 +208,16 @@ export default function AuthScreen() {
               </Pressable>
 
               <View style={{ height: 10 }} />
-              <Text style={styles.hint}>Tip: we’ll remember your email next time.</Text>
+              <Text style={styles.hint}>
+                Tip: we’ll remember your email next time.
+              </Text>
             </Glass>
           </View>
         </KeyboardAvoidingView>
       </ImageBackground>
+
+      {/* Logo must be OUTSIDE ImageBackground so it sits above it */}
+      <BrandLogo size={86} top={10} right={16} opacity={0.98} />
     </SafeAreaView>
   );
 }
@@ -264,7 +270,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
-
 
   title: {
     fontSize: 26,

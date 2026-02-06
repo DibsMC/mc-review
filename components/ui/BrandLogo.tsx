@@ -41,7 +41,9 @@ export function BrandLogo({
 const styles = StyleSheet.create({
   wrap: {
     position: "absolute",
-    zIndex: 50,
+    zIndex: 99999,
+    elevation: 99999,
+    overflow: "visible",
   },
   img: {
     width: "100%",
