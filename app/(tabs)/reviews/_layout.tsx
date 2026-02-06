@@ -51,6 +51,10 @@ export default function ReviewsLayout() {
 
       {/* Legacy route kept working */}
       <Stack.Screen name="[flowerId]" options={{ headerShown: true, headerTitle: "" }} />
+      <Stack.Screen
+        name="product/[productId]/index"
+        options={{ headerShown: true, headerTitle: "", headerShadowVisible: false }}
+      />
     </Stack>
   );
 }

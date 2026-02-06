@@ -19,13 +19,16 @@ import {
   TextInput,
   View,
   FlatList,
+  ImageBackground,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import { theme } from "../../../lib/theme";
 
 const budImg = require("../../../assets/icons/bud.png");
+const flowersBg = require("../../../assets/images/flowers-bg.png");
 
 type Product = {
   id: string;
@@ -632,36 +635,39 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
   };
 
   const windowH = Dimensions.get("window").height;
+  const bgShift = Math.round(windowH * 0.18);
+  const bgScale = 1.12;
   const floatingSize = 46;
   const floatingTop = Math.max(insets.top + 68, Math.round(windowH * 0.2));
-
-  if (loadingProducts) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent", padding: theme.spacing.xl }}>
-        <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
-        <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary, ...theme.typography.body }}>
-          Loading products...
-        </Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (errorMsg) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent", padding: theme.spacing.xl }}>
-        <Text style={{ fontSize: 18, fontWeight: "800", marginBottom: 8, color: theme.colors.textOnDark }}>
-          Could not load products
-        </Text>
-        <Text style={{ marginBottom: 14, color: theme.colors.textOnDarkSecondary, ...theme.typography.body }}>
-          {errorMsg}
-        </Text>
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <View style={{ flex: 1, backgroundColor: "transparent" }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+    <View style={{ flex: 1 }}>
+      <ImageBackground
+        source={flowersBg}
+        resizeMode="cover"
+        style={StyleSheet.absoluteFillObject}
+        imageStyle={{ transform: [{ translateY: bgShift }, { scale: bgScale }] }}
+      />
+      <View pointerEvents="none" style={styles.bgWash} />
+
+      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top", "bottom"]}>
+        {loadingProducts ? (
+          <View style={styles.stateWrap}>
+            <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
+            <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary, ...theme.typography.body }}>
+              Loading products...
+            </Text>
+          </View>
+        ) : errorMsg ? (
+          <View style={styles.stateWrap}>
+            <Text style={{ fontSize: 18, fontWeight: "800", marginBottom: 8, color: theme.colors.textOnDark }}>
+              Could not load products
+            </Text>
+            <Text style={{ marginBottom: 14, color: theme.colors.textOnDarkSecondary, ...theme.typography.body }}>
+              {errorMsg}
+            </Text>
+          </View>
+        ) : (
+          <>
         <Animated.FlatList
           ref={(r) => {
             listRef.current = r as any;
@@ -669,7 +675,7 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
           data={displayItems}
           keyExtractor={(item) => item.id}
           style={{ flex: 1, backgroundColor: "transparent" }}
-          contentContainerStyle={{ paddingBottom: theme.spacing.xxl }}
+          contentContainerStyle={{ paddingBottom: theme.spacing.xxl + insets.bottom + 120 }}
           ListHeaderComponent={<View style={{ height: headerH + 14 }} />}
           ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
           scrollEventThrottle={16}
@@ -756,6 +762,13 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
           }}
         />
 
+        <LinearGradient
+          pointerEvents="none"
+          colors={["rgba(10,11,15,0.92)", "rgba(10,11,15,0.72)", "rgba(10,11,15,0.00)"]}
+          locations={[0, 0.55, 1]}
+          style={styles.topUiMask}
+        />
+
         {/* Overlay header */}
         <Animated.View
           onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
@@ -771,7 +784,7 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
           }}
         >
           <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-            <View style={{ flex: 1, backgroundColor: "rgba(10,11,15,0.96)" }} />
+            <View style={{ flex: 1, backgroundColor: "rgba(10,11,15,0.00)" }} />
           </View>
 
           <View
@@ -779,8 +792,8 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
               paddingHorizontal: theme.spacing.xl,
               paddingTop: insets.top + theme.spacing.md,
               paddingBottom: theme.spacing.lg,
-              backgroundColor: "rgba(10,11,15,0.92)",
-              borderBottomWidth: 1,
+              backgroundColor: "rgba(10,11,15,0.82)",
+              borderBottomWidth: 0,
               borderBottomColor: "rgba(255,255,255,0.10)",
             }}
           >
@@ -821,8 +834,8 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
             </View>
 
             <View style={{ marginTop: theme.spacing.sm }}>
-              <Text style={{ color: "rgba(255,255,255,0.65)", fontWeight: "700", fontSize: 12 }}>
-                Sort: {sortLabel(sortKey)}
+              <Text style={{ color: "rgba(255,255,255,0.78)", fontWeight: "700", fontSize: 12 }}>
+                Sorting by: {sortLabel(sortKey)}
                 {activeFilterCount > 0 ? ` | Filters: ${activeFilterCount}` : ""}
               </Text>
 
@@ -1282,12 +1295,49 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
             </View>
           </View>
         </Modal>
+          </>
+        )}
+        <LinearGradient
+          pointerEvents="none"
+          colors={["rgba(10,11,15,0.00)", "rgba(10,11,15,0.60)", "rgba(10,11,15,0.82)"]}
+          locations={[0, 0.55, 1]}
+          style={styles.bottomUiMask}
+        />
+
       </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  bottomUiMask: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 90,
+  },
+
+  topUiMask: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 300,
+  },
+
+  bgWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.42)",
+  },
+
+  stateWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+
   // Rich red, not "danger"
   favBadge: {
     position: "absolute",

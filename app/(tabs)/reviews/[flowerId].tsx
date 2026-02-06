@@ -14,6 +14,8 @@ import {
     Text,
     TextInput,
     View,
+    Dimensions,
+    ImageBackground
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -403,13 +405,297 @@ function BlingButton({
 
 /* ==================== SCREEN ==================== */
 
-export default function FlowerDetail() {
-  const { flowerId, productId: productIdParam } = useLocalSearchParams<{ flowerId?: string; productId?: string }>();
-  const productId = typeof productIdParam === "string" ? productIdParam : typeof flowerId === "string" ? flowerId : "";
+const styles = StyleSheet.create({
+    topUiFade: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 170,
+    },
+    bottomUiFade: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 120,
+    },
 
-  const insets = useSafeAreaInsets();
-  // Header is transparent, so push content below the header/back button area
-  const TOP_PAD = insets.top + 22;
+    blingBtnOuter: {
+        height: 58,
+        borderRadius: 20,
+        borderWidth: 1,
+        overflow: "hidden",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    blingBtnText: {
+        fontWeight: "900",
+        fontSize: 18,
+        lineHeight: 20,
+        textAlign: "center",
+        includeFontPadding: false,
+        textAlignVertical: "center",
+    },
+    blingGloss: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        height: 22,
+        opacity: 0.9,
+    },
+    blingInnerGlow: {
+        position: "absolute",
+        left: 10,
+        right: 10,
+        top: 10,
+        bottom: 10,
+        borderRadius: 16,
+        backgroundColor: "rgba(255,255,255,0.10)",
+        opacity: 0.35,
+    },
+
+    sortPill: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(246,247,248,0.30)",
+    },
+
+    favPill: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(255,255,255,0.08)",
+        alignSelf: "flex-start",
+    },
+    favPillActive: {
+        borderColor: "rgba(185,70,95,0.45)",
+        backgroundColor: "rgba(185,70,95,0.14)",
+    },
+    favStar: {
+        fontSize: 18,
+        lineHeight: 18,
+        marginRight: 10,
+        fontWeight: "900",
+    },
+    favStarOn: {
+        // rich ruby red (not hazard red)
+        color: "rgba(185,70,95,0.98)",
+        textShadowColor: "rgba(185,70,95,0.22)",
+        textShadowOffset: { width: 0, height: 6 },
+        textShadowRadius: 12,
+    },
+    favStarOff: {
+        color: "rgba(255,255,255,0.55)",
+    },
+    favText: {
+        fontWeight: "900",
+        includeFontPadding: false,
+    },
+    favTextOn: {
+        color: "rgba(255,255,255,0.92)",
+    },
+    favTextOff: {
+        color: "rgba(255,255,255,0.78)",
+    },
+
+    reviewItem: {
+        marginHorizontal: 16,
+        padding: 14,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(7, 51, 96, 0.45)",
+        overflow: "hidden",
+    },
+
+    actionsRow: {
+        marginTop: 12,
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 10,
+        alignItems: "center",
+    },
+
+    actionPill: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(255,255,255,0.10)",
+    },
+    actionPillActive: {
+        borderColor: "rgba(212,175,55,0.55)",
+        backgroundColor: "rgba(212,175,55,0.90)",
+    },
+    actionPillText: {
+        fontWeight: "900",
+        color: theme.colors.textOnDark,
+    },
+    countPill: {
+        marginLeft: 10,
+        minWidth: 28,
+        height: 22,
+        paddingHorizontal: 8,
+        borderRadius: 999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(0,0,0,0.32)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+    },
+    countPillText: {
+        color: "rgba(255,255,255,0.90)",
+        fontWeight: "900",
+        fontSize: 12,
+    },
+
+    dangerPill: {
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,120,120,0.32)",
+        backgroundColor: "rgba(255,120,120,0.14)",
+    },
+    dangerPillText: {
+        fontWeight: "900",
+        color: "rgba(255,160,160,1)",
+    },
+
+    adminPill: {
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(0,0,0,0.25)",
+    },
+    adminPillText: {
+        fontWeight: "900",
+        color: "rgba(255,255,255,0.78)",
+    },
+
+    reviewCard: {
+        marginTop: 18,
+        padding: 16,
+        borderRadius: 22,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "rgba(7, 51, 96, 0.45)",
+        overflow: "hidden",
+    },
+
+    notesInput: {
+        minHeight: 110,
+        maxHeight: 190,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.14)",
+        borderRadius: 16,
+        paddingHorizontal: 14,
+        paddingTop: 14,
+        paddingBottom: 14,
+        fontSize: 16,
+        lineHeight: 22,
+        backgroundColor: "rgba(0,0,0,0.22)",
+        color: theme.colors.textOnDark,
+    },
+
+    formBtn: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 16,
+        backgroundColor: "rgba(0,0,0,0.70)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    formBtnAlt: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.14)",
+        backgroundColor: "rgba(255,255,255,0.10)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    formBtnText: {
+        fontWeight: "900",
+        textAlign: "center",
+        color: "#fff",
+        includeFontPadding: false,
+    },
+
+    toast: {
+        backgroundColor: "rgba(0,0,0,0.75)",
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        width: "100%",
+        maxWidth: 340,
+    },
+    toastHint: {
+        marginTop: 10,
+        fontSize: 14,
+        color: "rgba(255,255,255,0.62)",
+        textAlign: "center",
+        width: "100%",
+        maxWidth: 340,
+        lineHeight: 20,
+    },
+
+    ratingDot: {
+        width: 58,
+        height: 58,
+        borderRadius: 29,
+        borderWidth: 2,
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+    },
+    ratingDotUnselected: {
+        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(255,255,255,0.04)",
+    },
+    ratingDotSelected: {
+        borderColor: "rgba(212,175,55,0.85)",
+        backgroundColor: "rgba(212,175,55,0.12)",
+    },
+    ratingRing: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        borderRadius: 999,
+        borderWidth: 2,
+        borderColor: "rgba(212,175,55,0.75)",
+    },
+});
+
+export default function FlowerDetail() {
+    const { flowerId, productId: productIdParam } = useLocalSearchParams<{ flowerId?: string; productId?: string }>();
+    const productId = typeof productIdParam === "string" ? productIdParam : typeof flowerId === "string" ? flowerId : "";
+
+    const insets = useSafeAreaInsets();
+    // Header is transparent, so push content below the header/back button area
+    const TOP_PAD = insets.top + 22;
+
+
+    const { height: windowH } = Dimensions.get("window");
+    const bgShift = Math.round(windowH * 0.18);
+    const bgScale = 1.12;
 
     const [product, setProduct] = useState<Product | null>(null);
     const [loadingProduct, setLoadingProduct] = useState(true);
@@ -1000,7 +1286,7 @@ export default function FlowerDetail() {
 
                     editedAt: firestore.FieldValue.serverTimestamp(),
                     updatedAt: firestore.FieldValue.serverTimestamp(),
-});
+                });
             } else {
                 await firestore().collection("reviews").add({
                     productId: String(productId),
@@ -1025,7 +1311,7 @@ export default function FlowerDetail() {
 
                     createdAt: firestore.FieldValue.serverTimestamp(),
                     updatedAt: firestore.FieldValue.serverTimestamp(),
-});
+                });
             }
 
             await maybeAwardDebugBadge(user.uid);
@@ -1160,6 +1446,34 @@ export default function FlowerDetail() {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent", paddingTop: TOP_PAD }}>
+
+            {/* Background image */}
+            <ImageBackground
+                source={require("../../../assets/images/flowers-bg.png")}
+                resizeMode="cover"
+                style={StyleSheet.absoluteFillObject}
+                imageStyle={{ transform: [{ translateY: bgShift }, { scale: bgScale }] }}
+            />
+
+            {/* Global dark wash for readability */}
+            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0, 0, 0, 0.49)" }]} />
+
+            {/* Top fade (keeps header/back area clean) */}
+            <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(0,0,0,0.70)", "rgba(0,0,0,0.35)", "rgba(0,0,0,0.00)"]}
+                locations={[0, 0.55, 1]}
+                style={styles.topUiFade}
+            />
+
+            {/* Bottom fade (smaller, per your request) */}
+            <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(0,0,0,0.00)", "rgba(0,0,0,0.30)", "rgba(0,0,0,0.65)"]}
+                locations={[0, 0.65, 1]}
+                style={styles.bottomUiFade}
+            />
+
             {/* Sort menu Modal */}
             <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
                 <Pressable onPress={() => setSortOpen(false)} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.10)" }}>
@@ -1173,7 +1487,7 @@ export default function FlowerDetail() {
                                 width: 190,
                                 borderWidth: 1,
                                 borderColor: "rgba(255,255,255,0.18)",
-                                backgroundColor: "rgba(246,247,248,0.14)",
+                                backgroundColor: "rgba(246,247,248,0.30)",
                                 borderRadius: 14,
                                 overflow: "hidden",
                                 elevation: 12,
@@ -1220,6 +1534,120 @@ export default function FlowerDetail() {
                     }}
                     contentContainerStyle={{ paddingBottom: 24 }}
                     ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+                    renderItem={({ item: review }: { item: Review }) => (
+                        <View style={styles.reviewItem}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, fontSize: 16 }}>
+                                        {displayNameForUid(review.userId)}
+                                    </Text>
+                                    <Text style={{ marginTop: 4, color: theme.colors.textOnDarkSecondary, fontSize: 13 }}>
+                                        {new Date(getCreatedAtMs(review)).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                                <BudRating value={getReviewScore(review)} size={14} />
+                            </View>
+
+                            {review.text ? (
+                                <Text style={{ marginTop: 10, color: theme.colors.textOnDark, lineHeight: 20 }}>
+                                    {review.text}
+                                </Text>
+                            ) : null}
+
+                            {/* Effects display */}
+                            {[
+                                { label: "Daytime", value: review.daytime },
+                                { label: "Sleepy", value: review.sleepy },
+                                { label: "Calm", value: review.calm },
+                                { label: "Clarity", value: review.clarity },
+                                { label: "Back pain", value: review.backPain },
+                                { label: "Joint pain", value: review.jointPain },
+                                { label: "Leg pain", value: review.legPain },
+                                { label: "Headache", value: review.headacheRelief },
+                                { label: "Racing thoughts", value: review.racingThoughts },
+                            ].some((e) => typeof e.value === "number" && e.value >= 1 && e.value <= 5) ? (
+                                <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                    {[
+                                        { label: "Daytime", value: review.daytime },
+                                        { label: "Sleepy", value: review.sleepy },
+                                        { label: "Calm", value: review.calm },
+                                        { label: "Clarity", value: review.clarity },
+                                        { label: "Back pain", value: review.backPain },
+                                        { label: "Joint pain", value: review.jointPain },
+                                        { label: "Leg pain", value: review.legPain },
+                                        { label: "Headache", value: review.headacheRelief },
+                                        { label: "Racing thoughts", value: review.racingThoughts },
+                                    ]
+                                        .filter((e) => typeof e.value === "number" && e.value >= 1 && e.value <= 5)
+                                        .map((e) => {
+                                            const displayValue = typeof e.value === "number" ? Math.round(e.value * 10) / 10 : 0;
+                                            return (
+                                                <View
+                                                    key={e.label}
+                                                    style={{
+                                                        paddingVertical: 6,
+                                                        paddingHorizontal: 10,
+                                                        borderRadius: 999,
+                                                        backgroundColor: "rgba(212,175,55,0.20)",
+                                                        borderWidth: 1,
+                                                        borderColor: "rgba(212,175,55,0.40)",
+                                                    }}
+                                                >
+                                                    <Text style={{ fontWeight: "900", fontSize: 12, color: theme.colors.textOnDark }}>
+                                                        {e.label} {displayValue}
+                                                    </Text>
+                                                </View>
+                                            );
+                                        })}
+                                </View>
+                            ) : null}
+
+                            {/* Actions */}
+                            <View style={styles.actionsRow}>
+                                <Pressable
+                                    onPress={() => toggleHelpful(review.id)}
+                                    style={[
+                                        styles.actionPill,
+                                        review.helpfulVoters?.includes(currentUid) ? styles.actionPillActive : null,
+                                    ]}
+                                >
+                                    <Text style={styles.actionPillText}>Helpful</Text>
+                                    {review.helpfulCount ? (
+                                        <View style={styles.countPill}>
+                                            <Text style={styles.countPillText}>{review.helpfulCount}</Text>
+                                        </View>
+                                    ) : null}
+                                </Pressable>
+
+                                {review.userId === currentUid ? (
+                                    <Pressable
+                                        onPress={() => openEditLastReview()}
+                                        style={styles.actionPill}
+                                    >
+                                        <Text style={styles.actionPillText}>Edit</Text>
+                                    </Pressable>
+                                ) : null}
+
+                                {review.userId === currentUid ? (
+                                    <Pressable
+                                        onPress={() => confirmDelete(review.id, "owner")}
+                                        style={styles.dangerPill}
+                                    >
+                                        <Text style={styles.dangerPillText}>Delete</Text>
+                                    </Pressable>
+                                ) : null}
+
+                                {isAdmin ? (
+                                    <Pressable
+                                        onPress={() => confirmDelete(review.id, "admin")}
+                                        style={styles.adminPill}
+                                    >
+                                        <Text style={styles.adminPillText}>Admin delete</Text>
+                                    </Pressable>
+                                ) : null}
+                            </View>
+                        </View>
+                    )}
                     ListHeaderComponent={
                         <View style={{ padding: 16 }}>
                             {/* HERO glass card */}
@@ -1227,7 +1655,7 @@ export default function FlowerDetail() {
                                 style={{
                                     borderRadius: 22,
                                     padding: 16,
-                                    backgroundColor: "rgba(246,247,248,0.14)",
+                                    backgroundColor: "rgba(7, 51, 96, 0.45)",
                                     borderWidth: 1,
                                     borderColor: "rgba(255,255,255,0.16)",
                                     overflow: "hidden",
@@ -1239,7 +1667,7 @@ export default function FlowerDetail() {
                                 </Text>
 
                                 {/* Meta line */}
-                                <Text style={{ marginTop: 10, fontSize: 15, opacity: 0.95, color: theme.colors.textOnDarkSecondary }}>
+                                <Text style={{ marginTop: 10, fontSize: 15, opacity: 0.95, color: theme.colors.textOnDark }}>
                                     {(product.maker || "Unknown maker") +
                                         " · " +
                                         (product.type || "flower") +
@@ -1271,7 +1699,7 @@ export default function FlowerDetail() {
 
                                 {/* Terpenes */}
                                 <View style={{ marginTop: 12 }}>
-                                    <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>
+                                    <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, marginBottom: 8 }}>
                                         Terpenes
                                     </Text>
 
@@ -1360,13 +1788,20 @@ export default function FlowerDetail() {
                                             </Text>
                                         </>
                                     ) : (
-                                        <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDarkSecondary }}>
+                                        <Text style={{
+                                            fontSize: 20,
+                                            fontWeight: "900",
+                                            color: theme.colors.textOnDark
+                                        }}>
                                             No ratings yet
                                         </Text>
                                     )}
                                 </View>
 
-                                <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, opacity: 0.95 }}>
+                                <Text style={{
+                                    marginTop: 6, color: theme.colors.textOnDark,
+                                    opacity: 1
+                                }}>
                                     {reviews.length ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}` : "Be the first to review this"}
                                 </Text>
 
@@ -1377,8 +1812,8 @@ export default function FlowerDetail() {
                                         padding: 14,
                                         borderRadius: 18,
                                         borderWidth: 1,
-                                        borderColor: "rgba(255,255,255,0.18)",
-                                        backgroundColor: "rgba(246,247,248,0.14)",
+                                        borderColor: "rgba(255, 255, 255, 0)",
+                                        backgroundColor: "rgba(107, 114, 120, 0)",
                                         overflow: "hidden",
                                     }}
                                 >
@@ -1397,7 +1832,6 @@ export default function FlowerDetail() {
                                                 { label: "Sleepiness", avg: effectsSummary.sleepyAvg },
                                                 { label: "Calm", avg: effectsSummary.calmAvg },
                                                 { label: "Mental clarity", avg: effectsSummary.clarityAvg },
-
                                                 { label: "Back pain relief", avg: effectsSummary.backPainAvg },
                                                 { label: "Joint pain relief", avg: effectsSummary.jointPainAvg },
                                                 { label: "Leg pain relief", avg: effectsSummary.legPainAvg },
@@ -1413,17 +1847,21 @@ export default function FlowerDetail() {
                                                         paddingVertical: 8,
                                                     }}
                                                 >
-                                                    <Text style={{ fontWeight: "800", color: theme.colors.textOnDarkSecondary, flex: 1, marginRight: 12 }}>
+                                                    <Text style={{
+                                                        fontWeight: "800",
+                                                        color: theme.colors.textOnDark, // changed this to dark for better visibility
+                                                        flex: 1,
+                                                        marginRight: 12,
+                                                    }}>
                                                         {row.label}
                                                     </Text>
 
                                                     <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                                        <BudRating value={row.avg} size={16} />
                                                         <Text
                                                             style={{
                                                                 marginLeft: 10,
                                                                 fontWeight: "900",
-                                                                color: theme.colors.textOnDark,
+                                                                color: theme.colors.textOnDark, // same color here for consistency
                                                                 minWidth: 44,
                                                                 textAlign: "right",
                                                             }}
@@ -1434,521 +1872,181 @@ export default function FlowerDetail() {
                                                 </View>
                                             ))}
 
-                                            <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, opacity: 0.95 }}>
+                                            <Text style={{
+                                                marginTop: 8,
+                                                color: theme.colors.textOnDark, // using textOnDark here for readability
+                                                opacity: 1
+                                            }}>
                                                 Based on {effectsSummary.withAnySub} review{effectsSummary.withAnySub === 1 ? "" : "s"} with effect ratings.
                                             </Text>
                                         </View>
                                     )}
                                 </View>
 
-                                {/* Write / Edit controls */}
-                                {!reviewOpen ? (
-                                    <View style={{ marginTop: 16 }}>
-                                        <BlingButton
-                                            variant="gold"
-                                            label={isCooldown ? `You can edit again in ${secondsLeft}s` : myLastReview ? "Edit last review" : "Write a review"}
-                                            disabled={submitting || isCooldown}
-                                            onPress={() => {
-                                                Keyboard.dismiss();
-                                                setSortOpen(false);
-                                                if (isCooldown) return;
-                                                if (myLastReview) openEditLastReview();
-                                                else openWriteNewReview();
-                                            }}
-                                        />
-
-                                        {myLastReview ? (
-                                            <View style={{ marginTop: 12 }}>
-                                                <BlingButton
-                                                    variant="green"
-                                                    label="Write a new review"
-                                                    disabled={submitting || isCooldown}
-                                                    onPress={() => {
-                                                        Keyboard.dismiss();
-                                                        setSortOpen(false);
-                                                        if (isCooldown) return;
-                                                        openWriteNewReview();
-                                                    }}
-                                                />
-                                            </View>
-                                        ) : null}
-                                    </View>
-                                ) : (
-                                    <View style={styles.reviewCard}>
-                                        <Text style={{ fontSize: 26, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                            {editingReviewId ? "Edit last review" : "Write a review"}
-                                        </Text>
-
-                                        <RatingRow label="Overall rating" value={rating} onChange={setRating} disabled={submitting} />
-
-                                        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.72)", lineHeight: 18 }}>
-                                            Overall is your satisfaction score. Effects add a small adjustment and results are weighted to avoid super strains.
-                                        </Text>
-
-                                        <RatingRow label="Daytime suitability" value={daytime} onChange={setDaytime} disabled={submitting} />
-                                        <RatingRow label="Sleepiness" value={sleepy} onChange={setSleepy} disabled={submitting} />
-                                        <RatingRow label="Calm" value={calm} onChange={setCalm} disabled={submitting} />
-                                        <RatingRow label="Mental clarity" value={clarity} onChange={setClarity} disabled={submitting} />
-
-                                        <RatingRow label="Back pain relief" value={backPain} onChange={setBackPain} disabled={submitting} />
-                                        <RatingRow label="Joint pain relief" value={jointPain} onChange={setJointPain} disabled={submitting} />
-                                        <RatingRow label="Leg pain relief" value={legPain} onChange={setLegPain} disabled={submitting} />
-                                        <RatingRow label="Headache relief" value={headacheRelief} onChange={setHeadacheRelief} disabled={submitting} />
-                                        <RatingRow label="Racing thoughts relief" value={racingThoughts} onChange={setRacingThoughts} disabled={submitting} />
-
-                                        <Text style={{ marginTop: 18, marginBottom: 10, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                            Notes
-                                        </Text>
-
-                                        <TextInput
-                                            value={text}
-                                            onChangeText={setText}
-                                            editable={!submitting}
-                                            placeholder="What stood out? Effects, taste/smell, onset, buds, anything unexpected..."
-                                            placeholderTextColor="rgba(255,255,255,0.35)"
-                                            multiline
-                                            scrollEnabled
-                                            returnKeyType="default"
-                                            textAlignVertical="top"
-                                            style={styles.notesInput}
-                                        />
-
-                                        <View style={{ flexDirection: "row", marginTop: 12 }}>
-                                            <Pressable
-                                                onPress={() => {
-                                                    Keyboard.dismiss();
-                                                    setReviewOpen(false);
-                                                    setEditingReviewId(null);
-                                                }}
-                                                disabled={submitting}
-                                                style={[styles.formBtnAlt, { marginRight: 10, opacity: submitting ? 0.7 : 1 }]}
-                                            >
-                                                <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Close</Text>
-                                            </Pressable>
-
-                                            <Pressable
-                                                onPress={async () => {
-                                                    Keyboard.dismiss();
-                                                    await submitReview();
-                                                }}
-                                                disabled={submitting || isCooldown}
-                                                style={[styles.formBtn, { opacity: submitting || isCooldown ? 0.7 : 1 }]}
-                                            >
-                                                <Text style={styles.formBtnText}>
-                                                    {submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-
-                                        {thankYouVisible ? (
-                                            <View style={{ alignItems: "center", marginTop: 14 }}>
-                                                <View style={styles.toast}>
-                                                    <Text style={{ color: "#fff", textAlign: "center" }}>
-                                                        <Text style={{ fontWeight: "900" }}>Saved.</Text> Your review is live.
-                                                    </Text>
-                                                </View>
-
-                                                <Text style={styles.toastHint}>If your experience changes over time, you can post another review.</Text>
-                                            </View>
-                                        ) : null}
-                                    </View>
-                                )}
-
-                                {/* Reviews header + sort button */}
-                                <View style={{ marginTop: 24 }}>
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                        <Text style={{ fontSize: 34, fontWeight: "900", color: theme.colors.textOnDark }}>Reviews</Text>
-
-                                        <View
-                                            ref={(n) => {
-                                                sortBtnRef.current = n;
-                                            }}
-                                            collapsable={false}
-                                        >
-                                            <Pressable
-                                                onPress={() => {
-                                                    if (sortOpen) setSortOpen(false);
-                                                    else openSortMenu();
-                                                }}
-                                                style={styles.sortPill}
-                                            >
-                                                <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, includeFontPadding: false }}>
-                                                    {sortLabel}
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-
-                                    {loadingReviews ? (
-                                        <View style={{ marginTop: 10 }}>
-                                            <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
-                                            <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>Loading reviews...</Text>
-                                        </View>
-                                    ) : null}
-
-                                    {!loadingReviews && reviews.length === 0 ? (
-                                        <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>No reviews yet.</Text>
-                                    ) : null}
-                                </View>
+                                <Text style={{
+                                    marginTop: 8, color: theme.colors.textOnDark,
+                                    opacity: 1
+                                }}>
+                                    Based on {effectsSummary.withAnySub} review{effectsSummary.withAnySub === 1 ? "" : "s"} with effect ratings.
+                                </Text>
                             </View>
                         </View>
                     }
-                    renderItem={({ item }) => {
-                        const displayName = displayNameForUid(item.userId);
-                        const score = getReviewScore(item);
-                        const dateMs = getCreatedAtMs(item);
+                    ListFooterComponent={
+                        <View>
+                            {/* Write / Edit controls */}
+                            {!reviewOpen ? (
+                                <View style={{ marginTop: 16 }}>
+                                    <BlingButton
+                                        variant="gold"
+                                        label={isCooldown ? `You can edit again in ${secondsLeft}s` : myLastReview ? "Edit last review" : "Write a review"}
+                                        disabled={submitting || isCooldown}
+                                        onPress={() => {
+                                            Keyboard.dismiss();
+                                            setSortOpen(false);
+                                            if (isCooldown) return;
+                                            if (myLastReview) openEditLastReview();
+                                            else openWriteNewReview();
+                                        }}
+                                    />
 
-                        const helpfulCount =
-                            typeof item.helpfulCount === "number" && Number.isFinite(item.helpfulCount) ? item.helpfulCount : 0;
+                                    {myLastReview ? (
+                                        <View style={{ marginTop: 12 }}>
+                                            <BlingButton
+                                                variant="green"
+                                                label="Write a new review"
+                                                disabled={submitting || isCooldown}
+                                                onPress={() => {
+                                                    Keyboard.dismiss();
+                                                    setSortOpen(false);
+                                                    if (isCooldown) return;
+                                                    openWriteNewReview();
+                                                }}
+                                            />
+                                        </View>
+                                    ) : null}
+                                </View>
+                            ) : (
+                                <View style={styles.reviewCard}>
+                                    <Text style={{ fontSize: 26, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                        {editingReviewId ? "Edit last review" : "Write a review"}
+                                    </Text>
 
-                        const voters = Array.isArray(item.helpfulVoters)
-                            ? item.helpfulVoters.filter((x) => typeof x === "string")
-                            : [];
+                                    <RatingRow label="Overall rating" value={rating} onChange={setRating} disabled={submitting} />
 
-                        const iVoted = currentUid ? voters.includes(currentUid) : false;
+                                    <Text style={{ marginTop: 10, color: theme.colors.textOnDark, lineHeight: 18 }}>
+                                        Overall is your satisfaction score. Effects add a small adjustment and results are weighted to avoid super strains.
+                                    </Text>
 
-                        const isMine = !!currentUid && item.userId === currentUid;
-                        const canOwnerDelete = isMine;
-                        const canAdminDelete = isAdmin;
+                                    <RatingRow label="Daytime suitability" value={daytime} onChange={setDaytime} disabled={submitting} />
+                                    <RatingRow label="Sleepiness" value={sleepy} onChange={setSleepy} disabled={submitting} />
+                                    <RatingRow label="Calm" value={calm} onChange={setCalm} disabled={submitting} />
+                                    <RatingRow label="Mental clarity" value={clarity} onChange={setClarity} disabled={submitting} />
 
-                        return (
-                            <View style={styles.reviewItem}>
-                                <LinearGradient
-                                    pointerEvents="none"
-                                    colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.03)", "rgba(0,0,0,0.08)"]}
-                                    start={{ x: 0.5, y: 0 }}
-                                    end={{ x: 0.5, y: 1 }}
-                                    style={StyleSheet.absoluteFillObject}
-                                />
+                                    <RatingRow label="Back pain relief" value={backPain} onChange={setBackPain} disabled={submitting} />
+                                    <RatingRow label="Joint pain relief" value={jointPain} onChange={setJointPain} disabled={submitting} />
+                                    <RatingRow label="Leg pain relief" value={legPain} onChange={setLegPain} disabled={submitting} />
+                                    <RatingRow label="Headache relief" value={headacheRelief} onChange={setHeadacheRelief} disabled={submitting} />
+                                    <RatingRow label="Racing thoughts relief" value={racingThoughts} onChange={setRacingThoughts} disabled={submitting} />
 
+                                    <Text style={{ marginTop: 18, marginBottom: 10, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                        Notes
+                                    </Text>
+
+                                    <TextInput
+                                        value={text}
+                                        onChangeText={setText}
+                                        editable={!submitting}
+                                        placeholder="What stood out? Effects, taste/smell, onset, buds, anything unexpected..."
+                                        placeholderTextColor="rgba(255,255,255,0.35)"
+                                        multiline
+                                        scrollEnabled
+                                        returnKeyType="default"
+                                        textAlignVertical="top"
+                                        style={styles.notesInput}
+                                    />
+
+                                    <View style={{ flexDirection: "row", marginTop: 12 }}>
+                                        <Pressable
+                                            onPress={() => {
+                                                Keyboard.dismiss();
+                                                setReviewOpen(false);
+                                                setEditingReviewId(null);
+                                            }}
+                                            disabled={submitting}
+                                            style={[styles.formBtnAlt, { marginRight: 10, opacity: submitting ? 0.7 : 1 }]}
+                                        >
+                                            <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Close</Text>
+                                        </Pressable>
+
+                                        <Pressable
+                                            onPress={async () => {
+                                                Keyboard.dismiss();
+                                                await submitReview();
+                                            }}
+                                            disabled={submitting || isCooldown}
+                                            style={[styles.formBtn, { opacity: submitting || isCooldown ? 0.7 : 1 }]}
+                                        >
+                                            <Text style={styles.formBtnText}>
+                                                {submitting ? "Saving..." : editingReviewId ? "Save changes" : "Submit review"}
+                                            </Text>
+                                        </Pressable>
+                                    </View>
+
+                                    {thankYouVisible ? (
+                                        <View style={{ alignItems: "center", marginTop: 14 }}>
+                                            <View style={styles.toast}>
+                                                <Text style={{ color: "#fff", textAlign: "center" }}>
+                                                    <Text style={{ fontWeight: "900" }}>Saved.</Text> Your review is live.
+                                                </Text>
+                                            </View>
+
+                                            <Text style={styles.toastHint}>If your experience changes over time, you can post another review.</Text>
+                                        </View>
+                                    ) : null}
+                                </View>
+                            )}
+
+                            {/* Reviews header + sort button */}
+                            <View style={{ marginTop: 24 }}>
                                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                    <Text style={{ fontWeight: "900", fontSize: 16, flexShrink: 1, marginRight: 10, color: theme.colors.textOnDark }}>
-                                        {displayName}
-                                    </Text>
+                                    <Text style={{ fontSize: 34, fontWeight: "900", color: theme.colors.textOnDark }}>Reviews</Text>
 
-                                    <Text style={{ color: theme.colors.textOnDarkSecondary, fontSize: 12 }}>
-                                        {dateMs ? new Date(dateMs).toLocaleDateString() : ""}
-                                    </Text>
+                                    <View
+                                        ref={(n) => {
+                                            sortBtnRef.current = n;
+                                        }}
+                                        collapsable={false}
+                                    >
+                                        <Pressable
+                                            onPress={() => {
+                                                if (sortOpen) setSortOpen(false);
+                                                else openSortMenu();
+                                            }}
+                                            style={styles.sortPill}
+                                        >
+                                            <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, includeFontPadding: false }}>
+                                                {sortLabel}
+                                            </Text>
+                                        </Pressable>
+                                    </View>
                                 </View>
 
-                                <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
-                                    <BudRating value={score} size={18} />
-                                    <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
-                                        {round1(score).toFixed(1)}
-                                    </Text>
-                                </View>
-
-                                {item.text ? (
-                                    <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 20, color: theme.colors.textOnDarkSecondary }}>
-                                        {item.text}
-                                    </Text>
+                                {loadingReviews ? (
+                                    <View style={{ marginTop: 10 }}>
+                                        <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
+                                        <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>Loading reviews...</Text>
+                                    </View>
                                 ) : null}
 
-                                {/* Actions: Helpful + Delete/Admin delete */}
-                                <View style={styles.actionsRow}>
-                                    <Pressable
-                                        onPress={() => toggleHelpful(item.id)}
-                                        style={({ pressed }) => [
-                                            styles.actionPill,
-                                            iVoted ? styles.actionPillActive : null,
-                                            pressed ? { opacity: 0.9 } : null,
-                                        ]}
-                                    >
-                                        <Text style={[styles.actionPillText, iVoted ? { color: "rgba(12,12,14,0.94)" } : null]}>
-                                            {iVoted ? "Helpful, thanks" : "Mark as helpful"}
-                                        </Text>
-                                        <View style={styles.countPill}>
-                                            <Text style={styles.countPillText}>{String(helpfulCount)}</Text>
-                                        </View>
-                                    </Pressable>
-
-                                    {canOwnerDelete ? (
-                                        <Pressable
-                                            onPress={() => confirmDelete(item.id, "owner")}
-                                            style={({ pressed }) => [styles.dangerPill, pressed ? { opacity: 0.9 } : null]}
-                                        >
-                                            <Text style={styles.dangerPillText}>Delete</Text>
-                                        </Pressable>
-                                    ) : null}
-
-                                    {canAdminDelete && !canOwnerDelete ? (
-                                        <Pressable
-                                            onPress={() => confirmDelete(item.id, "admin")}
-                                            style={({ pressed }) => [styles.adminPill, pressed ? { opacity: 0.9 } : null]}
-                                        >
-                                            <Text style={styles.adminPillText}>Admin delete</Text>
-                                        </Pressable>
-                                    ) : null}
-                                </View>
+                                {!loadingReviews && reviews.length === 0 ? (
+                                    <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary }}>No reviews yet.</Text>
+                                ) : null}
                             </View>
-                        );
-                    }}
+                        </View>
+                    }
                 />
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
-
-const styles = StyleSheet.create({
-    blingBtnOuter: {
-        height: 58,
-        borderRadius: 20,
-        borderWidth: 1,
-        overflow: "hidden",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    blingBtnText: {
-        fontWeight: "900",
-        fontSize: 18,
-        lineHeight: 20,
-        textAlign: "center",
-        includeFontPadding: false,
-        textAlignVertical: "center",
-    },
-    blingGloss: {
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 0,
-        height: 22,
-        opacity: 0.9,
-    },
-    blingInnerGlow: {
-        position: "absolute",
-        left: 10,
-        right: 10,
-        top: 10,
-        bottom: 10,
-        borderRadius: 16,
-        backgroundColor: "rgba(255,255,255,0.10)",
-        opacity: 0.35,
-    },
-
-    sortPill: {
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.18)",
-        backgroundColor: "rgba(246,247,248,0.14)",
-    },
-
-    favPill: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(255,255,255,0.08)",
-        alignSelf: "flex-start",
-    },
-    favPillActive: {
-        borderColor: "rgba(185,70,95,0.45)",
-        backgroundColor: "rgba(185,70,95,0.14)",
-    },
-    favStar: {
-        fontSize: 18,
-        lineHeight: 18,
-        marginRight: 10,
-        fontWeight: "900",
-    },
-    favStarOn: {
-        // rich ruby red (not hazard red)
-        color: "rgba(185,70,95,0.98)",
-        textShadowColor: "rgba(185,70,95,0.22)",
-        textShadowOffset: { width: 0, height: 6 },
-        textShadowRadius: 12,
-    },
-    favStarOff: {
-        color: "rgba(255,255,255,0.55)",
-    },
-    favText: {
-        fontWeight: "900",
-        includeFontPadding: false,
-    },
-    favTextOn: {
-        color: "rgba(255,255,255,0.92)",
-    },
-    favTextOff: {
-        color: "rgba(255,255,255,0.78)",
-    },
-
-    reviewItem: {
-        marginHorizontal: 16,
-        padding: 14,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(246,247,248,0.14)",
-        overflow: "hidden",
-    },
-
-    actionsRow: {
-        marginTop: 12,
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 10,
-        alignItems: "center",
-    },
-
-    actionPill: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(255,255,255,0.10)",
-    },
-    actionPillActive: {
-        borderColor: "rgba(212,175,55,0.55)",
-        backgroundColor: "rgba(212,175,55,0.90)",
-    },
-    actionPillText: {
-        fontWeight: "900",
-        color: theme.colors.textOnDark,
-    },
-    countPill: {
-        marginLeft: 10,
-        minWidth: 28,
-        height: 22,
-        paddingHorizontal: 8,
-        borderRadius: 999,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.32)",
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.12)",
-    },
-    countPillText: {
-        color: "rgba(255,255,255,0.90)",
-        fontWeight: "900",
-        fontSize: 12,
-    },
-
-    dangerPill: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: "rgba(255,120,120,0.32)",
-        backgroundColor: "rgba(255,120,120,0.14)",
-    },
-    dangerPillText: {
-        fontWeight: "900",
-        color: "rgba(255,160,160,1)",
-    },
-
-    adminPill: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(0,0,0,0.25)",
-    },
-    adminPillText: {
-        fontWeight: "900",
-        color: "rgba(255,255,255,0.78)",
-    },
-
-    reviewCard: {
-        marginTop: 18,
-        padding: 16,
-        borderRadius: 22,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(246,247,248,0.14)",
-        overflow: "hidden",
-    },
-
-    notesInput: {
-        minHeight: 110,
-        maxHeight: 190,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.14)",
-        borderRadius: 16,
-        paddingHorizontal: 14,
-        paddingTop: 14,
-        paddingBottom: 14,
-        fontSize: 16,
-        lineHeight: 22,
-        backgroundColor: "rgba(0,0,0,0.22)",
-        color: theme.colors.textOnDark,
-    },
-
-    formBtn: {
-        flex: 1,
-        paddingVertical: 14,
-        borderRadius: 16,
-        backgroundColor: "rgba(0,0,0,0.70)",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    formBtnAlt: {
-        flex: 1,
-        paddingVertical: 14,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.14)",
-        backgroundColor: "rgba(255,255,255,0.10)",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    formBtnText: {
-        fontWeight: "900",
-        textAlign: "center",
-        color: "#fff",
-        includeFontPadding: false,
-    },
-
-    toast: {
-        backgroundColor: "rgba(0,0,0,0.75)",
-        borderRadius: 14,
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        width: "100%",
-        maxWidth: 340,
-    },
-    toastHint: {
-        marginTop: 10,
-        fontSize: 14,
-        color: "rgba(255,255,255,0.62)",
-        textAlign: "center",
-        width: "100%",
-        maxWidth: 340,
-        lineHeight: 20,
-    },
-
-    ratingDot: {
-        width: 58,
-        height: 58,
-        borderRadius: 29,
-        borderWidth: 2,
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-    },
-    ratingDotUnselected: {
-        borderColor: "rgba(255,255,255,0.18)",
-        backgroundColor: "rgba(255,255,255,0.04)",
-    },
-    ratingDotSelected: {
-        borderColor: "rgba(212,175,55,0.85)",
-        backgroundColor: "rgba(212,175,55,0.12)",
-    },
-    ratingRing: {
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
-        borderRadius: 999,
-        borderWidth: 2,
-        borderColor: "rgba(212,175,55,0.75)",
-    },
-});
