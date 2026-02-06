@@ -304,13 +304,14 @@ export default function HomeScreen() {
       goToNewFlowers: () => router.push("/reviews"),
       goToUpdatedReviews: () => {
         if (input.updatedProductId) {
-          router.push(`/(tabs)/reviews/${encodeURIComponent(input.updatedProductId)}`);
+          router.push(`/(tabs)/reviews/product/${encodeURIComponent(input.updatedProductId)}`);
         } else {
           router.push("/reviews");
         }
       },
 
-      goToFlower: (productId: string) => router.push(`/(tabs)/reviews/${encodeURIComponent(productId)}`),
+      goToFlower: (productId: string) =>
+        router.push(`/(tabs)/reviews/product/${encodeURIComponent(productId)}`),
 
       goToBadgeOwner: () => router.push("/user"),
 

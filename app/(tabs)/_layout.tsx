@@ -1,10 +1,12 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AppBackground from "../../components/AppBackground";
 import { theme } from "../../lib/theme";
 
 export default function TabsLayout() {
+  const router = useRouter();
+
   return (
     <AppBackground>
       <Tabs
@@ -26,6 +28,12 @@ export default function TabsLayout() {
               <Ionicons name="home-outline" size={size} color={color} />
             ),
           }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)");
+            },
+          }}
         />
 
         <Tabs.Screen
@@ -40,6 +48,12 @@ export default function TabsLayout() {
               />
             ),
           }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)/reviews");
+            },
+          }}
         />
 
         <Tabs.Screen
@@ -50,6 +64,12 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="person-outline" size={size} color={color} />
             ),
+          }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)/user");
+            },
           }}
         />
       </Tabs>

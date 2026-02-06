@@ -9,7 +9,9 @@ import {
   Text,
   TextInput,
   View,
+  ImageBackground,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import auth from "@react-native-firebase/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -18,8 +20,8 @@ const LAST_EMAIL_KEY = "lastEmail";
 
 // Visual constants (keeps auth screen immune to "wash" overlays)
 const BG = "#0B1220";
-const GLASS_BG = "rgba(255,255,255,0.08)";
-const GLASS_BORDER = "rgba(255,255,255,0.16)";
+const GLASS_BG = "rgba(15,18,24,0.55)";
+const GLASS_BORDER = "rgba(255,255,255,0.22)";
 const INPUT_BG = "rgba(0,0,0,0.22)";
 const SUBTLE = "rgba(255,255,255,0.70)";
 const SUBTLE_2 = "rgba(255,255,255,0.55)";
@@ -106,106 +108,118 @@ export default function AuthScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      {/* Solid background prevents the dim "overlay wash" */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+      <ImageBackground
+        source={require("../assets/images/signin-bg.png")}
+        resizeMode="cover"
+        style={StyleSheet.absoluteFill}
       >
-        <View style={styles.center}>
-          {router.canGoBack() ? (
-            <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => [
-                styles.backBtn,
-                { opacity: pressed ? 0.85 : 1 },
-              ]}
-            >
-              <Text style={styles.backBtnText}>Back</Text>
-            </Pressable>
-          ) : null}
+        <View style={styles.scrim} pointerEvents="none" />
+        {/* Solid background prevents the dim "overlay wash" */}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+        >
+          <View style={styles.center}>
+            {router.canGoBack() ? (
+              <Pressable
+                onPress={() => router.back()}
+                style={({ pressed }) => [
+                  styles.backBtn,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Text style={styles.backBtnText}>Back</Text>
+              </Pressable>
+            ) : null}
 
-          <Glass>
-            <Text style={styles.title}>Sign in</Text>
-            <Text style={styles.subtitle}>
-              Sign in to write reviews and save favourites.
-            </Text>
-
-            <View style={{ height: 16 }} />
-
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email"
-              placeholderTextColor={SUBTLE_2}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              textContentType="emailAddress"
-              style={styles.input}
-              editable={!loading}
-              returnKeyType="next"
-            />
-
-            <View style={{ height: 12 }} />
-
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Password"
-              placeholderTextColor={SUBTLE_2}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="password"
-              style={styles.input}
-              editable={!loading}
-              returnKeyType="done"
-              onSubmitEditing={() => {
-                if (canSubmit) handleSignIn();
-              }}
-            />
-
-            <View style={{ height: 16 }} />
-
-            <Pressable
-              onPress={handleSignIn}
-              disabled={!canSubmit}
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                { opacity: !canSubmit ? 0.45 : pressed ? 0.85 : 1 },
-              ]}
-            >
-              <Text style={styles.primaryBtnText}>
-                {loading ? "Signing in..." : "Sign in"}
+            <Glass>
+              <Text style={styles.title}>Sign in</Text>
+              <Text style={styles.subtitle}>
+                Sign in to write reviews and save favourites.
               </Text>
-            </Pressable>
 
-            <View style={{ height: 12 }} />
+              <View style={{ height: 16 }} />
 
-            <Pressable
-              onPress={handleCreateAccount}
-              disabled={!canSubmit}
-              style={({ pressed }) => [
-                styles.secondaryBtn,
-                { opacity: !canSubmit ? 0.45 : pressed ? 0.85 : 1 },
-              ]}
-            >
-              <Text style={styles.secondaryBtnText}>Create account</Text>
-            </Pressable>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Email"
+                placeholderTextColor={SUBTLE_2}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                textContentType="emailAddress"
+                style={styles.input}
+                editable={!loading}
+                returnKeyType="next"
+              />
 
-            <View style={{ height: 10 }} />
-            <Text style={styles.hint}>Tip: we’ll remember your email next time.</Text>
-          </Glass>
-        </View>
-      </KeyboardAvoidingView>
+              <View style={{ height: 12 }} />
+
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Password"
+                placeholderTextColor={SUBTLE_2}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="password"
+                style={styles.input}
+                editable={!loading}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (canSubmit) handleSignIn();
+                }}
+              />
+
+              <View style={{ height: 16 }} />
+
+              <Pressable
+                onPress={handleSignIn}
+                disabled={!canSubmit}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  { opacity: !canSubmit ? 0.45 : pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {loading ? "Signing in..." : "Sign in"}
+                </Text>
+              </Pressable>
+
+              <View style={{ height: 12 }} />
+
+              <Pressable
+                onPress={handleCreateAccount}
+                disabled={!canSubmit}
+                style={({ pressed }) => [
+                  styles.secondaryBtn,
+                  { opacity: !canSubmit ? 0.45 : pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Text style={styles.secondaryBtnText}>Create account</Text>
+              </Pressable>
+
+              <View style={{ height: 10 }} />
+              <Text style={styles.hint}>Tip: we’ll remember your email next time.</Text>
+            </Glass>
+          </View>
+        </KeyboardAvoidingView>
+      </ImageBackground>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+
   screen: {
     flex: 1,
     backgroundColor: BG,
@@ -240,7 +254,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 18,
     padding: 16,
+    overflow: "hidden",
+
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
+
 
   title: {
     fontSize: 26,

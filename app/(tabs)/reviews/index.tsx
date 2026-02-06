@@ -694,7 +694,7 @@ const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" 
 
             return (
               <CinematicCard
-                onPress={() => router.push(`/reviews/${item.id}`)}
+                onPress={() => router.push(`/(tabs)/reviews/product/${encodeURIComponent(item.id)}`)}
                 style={{ marginHorizontal: theme.spacing.xl, overflow: "hidden" }}
               >
                 <View style={{ padding: 18 }}>

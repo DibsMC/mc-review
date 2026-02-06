@@ -1,4 +1,4 @@
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -404,8 +404,12 @@ function BlingButton({
 /* ==================== SCREEN ==================== */
 
 export default function FlowerDetail() {
-    const { flowerId } = useLocalSearchParams<{ flowerId?: string }>();
-    const productId = typeof flowerId === "string" ? flowerId : "";
+  const { flowerId, productId: productIdParam } = useLocalSearchParams<{ flowerId?: string; productId?: string }>();
+  const productId = typeof productIdParam === "string" ? productIdParam : typeof flowerId === "string" ? flowerId : "";
+
+  const insets = useSafeAreaInsets();
+  // Header is transparent, so push content below the header/back button area
+  const TOP_PAD = insets.top + 22;
 
     const [product, setProduct] = useState<Product | null>(null);
     const [loadingProduct, setLoadingProduct] = useState(true);
@@ -1155,7 +1159,7 @@ export default function FlowerDetail() {
     const terps = parseTerpenes(product.terpenes);
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: "transparent", paddingTop: TOP_PAD }}>
             {/* Sort menu Modal */}
             <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
                 <Pressable onPress={() => setSortOpen(false)} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.10)" }}>
@@ -1266,12 +1270,12 @@ export default function FlowerDetail() {
                                 </View>
 
                                 {/* Terpenes */}
-                                {terps.length > 0 ? (
-                                    <View style={{ marginTop: 12 }}>
-                                        <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>
-                                            Terpenes
-                                        </Text>
+                                <View style={{ marginTop: 12 }}>
+                                    <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>
+                                        Terpenes
+                                    </Text>
 
+                                    {terps.length > 0 ? (
                                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                                             {terps.map((t) => {
                                                 const chip = metalThemeForKey(t.name);
@@ -1321,8 +1325,30 @@ export default function FlowerDetail() {
                                                 );
                                             })}
                                         </View>
-                                    </View>
-                                ) : null}
+                                    ) : (
+                                        <View
+                                            style={{
+                                                alignSelf: "flex-start",
+                                                paddingVertical: 8,
+                                                paddingHorizontal: 14,
+                                                borderRadius: 999,
+                                                borderWidth: 1,
+                                                borderColor: "rgba(255,255,255,0.18)",
+                                                backgroundColor: "rgba(255,255,255,0.08)",
+                                            }}
+                                        >
+                                            <Text
+                                                style={{
+                                                    fontWeight: "800",
+                                                    fontSize: 13,
+                                                    color: theme.colors.textOnDarkSecondary,
+                                                }}
+                                            >
+                                                No terpene data available
+                                            </Text>
+                                        </View>
+                                    )}
+                                </View>
 
                                 {/* Headline rating */}
                                 <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center" }}>
