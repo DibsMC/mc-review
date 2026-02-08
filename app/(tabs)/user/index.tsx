@@ -3,14 +3,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
     Image,
+    LayoutAnimation,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     Text,
-    View,
-    LayoutAnimation,
-    Platform,
     UIManager,
+    View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -115,11 +115,7 @@ function GlassCard({
         >
             <LinearGradient
                 pointerEvents="none"
-                colors={[
-                    "rgba(255,255,255,0.12)",
-                    "rgba(255,255,255,0.06)",
-                    "rgba(0,0,0,0.10)",
-                ]}
+                colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.10)"]}
                 start={{ x: 0.25, y: 0 }}
                 end={{ x: 0.75, y: 1 }}
                 style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
@@ -233,11 +229,7 @@ function AvatarCircle({
         >
             <LinearGradient
                 pointerEvents="none"
-                colors={[
-                    "rgba(255,255,255,0.10)",
-                    "rgba(255,255,255,0.04)",
-                    "rgba(0,0,0,0.14)",
-                ]}
+                colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.04)", "rgba(0,0,0,0.14)"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
@@ -295,35 +287,15 @@ type BadgeTier = "bronze" | "silver" | "gold" | "emerald" | "platinum";
 function tierStyle(tier: BadgeTier) {
     switch (tier) {
         case "bronze":
-            return {
-                dot: "rgba(205,127,50,0.90)",
-                border: "rgba(205,127,50,0.35)",
-                bg: "rgba(205,127,50,0.10)",
-            };
+            return { dot: "rgba(205,127,50,0.90)", border: "rgba(205,127,50,0.35)", bg: "rgba(205,127,50,0.10)" };
         case "silver":
-            return {
-                dot: "rgba(200,200,210,0.95)",
-                border: "rgba(200,200,210,0.35)",
-                bg: "rgba(200,200,210,0.10)",
-            };
+            return { dot: "rgba(200,200,210,0.95)", border: "rgba(200,200,210,0.35)", bg: "rgba(200,200,210,0.10)" };
         case "gold":
-            return {
-                dot: "rgba(212,175,55,0.95)",
-                border: "rgba(212,175,55,0.40)",
-                bg: "rgba(212,175,55,0.10)",
-            };
+            return { dot: "rgba(212,175,55,0.95)", border: "rgba(212,175,55,0.40)", bg: "rgba(212,175,55,0.10)" };
         case "emerald":
-            return {
-                dot: "rgba(80,220,160,0.95)",
-                border: "rgba(80,220,160,0.35)",
-                bg: "rgba(80,220,160,0.10)",
-            };
+            return { dot: "rgba(80,220,160,0.95)", border: "rgba(80,220,160,0.35)", bg: "rgba(80,220,160,0.10)" };
         case "platinum":
-            return {
-                dot: "rgba(235,235,245,0.95)",
-                border: "rgba(235,235,245,0.45)",
-                bg: "rgba(255,255,255,0.10)",
-            };
+            return { dot: "rgba(235,235,245,0.95)", border: "rgba(235,235,245,0.45)", bg: "rgba(255,255,255,0.10)" };
     }
 }
 
@@ -351,6 +323,7 @@ function BadgeRow({
                 backgroundColor: t.bg,
                 borderWidth: 1,
                 borderColor: t.border,
+                marginBottom: 10,
             }}
         >
             <View
@@ -370,38 +343,15 @@ function BadgeRow({
             </View>
 
             <View style={{ flex: 1 }}>
-                <Text
-                    style={{
-                        color: theme.colors.textOnDark,
-                        fontSize: 18,
-                        fontWeight: "900",
-                        lineHeight: 22,
-                    }}
-                >
+                <Text style={{ color: theme.colors.textOnDark, fontSize: 18, fontWeight: "900", lineHeight: 22 }}>
                     {title}
                 </Text>
-                <Text
-                    style={{
-                        marginTop: 4,
-                        color: "rgba(255,255,255,0.70)",
-                        fontSize: 14,
-                        fontWeight: "800",
-                        lineHeight: 18,
-                    }}
-                >
+                <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.70)", fontSize: 14, fontWeight: "800", lineHeight: 18 }}>
                     {subtitle}
                 </Text>
             </View>
 
-            <View
-                style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: t.dot,
-                    opacity: 0.95,
-                }}
-            />
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: t.dot, opacity: 0.95 }} />
         </View>
     );
 }
@@ -448,16 +398,12 @@ function AccordionItem({
                         {title}
                     </Text>
                     <Text style={{ color: "rgba(255,255,255,0.60)", fontSize: 18 }}>
-                        {isOpen ? "–" : "+"}
+                        {isOpen ? "-" : "+"}
                     </Text>
                 </View>
             </Pressable>
 
-            {isOpen ? (
-                <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 2 }}>
-                    {children}
-                </View>
-            ) : null}
+            {isOpen ? <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 2 }}>{children}</View> : null}
         </View>
     );
 }
@@ -469,7 +415,8 @@ export default function UserMenuScreen() {
     const user = auth().currentUser;
     const uid = user?.uid ?? "";
 
-    const displayName = user?.displayName?.trim() ? user.displayName : "Anonymous";
+    // Prefer Firestore displayName when available; Auth fallback
+    const authDisplayName = user?.displayName?.trim() ? user.displayName : "Member";
 
     const photoURL = user?.photoURL ?? null;
     const emailMasked = user?.email ? maskEmail(user.email) : "";
@@ -483,6 +430,9 @@ export default function UserMenuScreen() {
     const [productCount, setProductCount] = useState<number | null>(null);
     const [lastActiveLabel, setLastActiveLabel] = useState<string | null>(null);
 
+    // Display name from Firestore (fixes "Member"/"Info" issues)
+    const [publicDisplayName, setPublicDisplayName] = useState<string | null>(null);
+
     // Extra stats (safe defaults)
     const [helpfulReceived, setHelpfulReceived] = useState<number>(0);
     const [helpfulGiven, setHelpfulGiven] = useState<number>(0);
@@ -493,6 +443,7 @@ export default function UserMenuScreen() {
 
     const [openInfoKey, setOpenInfoKey] = useState<string | null>(null);
 
+    // User doc listener (avatar, joinYear, doc-based stats)
     useEffect(() => {
         if (!uid) return;
 
@@ -502,17 +453,19 @@ export default function UserMenuScreen() {
             .onSnapshot(
                 (doc) => {
                     const data = (doc.data() as any) ?? {};
+
                     const v = typeof data?.avatarId === "string" ? data.avatarId : null;
                     setAvatarId(v);
 
+                    const dnRaw = typeof data?.displayName === "string" ? data.displayName.trim() : "";
+                    // Avoid placeholder junk values (e.g. "Info")
+                    const dn = dnRaw && dnRaw.toLowerCase() !== "info" ? dnRaw : "";
+                    setPublicDisplayName(dn || null);
+
                     const createdAt: any = data?.createdAt ?? data?.created_at ?? null;
-                    if (createdAt?.toDate) {
-                        setJoinYear(createdAt.toDate().getFullYear());
-                    } else if (typeof createdAt === "number") {
-                        setJoinYear(new Date(createdAt).getFullYear());
-                    } else {
-                        setJoinYear(null);
-                    }
+                    if (createdAt?.toDate) setJoinYear(createdAt.toDate().getFullYear());
+                    else if (typeof createdAt === "number") setJoinYear(new Date(createdAt).getFullYear());
+                    else setJoinYear(null);
 
                     const rc = typeof data?.reviewCount === "number" ? data.reviewCount : null;
                     const pc = typeof data?.productCount === "number" ? data.productCount : null;
@@ -522,11 +475,7 @@ export default function UserMenuScreen() {
                     const la = typeof data?.lastActiveLabel === "string" ? data.lastActiveLabel : null;
                     setLastActiveLabel(la);
 
-                    const hr = typeof data?.helpfulReceived === "number" ? data.helpfulReceived : 0;
-                    const hg = typeof data?.helpfulGiven === "number" ? data.helpfulGiven : 0;
                     const fav = typeof data?.favouritesCount === "number" ? data.favouritesCount : 0;
-                    setHelpfulReceived(hr);
-                    setHelpfulGiven(hg);
                     setFavouritesCount(fav);
                 },
                 () => {
@@ -535,6 +484,42 @@ export default function UserMenuScreen() {
             );
 
         return () => unsub();
+    }, [uid]);
+
+    // Helpful GIVEN + RECEIVED (MUST be a sibling hook, not nested)
+    useEffect(() => {
+        if (!uid) return;
+
+        // Helpful GIVEN = count of my votes (/users/{uid}/helpful)
+        const unsubGiven = firestore()
+            .collection("users")
+            .doc(uid)
+            .collection("helpful")
+            .onSnapshot(
+                (snap) => setHelpfulGiven(snap.size),
+                () => setHelpfulGiven(0)
+            );
+
+        // Helpful RECEIVED = sum of helpfulCount on all reviews where userId == uid
+        const unsubReceived = firestore()
+            .collection("reviews")
+            .where("userId", "==", uid)
+            .onSnapshot(
+                (snap) => {
+                    let total = 0;
+                    snap.docs.forEach((d) => {
+                        const hc = (d.data() as any)?.helpfulCount;
+                        if (typeof hc === "number" && Number.isFinite(hc)) total += hc;
+                    });
+                    setHelpfulReceived(total);
+                },
+                () => setHelpfulReceived(0)
+            );
+
+        return () => {
+            unsubGiven();
+            unsubReceived();
+        };
     }, [uid]);
 
     // Fallback: if users/{uid}.reviewCount isn't present, count reviews once
@@ -585,9 +570,7 @@ export default function UserMenuScreen() {
     const headerBg = theme.colors.goldGlass;
     const editRightLabel = photoURL ? "Photo" : avatarId ? "Avatar" : "Set up";
 
-    const headerOneLiner = joinYear
-        ? `Part of the community since ${joinYear}`
-        : "Sharing honest experiences with the community";
+    const headerOneLiner = joinYear ? `Part of the community since ${joinYear}` : "Sharing honest experiences with the community";
 
     const statsBits: string[] = [];
     if (typeof reviewCount === "number") statsBits.push(`${reviewCount} reviews`);
@@ -596,16 +579,18 @@ export default function UserMenuScreen() {
     const statsLine = statsBits.length ? statsBits.join(" · ") : null;
 
     const safeReviewCount = typeof reviewCount === "number" ? reviewCount : 0;
+
     const unlockedBadges = getUnlockedBadges({
         reviewsWritten: safeReviewCount,
         helpfulReceived,
     });
 
-
     const toggleInfo = (key: string) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setOpenInfoKey((prev) => (prev === key ? null : key));
     };
+
+    const displayName = publicDisplayName || authDisplayName || "Member";
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
@@ -688,16 +673,10 @@ export default function UserMenuScreen() {
                     </LinearGradient>
                 </View>
 
-                {/* YOUR STATS (moved directly under header) */}
+                {/* YOUR STATS */}
                 <GlassCard style={{ marginBottom: 14 }}>
                     <SectionLabel
-                        icon={
-                            <Image
-                                source={budImg}
-                                resizeMode="contain"
-                                style={{ width: 14, height: 14, opacity: 0.9 }}
-                            />
-                        }
+                        icon={<Image source={budImg} resizeMode="contain" style={{ width: 14, height: 14, opacity: 0.9 }} />}
                     >
                         Your stats
                     </SectionLabel>
@@ -716,8 +695,7 @@ export default function UserMenuScreen() {
                             fontWeight: "700",
                         }}
                     >
-                        Reviews written is the number of reviews you have posted. Helpful received is the total
-                        number of helpful votes on all of your reviews.
+                        Reviews written is the number of reviews you have posted. Helpful received is the total number of helpful votes on all of your reviews.
                     </Text>
                 </GlassCard>
 
@@ -747,14 +725,8 @@ export default function UserMenuScreen() {
                             </View>
                         </AccordionItem>
 
-                        <AccordionItem
-                            title="About the App"
-                            isOpen={openInfoKey === "about"}
-                            onToggle={() => toggleInfo("about")}
-                        >
-                            <InfoParagraph>
-                                This app started as a simple idea: make it easier to learn from real patient experiences.
-                            </InfoParagraph>
+                        <AccordionItem title="About the App" isOpen={openInfoKey === "about"} onToggle={() => toggleInfo("about")}>
+                            <InfoParagraph>This app started as a simple idea: make it easier to learn from real patient experiences.</InfoParagraph>
                             <InfoParagraph>
                                 Medical cannabis reviews are often scattered across YouTube, Facebook groups, Reddit, and word of mouth. That makes it hard to compare products and spot consistent patterns.
                             </InfoParagraph>
@@ -766,63 +738,31 @@ export default function UserMenuScreen() {
                             </InfoParagraph>
 
                             <View style={{ marginTop: 10 }}>
-                                <MenuRow
-                                    title="More about the app"
-                                    subtitle="The longer version, plus the community angle."
-                                    onPress={() => router.push("/(tabs)/user/about")}
-                                />
+                                <MenuRow title="More about the app" subtitle="The longer version, plus the community angle." onPress={() => router.push("/(tabs)/user/about")} />
                             </View>
                         </AccordionItem>
 
-                        <AccordionItem
-                            title="What’s Coming"
-                            isOpen={openInfoKey === "coming"}
-                            onToggle={() => toggleInfo("coming")}
-                        >
-                            <InfoParagraph>
-                                This is the first launch of the app, and it will evolve.
-                            </InfoParagraph>
-                            <InfoParagraph>
-                                We are open to feedback, especially when it is constructive and helps improve the experience for everyone.
-                            </InfoParagraph>
+                        <AccordionItem title="What’s Coming" isOpen={openInfoKey === "coming"} onToggle={() => toggleInfo("coming")}>
+                            <InfoParagraph>This is the first launch of the app, and it will evolve.</InfoParagraph>
+                            <InfoParagraph>We are open to feedback, especially when it is constructive and helps improve the experience for everyone.</InfoParagraph>
                             <InfoParagraph>
                                 The app was built based on the creator’s own experience as a medical cannabis patient, with the aim of expanding over time to support more people, more products, and more use cases.
                             </InfoParagraph>
-                            <InfoParagraph>
-                                Plans, not promises.
-                            </InfoParagraph>
+                            <InfoParagraph>Plans, not promises.</InfoParagraph>
                         </AccordionItem>
 
-                        <AccordionItem
-                            title="What This App Is Not"
-                            isOpen={openInfoKey === "not"}
-                            onToggle={() => toggleInfo("not")}
-                        >
-                            <InfoParagraph>
-                                This app is not medical advice.
-                            </InfoParagraph>
-                            <InfoParagraph>
-                                Reviews are personal experiences, not clinical guidance.
-                            </InfoParagraph>
+                        <AccordionItem title="What This App Is Not" isOpen={openInfoKey === "not"} onToggle={() => toggleInfo("not")}>
+                            <InfoParagraph>This app is not medical advice.</InfoParagraph>
+                            <InfoParagraph>Reviews are personal experiences, not clinical guidance.</InfoParagraph>
                             <InfoParagraph>
                                 Always take responsibility for your own decisions and speak to a qualified professional if you need medical support or advice, especially if you have underlying conditions, take other medications, or experience side effects.
                             </InfoParagraph>
                         </AccordionItem>
 
-                        <AccordionItem
-                            title="Why Reviews Matter"
-                            isOpen={openInfoKey === "matter"}
-                            onToggle={() => toggleInfo("matter")}
-                        >
-                            <InfoParagraph>
-                                Peer insight can be valuable because it reflects real-world use.
-                            </InfoParagraph>
-                            <InfoParagraph>
-                                One review is just one experience, but patterns across many reviews can help guide decisions and set expectations.
-                            </InfoParagraph>
-                            <InfoParagraph>
-                                Use reviews to learn what to look out for, what tends to help others, and what might not suit you.
-                            </InfoParagraph>
+                        <AccordionItem title="Why Reviews Matter" isOpen={openInfoKey === "matter"} onToggle={() => toggleInfo("matter")}>
+                            <InfoParagraph>Peer insight can be valuable because it reflects real-world use.</InfoParagraph>
+                            <InfoParagraph>One review is just one experience, but patterns across many reviews can help guide decisions and set expectations.</InfoParagraph>
+                            <InfoParagraph>Use reviews to learn what to look out for, what tends to help others, and what might not suit you.</InfoParagraph>
                         </AccordionItem>
                     </View>
                 </GlassCard>
@@ -834,13 +774,7 @@ export default function UserMenuScreen() {
                     {unlockedBadges.length > 0 ? (
                         <View>
                             {unlockedBadges.map((b) => (
-                                <BadgeRow
-                                    key={b.id}
-                                    title={b.title}
-                                    subtitle={b.subtitle}
-                                    emoji={b.emoji}
-                                    tier={b.tier}
-                                />
+                                <BadgeRow key={b.id} title={b.title} subtitle={b.subtitle} emoji={b.emoji} tier={b.tier} />
                             ))}
                         </View>
                     ) : (
@@ -857,17 +791,11 @@ export default function UserMenuScreen() {
                     )}
                 </GlassCard>
 
-                {/* Preferences & Personalisation */}
+                {/* Preferences */}
                 <GlassCard style={{ marginBottom: 14 }}>
                     <SectionLabel>Preferences</SectionLabel>
 
-                    <Text
-                        style={{
-                            color: theme.colors.textOnDarkSecondary,
-                            lineHeight: 18,
-                            marginBottom: 10,
-                        }}
-                    >
+                    <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18, marginBottom: 10 }}>
                         These help personalise what you see in the app. More personalisation options are coming.
                     </Text>
 
@@ -879,55 +807,33 @@ export default function UserMenuScreen() {
                     />
                 </GlassCard>
 
-                {/* Feedback & App Direction */}
+                {/* Feedback */}
                 <GlassCard style={{ marginBottom: 14 }}>
                     <SectionLabel>Help shape the app</SectionLabel>
 
-                    <Text
-                        style={{
-                            color: theme.colors.textOnDarkSecondary,
-                            lineHeight: 18,
-                            marginBottom: 10,
-                        }}
-                    >
+                    <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18, marginBottom: 10 }}>
                         This app is evolving. Your feedback helps shape what comes next.
                     </Text>
 
-                    <MenuRow
-                        title="Send feedback"
-                        subtitle="Bugs, ideas, features, new products. Anything welcome."
-                        onPress={() => router.push("/(tabs)/user/feedback")}
-                    />
+                    <MenuRow title="Send feedback" subtitle="Bugs, ideas, features, new products. Anything welcome." onPress={() => router.push("/(tabs)/user/feedback")} />
                 </GlassCard>
 
-                {/* Account & Security */}
+                {/* Account */}
                 <GlassCard style={{ marginBottom: 14 }}>
                     <SectionLabel>Account</SectionLabel>
 
                     <View style={{ marginBottom: 10 }}>
-                        <Text style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, fontWeight: "900" }}>
-                            Email
-                        </Text>
-                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", marginTop: 4 }}>
-                            {emailMasked || "Not available"}
-                        </Text>
+                        <Text style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, fontWeight: "900" }}>Email</Text>
+                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", marginTop: 4 }}>{emailMasked || "Not available"}</Text>
                     </View>
 
                     <Divider />
 
-                    <MenuRow
-                        title="Change email"
-                        subtitle="Update the email you use to sign in."
-                        onPress={() => router.push("/(tabs)/user/change-email")}
-                    />
+                    <MenuRow title="Change email" subtitle="Update the email you use to sign in." onPress={() => router.push("/(tabs)/user/change-email")} />
 
                     <Divider />
 
-                    <MenuRow
-                        title="Terms and legal"
-                        subtitle="Privacy, terms, and the sensible bits."
-                        onPress={() => router.push("/(tabs)/user/legal")}
-                    />
+                    <MenuRow title="Terms and legal" subtitle="Privacy, terms, and the sensible bits." onPress={() => router.push("/(tabs)/user/legal")} />
 
                     <Divider />
 
@@ -936,11 +842,7 @@ export default function UserMenuScreen() {
                         subtitle="This is permanent. No tricks."
                         danger
                         onPress={() => {
-                            Alert.alert(
-                                "Delete account",
-                                "This will be added soon. For now, use Feedback and ask for account deletion.",
-                                [{ text: "OK" }]
-                            );
+                            Alert.alert("Delete account", "This will be added soon. For now, use Feedback and ask for account deletion.", [{ text: "OK" }]);
                         }}
                     />
                 </GlassCard>
@@ -995,9 +897,7 @@ export default function UserMenuScreen() {
                             style={{ padding: 16 }}
                         >
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                    Pick an avatar
-                                </Text>
+                                <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>Pick an avatar</Text>
 
                                 <Pressable
                                     onPress={() => setAvatarPickerOpen(false)}

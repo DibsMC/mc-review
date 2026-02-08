@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-
+import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Alert,
@@ -12,9 +13,7 @@ import {
   View,
   ImageBackground,
 } from "react-native";
-
 import { SafeAreaView } from "react-native-safe-area-context";
-import auth from "@react-native-firebase/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 const LAST_EMAIL_KEY = "lastEmail";
@@ -31,6 +30,10 @@ const BTN_BORDER = "rgba(255,255,255,0.18)";
 
 function Glass({ children }: { children: React.ReactNode }) {
   return <View style={styles.glass}>{children}</View>;
+}
+
+function safeStr(v: unknown) {
+  return typeof v === "string" ? v.trim() : "";
 }
 
 export default function AuthScreen() {
@@ -93,7 +96,39 @@ export default function AuthScreen() {
       }
 
       await AsyncStorage.setItem(LAST_EMAIL_KEY, trimmedEmail);
-      await auth().createUserWithEmailAndPassword(trimmedEmail, password);
+
+      // Create auth user
+      const cred = await auth().createUserWithEmailAndPassword(
+        trimmedEmail,
+        password
+      );
+
+      // Prefer the returned user; fallback to currentUser just in case
+      const createdUser = cred.user ?? auth().currentUser;
+
+      if (createdUser) {
+        // Default display name (avoid "Info" / placeholder values)
+        // We keep it consistent across Auth + Firestore profile
+        const defaultName = "New Member";
+
+        // Firebase Auth displayName (some screens read from here)
+        await createdUser.updateProfile({ displayName: defaultName });
+
+        // Firestore profile (source of truth for public profile)
+        await firestore()
+          .collection("users")
+          .doc(createdUser.uid)
+          .set(
+            {
+              displayName: defaultName,
+              isAdmin: false,
+              favoriteProductIds: [],
+              createdAt: firestore.FieldValue.serverTimestamp(),
+              updatedAt: firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+      }
 
       setPassword("");
 
