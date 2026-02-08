@@ -1,53 +1,59 @@
-import { SafeAreaView } from "react-native-safe-area-context";
+// app/(tabs)/user/edit-profile.tsx
+import React, { useEffect, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
-import { useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import auth from "@react-native-firebase/auth";
-
-const GLASS_BG = "rgba(255,255,255,0.08)";
-const GLASS_BORDER = "rgba(255,255,255,0.16)";
-const INPUT_BG = "rgba(0,0,0,0.18)";
-const BTN_BG = "rgba(255,255,255,0.14)";
-const BTN_BORDER = "rgba(255,255,255,0.18)";
-const SUBTLE = "rgba(255,255,255,0.70)";
-const SUBTLE_2 = "rgba(255,255,255,0.55)";
-
-function Glass({ children }: { children: React.ReactNode }) {
-    return (
-        <View
-            style={{
-                backgroundColor: GLASS_BG,
-                borderColor: GLASS_BORDER,
-                borderWidth: 1,
-                borderRadius: 18,
-                padding: 16,
-            }}
-        >
-            {children}
-        </View>
-    );
-}
+import firestore from "@react-native-firebase/firestore";
+import { theme } from "../../../lib/theme";
 
 export default function EditProfileScreen() {
-    const user = auth().currentUser;
-    const [displayName, setDisplayName] = useState<string>(user?.displayName ?? "");
+    const router = useRouter();
+
+    const [displayName, setDisplayName] = useState<string>("");
     const [saving, setSaving] = useState(false);
 
+    useEffect(() => {
+        const u = auth().currentUser;
+        setDisplayName(u?.displayName ?? "");
+    }, []);
+
     const handleSave = async () => {
+        const user = auth().currentUser;
+
+        if (!user) {
+            Alert.alert("Not signed in", "Please sign in again.");
+            return;
+        }
+
+        const name = displayName.trim();
+
+        // You can loosen this if you want, but it's a good guardrail
+        if (name.length < 2) {
+            Alert.alert("Name needed", "Please enter a display name (2+ characters).");
+            return;
+        }
+
         try {
-            if (!user) {
-                Alert.alert("Not signed in", "Please sign in again.");
-                return;
-            }
-
-            const name = displayName.trim();
-            if (!name) {
-                Alert.alert("Name needed", "Please enter a display name.");
-                return;
-            }
-
             setSaving(true);
+
+            // 1) Firebase Auth (some UI reads from here)
             await user.updateProfile({ displayName: name });
+
+            // 2) Firestore (public source of truth for other users + profile pages)
+            await firestore()
+                .collection("users")
+                .doc(user.uid)
+                .set(
+                    {
+                        displayName: name,
+                        updatedAt: firestore.FieldValue.serverTimestamp(),
+                    },
+                    { merge: true }
+                );
+
             Alert.alert("Saved", "Your display name was updated.");
+            router.back();
         } catch (e: any) {
             Alert.alert("Save failed", e?.message ?? "Unknown error");
         } finally {
@@ -56,65 +62,81 @@ export default function EditProfileScreen() {
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 72 }}>
-            <Glass>
-                <View style={{ gap: 16 }}>
-                    <View style={{ gap: 6 }}>
-                        <Text style={{ fontSize: 22, fontWeight: "900", color: "white" }}>
-                            Edit profile
-                        </Text>
-                        <Text style={{ color: SUBTLE, fontSize: 14, lineHeight: 20 }}>
-                            Update your display name.
-                        </Text>
-                    </View>
+        <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+                <Text
+                    style={{
+                        color: theme.colors.textOnDark,
+                        fontSize: 22,
+                        fontWeight: "900",
+                        marginBottom: 12,
+                    }}
+                >
+                    Edit profile
+                </Text>
 
-                    <View style={{ gap: 8 }}>
-                        <Text style={{ fontSize: 16, fontWeight: "800", color: "white" }}>
-                            Display name
-                        </Text>
+                <Text style={{ color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
+                    Display name
+                </Text>
 
-                        <TextInput
-                            value={displayName}
-                            onChangeText={setDisplayName}
-                            placeholder="Your name"
-                            placeholderTextColor={SUBTLE_2}
-                            style={{
-                                backgroundColor: INPUT_BG,
-                                borderColor: GLASS_BORDER,
-                                borderWidth: 1,
-                                borderRadius: 14,
-                                paddingHorizontal: 14,
-                                paddingVertical: 12,
-                                color: "white",
-                                fontSize: 15,
-                            }}
-                            returnKeyType="done"
-                        />
-                    </View>
+                <TextInput
+                    value={displayName}
+                    onChangeText={setDisplayName}
+                    placeholder="Your name"
+                    placeholderTextColor="rgba(255,255,255,0.45)"
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    editable={!saving}
+                    style={{
+                        marginTop: 8,
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.16)",
+                        backgroundColor: "rgba(0,0,0,0.16)",
+                        borderRadius: 14,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        color: "white",
+                        fontSize: 16,
+                        fontWeight: "800",
+                    }}
+                />
 
-                    <Pressable
-                        onPress={handleSave}
-                        disabled={saving}
-                        style={({ pressed }) => ({
-                            backgroundColor: BTN_BG,
-                            borderColor: BTN_BORDER,
-                            borderWidth: 1,
-                            borderRadius: 14,
-                            paddingVertical: 12,
-                            alignItems: "center",
-                            opacity: saving ? 0.6 : pressed ? 0.75 : 1,
-                        })}
-                    >
-                        <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>
-                            {saving ? "Saving..." : "Save"}
-                        </Text>
-                    </Pressable>
-
-                    <Text style={{ fontSize: 12, color: SUBTLE_2, lineHeight: 18 }}>
-                        Photo upload is coming soon.
+                <Pressable
+                    onPress={handleSave}
+                    disabled={saving}
+                    style={({ pressed }) => ({
+                        marginTop: 14,
+                        paddingVertical: 12,
+                        borderRadius: 14,
+                        alignItems: "center",
+                        backgroundColor: "rgba(255,255,255,0.14)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.18)",
+                        opacity: saving ? 0.6 : pressed ? 0.85 : 1,
+                    })}
+                >
+                    <Text style={{ color: "white", fontWeight: "900", fontSize: 15 }}>
+                        {saving ? "Saving..." : "Save"}
                     </Text>
-                </View>
-            </Glass>
+                </Pressable>
+
+                <Pressable
+                    onPress={() => router.back()}
+                    disabled={saving}
+                    style={({ pressed }) => ({
+                        marginTop: 10,
+                        paddingVertical: 12,
+                        borderRadius: 14,
+                        alignItems: "center",
+                        backgroundColor: "rgba(0,0,0,0.10)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.12)",
+                        opacity: saving ? 0.6 : pressed ? 0.85 : 1,
+                    })}
+                >
+                    <Text style={{ color: "white", fontWeight: "900", fontSize: 15 }}>Cancel</Text>
+                </Pressable>
+            </View>
         </SafeAreaView>
     );
 }

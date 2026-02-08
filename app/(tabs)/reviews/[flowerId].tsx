@@ -1052,54 +1052,49 @@ export default function FlowerDetail() {
     }, [productId]);
 
     useEffect(() => {
-        const uids = Array.from(new Set(reviews.map((r) => r.userId).filter(Boolean)));
+        const uids = Array.from(new Set(reviews.map((r) => r.userId).filter((x): x is string => typeof x === "string" && !!x)));
         if (uids.length === 0) return;
 
-        const missing = uids.filter((uid) => !nameMap[uid]);
-        if (missing.length === 0) return;
+        // Chunk uids because Firestore "in" supports up to 10 values
+        const chunks: string[][] = [];
+        for (let i = 0; i < uids.length; i += 10) chunks.push(uids.slice(i, i + 10));
 
-        let cancelled = false;
+        const unsubs: Array<() => void> = [];
 
-        (async () => {
-            try {
-                const chunks: string[][] = [];
-                for (let i = 0; i < missing.length; i += 10) chunks.push(missing.slice(i, i + 10));
+        chunks.forEach((chunk) => {
+            const q = firestore()
+                .collection("users")
+                .where(firestore.FieldPath.documentId(), "in", chunk);
 
-                const updates: Record<string, string> = {};
-
-                for (const chunk of chunks) {
-                    const snap = await firestore()
-                        .collection("users")
-                        .where(firestore.FieldPath.documentId(), "in", chunk)
-                        .get();
+            const unsub = q.onSnapshot(
+                (snap) => {
+                    const updates: Record<string, string> = {};
 
                     snap.docs.forEach((doc) => {
                         const data = doc.data() as UserProfile;
                         const dnRaw = safeName(data?.displayName);
-                        const dn = dnRaw.toLowerCase() === "info" ? "" : dnRaw;
 
-
-                        // Ignore placeholder / junk names like "Info"
-                        if (dn && dn.toLowerCase() !== "info") {
-                            updates[doc.id] = dn;
-                        }
-
+                        // Treat empty / placeholder as blank so we can fall back to "Member"
+                        const dn = dnRaw && dnRaw.toLowerCase() !== "info" ? dnRaw : "";
+                        updates[doc.id] = dn;
                     });
-                }
 
-                if (!cancelled && Object.keys(updates).length > 0) {
+                    // Merge updates (this will overwrite older cached values like "Member")
                     setNameMap((prev) => ({ ...prev, ...updates }));
+                },
+                (err) => {
+                    console.log("user name listener error:", err);
                 }
-            } catch (e) {
-                console.log("user name fetch error:", e);
-            }
-        })();
+            );
+
+            unsubs.push(unsub);
+        });
 
         return () => {
-            cancelled = true;
+            unsubs.forEach((fn) => fn());
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [reviews]);
+
 
     const startCooldown = () => {
         const until = Date.now() + COOLDOWN_MS;
@@ -1315,7 +1310,8 @@ export default function FlowerDetail() {
     const displayNameForUid = (uid: string) => {
         if (!uid) return "Member";
         if (uid === currentUid) return `${meName} (you)`;
-        const mapped = nameMap[uid];
+
+        const mapped = safeName(nameMap[uid]);
         return mapped ? mapped : "Member";
     };
 

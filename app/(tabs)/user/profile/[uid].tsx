@@ -201,7 +201,7 @@ export default function PublicProfileScreen() {
                         reviewsWritten: typeof data?.reviewsWritten === "number" ? data.reviewsWritten : 0,
                         helpfulReceived: typeof data?.helpfulReceived === "number" ? data.helpfulReceived : 0,
                         helpfulGiven: typeof data?.helpfulGiven === "number" ? data.helpfulGiven : 0,
-                        favouritesCount: typeof data?.favouritesCount === "number" ? data.favouritesCount : 0,
+                        favouritesCount: Array.isArray(data?.favoriteProductIds) ? data.favoriteProductIds.filter((x: any) => typeof x === "string").length : 0,
                         createdAt: data?.createdAt ?? null,
                     });
 

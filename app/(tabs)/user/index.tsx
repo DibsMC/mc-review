@@ -475,8 +475,20 @@ export default function UserMenuScreen() {
                     const la = typeof data?.lastActiveLabel === "string" ? data.lastActiveLabel : null;
                     setLastActiveLabel(la);
 
-                    const fav = typeof data?.favouritesCount === "number" ? data.favouritesCount : 0;
-                    setFavouritesCount(fav);
+                    // Favourites count derived from the real source of truth
+                    const favIdsA = Array.isArray(data?.favoriteProductIds)
+                        ? data.favoriteProductIds.filter((x: any) => typeof x === "string")
+                        : [];
+
+                    const favIdsB = Array.isArray(data?.favouriteProductIds)
+                        ? data.favouriteProductIds.filter((x: any) => typeof x === "string")
+                        : [];
+
+                    // If both exist for some reason, merge unique
+                    const mergedFavs = Array.from(new Set([...(favIdsA as string[]), ...(favIdsB as string[])]));
+
+                    setFavouritesCount(mergedFavs.length);
+
                 },
                 () => {
                     // ignore
