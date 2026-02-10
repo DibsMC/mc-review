@@ -1,5 +1,6 @@
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useState } from "react";
+import { EmailAuthProvider } from "@react-native-firebase/auth";
 import {
     Alert,
     Image,
@@ -9,8 +10,10 @@ import {
     Pressable,
     ScrollView,
     Text,
+    TextInput,
     UIManager,
     View,
+    ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -424,11 +427,112 @@ export default function UserMenuScreen() {
     const [avatarId, setAvatarId] = useState<string | null>(null);
     const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
 
+
+
     // Optional, future-ready: stats stored on the user doc
     const [joinYear, setJoinYear] = useState<number | null>(null);
     const [reviewCount, setReviewCount] = useState<number | null>(null);
     const [productCount, setProductCount] = useState<number | null>(null);
     const [lastActiveLabel, setLastActiveLabel] = useState<string | null>(null);
+
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deletePw, setDeletePw] = useState("");
+    const [deleteBusy, setDeleteBusy] = useState(false);
+    const [deleteErr, setDeleteErr] = useState<string | null>(null);
+
+    const openDelete = () => {
+        setDeleteErr(null);
+        setDeletePw("");
+        setDeleteOpen(true);
+    };
+
+    const closeDelete = () => {
+        if (deleteBusy) return;
+        setDeleteOpen(false);
+        setDeletePw("");
+        setDeleteErr(null);
+    };
+
+    const deleteAccountNow = async () => {
+        const user = auth().currentUser;
+        if (!user) {
+            Alert.alert("Not signed in", "Please sign in again.");
+            return;
+        }
+
+        const email = user.email;
+        const pw = deletePw.trim();
+
+        if (!email) {
+            Alert.alert("Missing email", "This account has no email attached. Cannot re-authenticate.");
+            return;
+        }
+
+        if (!pw) {
+            setDeleteErr("Please enter your password to confirm.");
+            return;
+        }
+
+        setDeleteBusy(true);
+        setDeleteErr(null);
+
+        try {
+            // 1) Re-authenticate (Firebase requires recent login for delete)
+            const cred = EmailAuthProvider.credential(email, pw);
+            await user.reauthenticateWithCredential(cred);
+
+            // 2) Delete user subcollection: /users/{uid}/helpful/*
+            const userRef = firestore().collection("users").doc(user.uid);
+            try {
+                const helpfulSnap = await userRef.collection("helpful").get();
+                if (!helpfulSnap.empty) {
+                    const batch = firestore().batch();
+                    helpfulSnap.docs.forEach((d) => batch.delete(d.ref));
+                    await batch.commit();
+                }
+            } catch {
+                // If rules block this, we still proceed with account delete.
+                // Worst case: orphaned helpful docs that are no longer used.
+            }
+
+            // 3) Delete the user profile doc (so name/favourites disappear)
+            try {
+                await userRef.delete();
+            } catch {
+                // same idea: proceed anyway
+            }
+
+            // 4) Delete the Auth user (actual account)
+            await user.delete();
+
+            // 5) Close modal + best-effort sign out
+            closeDelete();
+            try {
+                await auth().signOut();
+            } catch {
+                // ignore
+            }
+
+            Alert.alert("Account deleted", "Your account has been deleted from this device.");
+        } catch (e: any) {
+            const code = e?.code || "";
+            const msg = e?.message || "Unknown error";
+
+            // Common cases with nicer messages
+            if (code === "auth/wrong-password") {
+                setDeleteErr("That password doesn’t match this account.");
+            } else if (code === "auth/too-many-requests") {
+                setDeleteErr("Too many attempts. Try again in a bit.");
+            } else if (code === "auth/requires-recent-login") {
+                setDeleteErr("Please sign out and back in, then try deleting again.");
+            } else {
+                setDeleteErr(msg);
+            }
+        } finally {
+            setDeleteBusy(false);
+        }
+    };
+
 
     // Display name from Firestore (fixes "Member"/"Info" issues)
     const [publicDisplayName, setPublicDisplayName] = useState<string | null>(null);
@@ -854,8 +958,16 @@ export default function UserMenuScreen() {
                         subtitle="This is permanent. No tricks."
                         danger
                         onPress={() => {
-                            Alert.alert("Delete account", "This will be added soon. For now, use Feedback and ask for account deletion.", [{ text: "OK" }]);
+                            Alert.alert(
+                                "Delete account",
+                                "This will permanently delete your account on this device. You will need your password to confirm.",
+                                [
+                                    { text: "Cancel", style: "cancel" },
+                                    { text: "Continue", style: "destructive", onPress: openDelete },
+                                ]
+                            );
                         }}
+
                     />
                 </GlassCard>
 
@@ -880,6 +992,111 @@ export default function UserMenuScreen() {
                     </Text>
                 </View>
             </ScrollView>
+            {/* Delete Account Modal */}
+            <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={closeDelete}>
+                <Pressable
+                    onPress={closeDelete}
+                    style={{
+                        flex: 1,
+                        backgroundColor: "rgba(0,0,0,0.45)",
+                        padding: 16,
+                        justifyContent: "center",
+                    }}
+                >
+                    <Pressable
+                        onPress={() => { }}
+                        style={{
+                            borderRadius: 22,
+                            overflow: "hidden",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.18)",
+                            backgroundColor: "rgba(20,24,32,0.92)",
+                        }}
+                    >
+                        <LinearGradient
+                            colors={["rgba(255,120,120,0.16)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.20)"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{ padding: 16 }}
+                        >
+                            <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                Confirm account deletion
+                            </Text>
+
+                            <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                                This is permanent. Enter your password to confirm.
+                            </Text>
+
+                            <TextInput
+                                value={deletePw}
+                                onChangeText={(t: string) => setDeletePw(t)}
+                                placeholder="Password"
+                                placeholderTextColor="rgba(255,255,255,0.35)"
+                                secureTextEntry
+                                editable={!deleteBusy}
+                                style={{
+                                    marginTop: 12,
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.16)",
+                                    backgroundColor: "rgba(0,0,0,0.25)",
+                                    paddingVertical: 12,
+                                    paddingHorizontal: 14,
+                                    borderRadius: 14,
+                                    color: theme.colors.textOnDark,
+                                    fontWeight: "800",
+                                }}
+                            />
+
+                            {deleteErr ? (
+                                <Text style={{ marginTop: 10, color: "rgba(255,160,160,1)", fontWeight: "900" }}>
+                                    {deleteErr}
+                                </Text>
+                            ) : null}
+
+                            <View style={{ flexDirection: "row", marginTop: 14 }}>
+                                <Pressable
+                                    onPress={closeDelete}
+                                    disabled={deleteBusy}
+                                    style={({ pressed }) => ({
+                                        flex: 1,
+                                        paddingVertical: 12,
+                                        borderRadius: 14,
+                                        alignItems: "center",
+                                        backgroundColor: "rgba(255,255,255,0.10)",
+                                        borderWidth: 1,
+                                        borderColor: "rgba(255,255,255,0.14)",
+                                        marginRight: 10,
+                                        opacity: deleteBusy ? 0.6 : pressed ? 0.85 : 1,
+                                    })}
+                                >
+                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Cancel</Text>
+                                </Pressable>
+
+                                <Pressable
+                                    onPress={deleteAccountNow}
+                                    disabled={deleteBusy}
+                                    style={({ pressed }) => ({
+                                        flex: 1,
+                                        paddingVertical: 12,
+                                        borderRadius: 14,
+                                        alignItems: "center",
+                                        backgroundColor: "rgba(255,120,120,0.22)",
+                                        borderWidth: 1,
+                                        borderColor: "rgba(255,120,120,0.32)",
+                                        opacity: deleteBusy ? 0.6 : pressed ? 0.85 : 1,
+                                    })}
+                                >
+                                    {deleteBusy ? (
+                                        <ActivityIndicator />
+                                    ) : (
+                                        <Text style={{ color: "rgba(255,200,200,1)", fontWeight: "900" }}>Delete</Text>
+                                    )}
+                                </Pressable>
+                            </View>
+                        </LinearGradient>
+                    </Pressable>
+                </Pressable>
+            </Modal>
 
             {/* Avatar Picker */}
             <Modal visible={avatarPickerOpen} transparent animationType="fade" onRequestClose={() => setAvatarPickerOpen(false)}>
@@ -988,5 +1205,6 @@ export default function UserMenuScreen() {
                 </Pressable>
             </Modal>
         </SafeAreaView>
+
     );
 }

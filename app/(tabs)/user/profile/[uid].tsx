@@ -1,36 +1,39 @@
 // app/(tabs)/user/profile/[uid].tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
+import {
+    ActivityIndicator,
+    Image,
+    Pressable,
+    ScrollView,
+    Text,
+    View,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
 import { theme } from "../../../../lib/theme";
 
 const budImg = require("../../../../assets/icons/bud.png");
 
-type PublicUser = {
+type UserDoc = {
     displayName?: string | null;
-    avatarId?: string | null; // optional if you store it publicly
-    photoURL?: string | null; // optional if you store it publicly
+    photoURL?: string | null;
     bio?: string | null;
 
-    // Public stats
-    reviewsWritten?: number | null;
-    helpfulReceived?: number | null;
-    helpfulGiven?: number | null;
-    favouritesCount?: number | null;
-
-    // Optional - used if you want badges to be computed without extra reads
-    createdAt?: any;
+    // favorites stored on the user doc (per your rules)
+    favoriteProductIds?: string[] | null;
+    favourites?: any;
+    favorites?: any;
 };
 
 type RecentReview = {
     id: string;
     productId: string;
-    productName?: string | null;
     rating?: number | null;
-    createdAt?: any;
+    createdAtMs: number;
+    productName?: string | null;
 };
 
 type Badge = {
@@ -164,79 +167,74 @@ function toInt(n: any) {
     return v < 0 ? 0 : v;
 }
 
+function getCreatedAtMs(createdAt: any): number {
+    if (!createdAt) return 0;
+    if (typeof createdAt === "number") return createdAt;
+    if (typeof createdAt?.toMillis === "function") return createdAt.toMillis();
+    if (typeof createdAt?.seconds === "number") return createdAt.seconds * 1000;
+    return 0;
+}
+
 export default function PublicProfileScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+
     const params = useLocalSearchParams<{ uid?: string }>();
     const uid = typeof params?.uid === "string" ? params.uid : "";
 
+    const currentUid = auth().currentUser?.uid ?? "";
+    const isSelf = !!uid && !!currentUid && uid === currentUid;
+
     const [loading, setLoading] = useState(true);
-    const [publicUser, setPublicUser] = useState<PublicUser | null>(null);
+    const [userDoc, setUserDoc] = useState<UserDoc | null>(null);
+
+    // Stats we will compute from canonical sources:
+    // reviewsWritten = count of reviews where userId == uid
+    // helpfulReceived = sum(helpfulCount) across that user's reviews
+    // helpfulGiven = count of users/{uid}/helpful (only if isSelf, due to rules)
+    const [reviewsWritten, setReviewsWritten] = useState(0);
+    const [helpfulReceived, setHelpfulReceived] = useState(0);
+    const [helpfulGiven, setHelpfulGiven] = useState<number | null>(null);
+
     const [recentReviews, setRecentReviews] = useState<RecentReview[]>([]);
+    const [productNameMap, setProductNameMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
         if (!uid) return;
 
         setLoading(true);
+        setUserDoc(null);
 
-        // ✅ IMPORTANT: this must be a PUBLIC collection
+        // Your rules allow read on /users/{userId}
         const unsub = firestore()
-            .collection("publicUsers")
+            .collection("users")
             .doc(uid)
             .onSnapshot(
-                async (doc) => {
-                    const data = (doc.data() as any) ?? null;
+                (docSnap) => {
+                    const data = (docSnap.data() as any) ?? null;
 
-                    if (!doc.exists || !data) {
-                        setPublicUser(null);
-                        setRecentReviews([]);
+                    if (!docSnap.exists || !data) {
+                        setUserDoc(null);
                         setLoading(false);
                         return;
                     }
 
-                    setPublicUser({
+                    setUserDoc({
                         displayName: typeof data?.displayName === "string" ? data.displayName : "Anonymous",
                         photoURL: typeof data?.photoURL === "string" ? data.photoURL : null,
                         bio: typeof data?.bio === "string" ? data.bio : null,
-                        reviewsWritten: typeof data?.reviewsWritten === "number" ? data.reviewsWritten : 0,
-                        helpfulReceived: typeof data?.helpfulReceived === "number" ? data.helpfulReceived : 0,
-                        helpfulGiven: typeof data?.helpfulGiven === "number" ? data.helpfulGiven : 0,
-                        favouritesCount: Array.isArray(data?.favoriteProductIds) ? data.favoriteProductIds.filter((x: any) => typeof x === "string").length : 0,
-                        createdAt: data?.createdAt ?? null,
+                        favoriteProductIds: Array.isArray(data?.favoriteProductIds)
+                            ? (data.favoriteProductIds as any[]).filter((x) => typeof x === "string")
+                            : [],
+                        favourites: data?.favourites,
+                        favorites: data?.favorites,
                     });
-
-                    // Optional: fetch recent reviews summary if you’re storing them publicly
-                    // This assumes: publicUsers/{uid}/recentReviews collection
-                    try {
-                        const snap = await firestore()
-                            .collection("publicUsers")
-                            .doc(uid)
-                            .collection("recentReviews")
-                            .orderBy("createdAt", "desc")
-                            .limit(5)
-                            .get();
-
-                        const rows: RecentReview[] = snap.docs.map((d) => {
-                            const r = d.data() as any;
-                            return {
-                                id: d.id,
-                                productId: typeof r?.productId === "string" ? r.productId : "",
-                                productName: typeof r?.productName === "string" ? r.productName : null,
-                                rating: typeof r?.rating === "number" ? r.rating : null,
-                                createdAt: r?.createdAt ?? null,
-                            };
-                        });
-
-                        setRecentReviews(rows.filter((x) => !!x.productId));
-                    } catch {
-                        // If you haven’t created this yet, don’t break the page
-                        setRecentReviews([]);
-                    }
 
                     setLoading(false);
                 },
                 (err) => {
-                    console.log("public profile snapshot error:", err);
+                    console.log("profile users/{uid} snapshot error:", err);
+                    setUserDoc(null);
                     setLoading(false);
                 }
             );
@@ -244,13 +242,129 @@ export default function PublicProfileScreen() {
         return () => unsub();
     }, [uid]);
 
-    const displayName = publicUser?.displayName?.trim() ? publicUser.displayName : "Anonymous";
-    const bio = publicUser?.bio?.trim() ? publicUser.bio : "Sharing honest experiences with the community";
+    useEffect(() => {
+        if (!uid) return;
 
-    const reviewsWritten = toInt(publicUser?.reviewsWritten);
-    const helpfulReceived = toInt(publicUser?.helpfulReceived);
-    const helpfulGiven = toInt(publicUser?.helpfulGiven);
-    const favourites = toInt(publicUser?.favouritesCount);
+        // Reviews written + helpful received + recent reviews
+        const unsub = firestore()
+            .collection("reviews")
+            .where("userId", "==", uid)
+            .orderBy("createdAt", "desc")
+            .onSnapshot(
+                (snap) => {
+                    setReviewsWritten(snap.size);
+
+                    let sumHelpful = 0;
+                    const recent: RecentReview[] = [];
+
+                    snap.docs.forEach((d, idx) => {
+                        const data = d.data() as any;
+
+                        const hc = typeof data?.helpfulCount === "number" ? data.helpfulCount : 0;
+                        if (Number.isFinite(hc) && hc > 0) sumHelpful += hc;
+
+                        if (idx < 5) {
+                            recent.push({
+                                id: d.id,
+                                productId: typeof data?.productId === "string" ? data.productId : "",
+                                rating: typeof data?.rating === "number" ? data.rating : null,
+                                createdAtMs: getCreatedAtMs(data?.createdAt),
+                                productName: null,
+                            });
+                        }
+                    });
+
+                    setHelpfulReceived(sumHelpful);
+                    setRecentReviews(recent.filter((r) => !!r.productId));
+                },
+                (err) => {
+                    console.log("profile reviews snapshot error:", err);
+                    setReviewsWritten(0);
+                    setHelpfulReceived(0);
+                    setRecentReviews([]);
+                }
+            );
+
+        return () => unsub();
+    }, [uid]);
+
+    useEffect(() => {
+        // Helpful given is only readable for the owner (per your rules)
+        if (!uid) return;
+
+        if (!isSelf) {
+            setHelpfulGiven(null);
+            return;
+        }
+
+        const unsub = firestore()
+            .collection("users")
+            .doc(uid)
+            .collection("helpful")
+            .onSnapshot(
+                (snap) => {
+                    setHelpfulGiven(snap.size);
+                },
+                (err) => {
+                    console.log("profile helpful given snapshot error:", err);
+                    setHelpfulGiven(0);
+                }
+            );
+
+        return () => unsub();
+    }, [uid, isSelf]);
+
+    useEffect(() => {
+        // Resolve product names for the 5 recent reviews (batched with IN queries)
+        const ids = Array.from(new Set(recentReviews.map((r) => r.productId).filter(Boolean)));
+        if (ids.length === 0) return;
+
+        const chunks: string[][] = [];
+        for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+
+        const unsubs: Array<() => void> = [];
+
+        chunks.forEach((chunk) => {
+            const q = firestore()
+                .collection("products")
+                .where(firestore.FieldPath.documentId(), "in", chunk);
+
+            const unsub = q.onSnapshot(
+                (snap) => {
+                    const updates: Record<string, string> = {};
+                    snap.docs.forEach((d) => {
+                        const data = d.data() as any;
+                        const nm = typeof data?.name === "string" ? data.name : "";
+                        if (nm) updates[d.id] = nm;
+                    });
+                    setProductNameMap((prev) => ({ ...prev, ...updates }));
+                },
+                (err) => {
+                    console.log("profile products name snapshot error:", err);
+                }
+            );
+
+            unsubs.push(unsub);
+        });
+
+        return () => {
+            unsubs.forEach((fn) => fn());
+        };
+    }, [recentReviews]);
+
+    const displayName = userDoc?.displayName?.trim() ? userDoc.displayName : "Anonymous";
+    const bio =
+        userDoc?.bio?.trim() ? userDoc.bio : "Sharing honest experiences with the community";
+
+    const favouritesCount = useMemo(() => {
+        const a = Array.isArray(userDoc?.favoriteProductIds) ? userDoc!.favoriteProductIds!.length : 0;
+
+        // In case you also store favourites in legacy shapes
+        const legacyA = userDoc?.favourites && typeof userDoc.favourites === "object" ? Object.keys(userDoc.favourites).length : 0;
+        const legacyB = userDoc?.favorites && typeof userDoc.favorites === "object" ? Object.keys(userDoc.favorites).length : 0;
+
+        return Math.max(a, legacyA, legacyB, 0);
+    }, [userDoc]);
 
     const badges: Badge[] = useMemo(() => {
         return [
@@ -287,8 +401,10 @@ export default function PublicProfileScreen() {
         ];
     }, [reviewsWritten, helpfulReceived]);
 
-    const headerBorder = theme.colors.goldGlassBorder;
-    const headerBg = theme.colors.goldGlass;
+    const headerBorder =
+        (theme as any)?.colors?.goldGlassBorder ?? "rgba(212,175,55,0.28)";
+    const headerBg =
+        (theme as any)?.colors?.goldGlass ?? "rgba(255,255,255,0.06)";
 
     if (!uid) {
         return (
@@ -342,19 +458,19 @@ export default function PublicProfileScreen() {
                 ) : null}
 
                 {/* Not found */}
-                {!loading && !publicUser ? (
+                {!loading && !userDoc ? (
                     <GlassCard>
                         <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 18 }}>
                             Profile not found
                         </Text>
                         <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                            This user may not have created a public profile yet.
+                            This user may not have created a profile yet.
                         </Text>
                     </GlassCard>
                 ) : null}
 
                 {/* Profile content */}
-                {!loading && publicUser ? (
+                {!loading && userDoc ? (
                     <>
                         {/* Header */}
                         <View
@@ -367,13 +483,17 @@ export default function PublicProfileScreen() {
                             }}
                         >
                             <LinearGradient
-                                colors={["rgba(212,175,55,0.18)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.10)"]}
+                                colors={[
+                                    "rgba(212,175,55,0.18)",
+                                    "rgba(255,255,255,0.06)",
+                                    "rgba(0,0,0,0.10)",
+                                ]}
                                 start={{ x: 0.05, y: 0 }}
                                 end={{ x: 0.95, y: 1 }}
                                 style={{ padding: 16, backgroundColor: headerBg }}
                             >
                                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                    <AvatarCircle size={62} seed={uid || displayName} photoURL={publicUser.photoURL ?? null} />
+                                    <AvatarCircle size={62} seed={uid || displayName} photoURL={userDoc.photoURL ?? null} />
 
                                     <View style={{ flex: 1, marginLeft: 14 }}>
                                         <Text
@@ -405,15 +525,14 @@ export default function PublicProfileScreen() {
                             </LinearGradient>
                         </View>
 
-                        {/* Stats (public) */}
+                        {/* Stats (computed from canonical collections) */}
                         <GlassCard style={{ marginBottom: 14 }}>
-                            <SectionLabel>Your stats</SectionLabel>
+                            <SectionLabel>Stats</SectionLabel>
 
                             {[
-                                { label: "Reviews written", value: reviewsWritten },
-                                { label: "Helpful received", value: helpfulReceived },
-                                { label: "Helpful given", value: helpfulGiven },
-                                { label: "Favourites", value: favourites },
+                                { label: "Reviews written", value: toInt(reviewsWritten) },
+                                { label: "Helpful received", value: toInt(helpfulReceived) },
+                                { label: "Favourites", value: toInt(favouritesCount) },
                             ].map((row) => (
                                 <View
                                     key={row.label}
@@ -446,12 +565,43 @@ export default function PublicProfileScreen() {
                                 </View>
                             ))}
 
+                            {/* Helpful given only shows for your own profile due to rules */}
+                            <View
+                                style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    paddingVertical: 10,
+                                }}
+                            >
+                                <Text
+                                    style={{
+                                        flex: 1,
+                                        color: theme.colors.textOnDarkSecondary,
+                                        fontWeight: "800",
+                                        fontSize: 16,
+                                    }}
+                                >
+                                    Helpful given
+                                </Text>
+
+                                <Text
+                                    style={{
+                                        color: theme.colors.textOnDark,
+                                        fontWeight: "900",
+                                        fontSize: 28,
+                                        letterSpacing: 0.2,
+                                    }}
+                                >
+                                    {isSelf ? toInt(helpfulGiven) : "Private"}
+                                </Text>
+                            </View>
+
                             <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                                Reviews written is the number of reviews this person has posted. Helpful received is the total number of helpful votes across all of their reviews.
+                                Helpful received is the total helpful votes across all reviews by this user.
                             </Text>
                         </GlassCard>
 
-                        {/* Badges (public) */}
+                        {/* Badges */}
                         <GlassCard style={{ marginBottom: 14 }}>
                             <SectionLabel>Community badges</SectionLabel>
 
@@ -491,7 +641,7 @@ export default function PublicProfileScreen() {
                             ))}
                         </GlassCard>
 
-                        {/* Recent reviews (public) */}
+                        {/* Recent reviews */}
                         <GlassCard>
                             <SectionLabel>Recent activity</SectionLabel>
 
@@ -505,34 +655,50 @@ export default function PublicProfileScreen() {
                                 </Text>
                             ) : (
                                 <View style={{ marginTop: 12 }}>
-                                    {recentReviews.map((r) => (
-                                        <Pressable
-                                            key={r.id}
-                                            onPress={() => {
-                                                if (!r.productId) return;
-                                                router.push(`/(tabs)/reviews/${r.productId}`);
-                                            }}
-                                            style={({ pressed }) => ({
-                                                paddingVertical: 12,
-                                                paddingHorizontal: 14,
-                                                borderRadius: 18,
-                                                backgroundColor: "rgba(255,255,255,0.06)",
-                                                borderWidth: 1,
-                                                borderColor: "rgba(255,255,255,0.12)",
-                                                opacity: pressed ? 0.85 : 1,
-                                                marginBottom: 10,
-                                            })}
-                                        >
-                                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
-                                                {r.productName ?? "View review"}
-                                            </Text>
-                                            {typeof r.rating === "number" ? (
-                                                <Text style={{ marginTop: 4, color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
-                                                    Rating: {r.rating.toFixed(1)}
+                                    {recentReviews.map((r) => {
+                                        const name = productNameMap[r.productId] ?? null;
+
+                                        return (
+                                            <Pressable
+                                                key={r.id}
+                                                onPress={() => {
+                                                    if (!r.productId) return;
+                                                    router.push(`/(tabs)/reviews/${r.productId}`);
+                                                }}
+                                                style={({ pressed }) => ({
+                                                    paddingVertical: 12,
+                                                    paddingHorizontal: 14,
+                                                    borderRadius: 18,
+                                                    backgroundColor: "rgba(255,255,255,0.06)",
+                                                    borderWidth: 1,
+                                                    borderColor: "rgba(255,255,255,0.12)",
+                                                    opacity: pressed ? 0.85 : 1,
+                                                    marginBottom: 10,
+                                                })}
+                                            >
+                                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
+                                                    {name ?? "View product"}
                                                 </Text>
-                                            ) : null}
-                                        </Pressable>
-                                    ))}
+
+                                                <View style={{ marginTop: 6, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                                    <Text style={{ color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
+                                                        {r.createdAtMs ? new Date(r.createdAtMs).toLocaleDateString() : ""}
+                                                    </Text>
+
+                                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                                        <Image
+                                                            source={budImg}
+                                                            resizeMode="contain"
+                                                            style={{ width: 16, height: 16, opacity: 0.9 }}
+                                                        />
+                                                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                                                            {typeof r.rating === "number" ? r.rating.toFixed(1) : "-"}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            </Pressable>
+                                        );
+                                    })}
                                 </View>
                             )}
                         </GlassCard>

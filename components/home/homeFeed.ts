@@ -21,6 +21,7 @@ type HomeFeedInput = {
 
     badgeTitle?: string;
     badgeOwnerName?: string;
+    badgeOwnerUid?: string; // ✅ added
 
     // Used for deterministic rotation
     seedKey: string;
@@ -63,7 +64,7 @@ export function buildHomeCards(
         goToFlower: (productId: string) => void;
 
         // Badge click should go to a user profile
-        goToBadgeOwner: (ownerName?: string) => void;
+        goToBadgeOwner: (uid?: string) => void;
 
         // External link (MedBud Wiki stock)
         openMcStock: () => void;
@@ -171,7 +172,7 @@ export function buildHomeCards(
             eyebrow: "Badge earned",
             title: input.badgeTitle,
             subtitle: input.badgeOwnerName ? `Awarded to ${input.badgeOwnerName}` : "Awarded recently",
-            onPress: () => handlers.goToBadgeOwner(input.badgeOwnerName),
+            onPress: () => handlers.goToBadgeOwner(input.badgeOwnerUid),
         });
     }
 

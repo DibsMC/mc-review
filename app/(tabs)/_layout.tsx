@@ -28,6 +28,7 @@ export default function TabsLayout() {
               <Ionicons name="home-outline" size={size} color={color} />
             ),
           }}
+
           listeners={{
             tabPress: (e) => {
               e.preventDefault();

@@ -9,20 +9,26 @@ import { buildHomeCards } from "../../components/home/homeFeed";
 import { AmbientBackground } from "../../components/home/AmbientBackground";
 import { SkeletonCard } from "../../components/home/SkeletonCard";
 
-type LatestBadge = { badgeTitle: string; badgeOwnerName: string; badgeOwnerUid?: string } | null;
+type LatestBadge =
+  | { badgeTitle: string; badgeOwnerName: string; badgeOwnerUid?: string }
+  | null;
 
-type Trending = {
-  productId: string;
-  title: string;
-  rating: number;
-  ratingCount: number; // number of reviews in the last 7 days
-} | null;
+type Trending =
+  | {
+    productId: string;
+    title: string;
+    rating: number;
+    ratingCount: number;
+  }
+  | null;
 
-type Updated = {
-  productId: string;
-  title: string;
-  snippet: string;
-} | null;
+type Updated =
+  | {
+    productId: string;
+    title: string;
+    snippet: string;
+  }
+  | null;
 
 function safeStr(v: unknown) {
   return typeof v === "string" && v.trim() ? v.trim() : "";
@@ -47,138 +53,111 @@ export default function HomeScreen() {
   const [updatedLoading, setUpdatedLoading] = useState(true);
 
   // ----------------------------
-  // Badge earned (badgeAwards)
+  // Badge earned
   // ----------------------------
   useEffect(() => {
     const unsub = firestore()
       .collection("badgeAwards")
       .orderBy("createdAt", "desc")
       .limit(1)
-      .onSnapshot(
-        async (snap) => {
-          try {
-            const doc = snap.docs[0];
-            if (!doc) {
-              setLatestBadge(null);
-              setBadgeLoading(false);
-              return;
-            }
+      .onSnapshot(async (snap) => {
+        try {
+          const doc = snap.docs[0];
+          if (!doc) {
+            setLatestBadge(null);
+            setBadgeLoading(false);
+            return;
+          }
 
-            const data = doc.data() as any;
-            const badgeTitle = safeStr(data?.badgeTitle) || "Badge earned";
-            const uid = safeStr(data?.userId);
+          const data = doc.data() as any;
+          const badgeTitle = safeStr(data?.badgeTitle) || "Badge earned";
+          const uid = safeStr(data?.userId);
 
-            if (!uid) {
-              setLatestBadge({ badgeTitle, badgeOwnerName: "Someone" });
-              setBadgeLoading(false);
-              return;
-            }
-
-            // Resolve displayName (best-effort)
-            let displayName = "";
+          let displayName = "Someone";
+          if (uid) {
             try {
               const userSnap = await firestore().collection("users").doc(uid).get();
               if (userSnap.exists()) {
-                const u = userSnap.data() as any;
-                displayName = safeStr(u?.displayName);
+                displayName = safeStr(userSnap.data()?.displayName) || displayName;
               }
             } catch { }
-
-            setLatestBadge({
-              badgeTitle,
-              badgeOwnerUid: uid,
-              badgeOwnerName: displayName || "Someone",
-            });
-            setBadgeLoading(false);
-          } catch (e: any) {
-            console.log("Failed resolving latest badge award:", e?.message || e);
-            setLatestBadge(null);
-            setBadgeLoading(false);
           }
-        },
-        (err) => {
-          console.log("badgeAwards listener error:", err?.message || err);
+
+          setLatestBadge({
+            badgeTitle,
+            badgeOwnerName: displayName,
+            badgeOwnerUid: uid || undefined,
+          });
+          setBadgeLoading(false);
+        } catch {
           setLatestBadge(null);
           setBadgeLoading(false);
         }
-      );
+      });
 
     return () => unsub();
   }, []);
 
   // ----------------------------
-  // Updated reviews (latest updatedAt)
+  // Updated reviews
   // ----------------------------
   useEffect(() => {
     const unsub = firestore()
       .collection("reviews")
       .orderBy("updatedAt", "desc")
       .limit(1)
-      .onSnapshot(
-        async (snap) => {
-          try {
-            const doc = snap.docs[0];
-            if (!doc) {
-              setUpdated(null);
-              setUpdatedLoading(false);
-              return;
-            }
-
-            const data = doc.data() as any;
-            const productId = safeStr(data?.productId);
-            const reviewText = safeStr(data?.text);
-
-            if (!productId) {
-              setUpdated(null);
-              setUpdatedLoading(false);
-              return;
-            }
-
-            // Resolve product title
-            let title = "Updated review";
-            try {
-              const prodSnap = await firestore().collection("products").doc(productId).get();
-              if (prodSnap.exists()) {
-                const pData = prodSnap.data() as any;
-                title = safeStr(pData?.name) || title;
-              }
-            } catch { }
-
-            const snippet = clampSnippet(reviewText) || "Fresh notes have been added";
-
-            setUpdated({ productId, title, snippet });
-            setUpdatedLoading(false);
-          } catch (e: any) {
-            console.log("Updated compute failed:", e?.message || e);
+      .onSnapshot(async (snap) => {
+        try {
+          const doc = snap.docs[0];
+          if (!doc) {
             setUpdated(null);
             setUpdatedLoading(false);
+            return;
           }
-        },
-        (err) => {
-          console.log("Updated listener error:", err?.message || err);
+
+          const data = doc.data() as any;
+          const productId = safeStr(data?.productId);
+          if (!productId) {
+            setUpdated(null);
+            setUpdatedLoading(false);
+            return;
+          }
+
+          let title = "Updated review";
+          try {
+            const prodSnap = await firestore().collection("products").doc(productId).get();
+            if (prodSnap.exists()) {
+              title = safeStr(prodSnap.data()?.name) || title;
+            }
+          } catch { }
+
+          setUpdated({
+            productId,
+            title,
+            snippet: clampSnippet(safeStr(data?.text)) || "Fresh notes have been added",
+          });
+          setUpdatedLoading(false);
+        } catch {
           setUpdated(null);
           setUpdatedLoading(false);
         }
-      );
+      });
 
     return () => unsub();
   }, []);
 
   // ----------------------------
-  // Trending = most reviewed in last 7 days
+  // Trending (last 7 days)
   // ----------------------------
   useEffect(() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-    // Uses createdAt timestamp (already in your review create block)
-    const q = firestore()
+    const unsub = firestore()
       .collection("reviews")
       .where("createdAt", ">=", new Date(weekAgo))
       .orderBy("createdAt", "desc")
-      .limit(250);
-
-    const unsub = q.onSnapshot(
-      async (snap) => {
+      .limit(250)
+      .onSnapshot(async (snap) => {
         try {
           if (snap.empty) {
             setTrending(null);
@@ -197,20 +176,12 @@ export default function HomeScreen() {
 
             counts.set(pid, (counts.get(pid) ?? 0) + 1);
 
-            const r = data?.rating;
-            if (typeof r === "number" && Number.isFinite(r)) {
-              sums.set(pid, (sums.get(pid) ?? 0) + r);
+            if (typeof data?.rating === "number") {
+              sums.set(pid, (sums.get(pid) ?? 0) + data.rating);
               ns.set(pid, (ns.get(pid) ?? 0) + 1);
             }
           });
 
-          if (counts.size == 0) {
-            setTrending(null);
-            setTrendingLoading(false);
-            return;
-          }
-
-          // Pick the product with the most reviews in the last 7 days
           let topProductId = "";
           let topCount = -1;
           counts.forEach((c, pid) => {
@@ -226,19 +197,18 @@ export default function HomeScreen() {
             return;
           }
 
-          // Resolve product title
           let title = "Trending";
           try {
             const prodSnap = await firestore().collection("products").doc(topProductId).get();
             if (prodSnap.exists()) {
-              const pData = prodSnap.data() as any;
-              title = safeStr(pData?.name) || title;
+              title = safeStr(prodSnap.data()?.name) || title;
             }
           } catch { }
 
           const n = ns.get(topProductId) ?? 0;
-          const sum = sums.get(topProductId) ?? 0;
-          const rating = n > 0 ? Math.round((sum / n) * 10) / 10 : 0;
+          const rating = n
+            ? Math.round(((sums.get(topProductId) ?? 0) / n) * 10) / 10
+            : 0;
 
           setTrending({
             productId: topProductId,
@@ -247,18 +217,11 @@ export default function HomeScreen() {
             ratingCount: topCount,
           });
           setTrendingLoading(false);
-        } catch (e: any) {
-          console.log("Trending compute failed:", e?.message || e);
+        } catch {
           setTrending(null);
           setTrendingLoading(false);
         }
-      },
-      (err) => {
-        console.log("Trending listener error:", err?.message || err);
-        setTrending(null);
-        setTrendingLoading(false);
-      }
-    );
+      });
 
     return () => unsub();
   }, []);
@@ -269,30 +232,17 @@ export default function HomeScreen() {
   const input = useMemo(
     () => ({
       now: Date.now(),
-      lastSeenMs: undefined,
-
-      hasNewReviews: true,
-      hasNewFlowers: true,
       hasUpdatedReviews: !!updated,
-
       trendingTitle: trending?.title ?? "Trending",
       trendingProductId: trending?.productId ?? "",
       trendingRating: trending?.rating ?? 0,
       trendingRatingCount: trending?.ratingCount ?? 0,
-
-      topRatedTitle: undefined,
-      topRatedProductId: undefined,
-      topRatedRating: null,
-      topRatedRatingCount: null,
-
       badgeTitle: latestBadge?.badgeTitle ?? "No badges yet",
       badgeOwnerName: latestBadge?.badgeOwnerName ?? "",
-
-      // Optional fields (homeFeed may ignore these if it doesn't use them)
+      badgeOwnerUid: latestBadge?.badgeOwnerUid ?? undefined, // ✅ pass through for correct navigation
       updatedTitle: updated?.title ?? "Updated reviews",
       updatedSubtitle: updated?.snippet ?? "Fresh notes have been added",
       updatedProductId: updated?.productId ?? "",
-
       seedKey: "home-feed",
     }),
     [latestBadge, trending, updated]
@@ -302,29 +252,22 @@ export default function HomeScreen() {
     () => ({
       goToNewReviews: () => router.push("/reviews"),
       goToNewFlowers: () => router.push("/reviews"),
-      goToUpdatedReviews: () => {
-        if (input.updatedProductId) {
-          router.push(`/(tabs)/reviews/product/${encodeURIComponent(input.updatedProductId)}`);
-        } else {
-          router.push("/reviews");
-        }
-      },
-
+      goToUpdatedReviews: () =>
+        input.updatedProductId
+          ? router.push(`/(tabs)/reviews/${encodeURIComponent(input.updatedProductId)}`)
+          : router.push("/reviews"),
       goToFlower: (productId: string) =>
-        router.push(`/(tabs)/reviews/product/${encodeURIComponent(productId)}`),
-
-      goToBadgeOwner: () => router.push("/user"),
-
+        router.push(`/(tabs)/reviews/${encodeURIComponent(productId)}`),
+      goToBadgeOwner: (uid?: string) => {
+        if (!uid) return;
+        router.push(`/(tabs)/user/profile/${uid}`);
+      },
       openMcStock: async () => {
         const url = "https://medbud.wiki/";
         try {
-          const supported = await Linking.canOpenURL(url);
-          if (!supported) {
-            Alert.alert("Cannot open link", "Your device cannot open this link.");
-            return;
-          }
-          await Linking.openURL(url);
-        } catch (e) {
+          if (await Linking.canOpenURL(url)) await Linking.openURL(url);
+          else Alert.alert("Cannot open link", "Your device cannot open this link.");
+        } catch {
           Alert.alert("Cannot open link", "Something went wrong opening the website.");
         }
       },
@@ -333,7 +276,6 @@ export default function HomeScreen() {
   );
 
   const feed = useMemo(() => buildHomeCards(input as any, handlers as any), [input, handlers]);
-
   const loading = badgeLoading || trendingLoading || updatedLoading;
 
   return (
@@ -341,7 +283,11 @@ export default function HomeScreen() {
       <AmbientBackground />
 
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} bounces={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
           <View style={styles.header}>
             <Text style={styles.title}>What&apos;s happening ✨</Text>
           </View>
@@ -354,17 +300,15 @@ export default function HomeScreen() {
                 <SkeletonCard />
               </>
             ) : (
-              <>
-                {feed.primary.map((c, index) => (
-                  <HomeCard key={c.id} card={c} hero={index === 0} />
-                ))}
-              </>
+              feed.primary.map((c, index) => (
+                <HomeCard key={c.id} card={c} hero={index === 0} />
+              ))
             )}
           </View>
 
           <Text style={styles.section}>UPDATES</Text>
 
-          <View style={styles.stack}>{feed.news ? <HomeCard card={feed.news} /> : null}</View>
+          <View style={styles.stack}>{feed.news && <HomeCard card={feed.news} />}</View>
 
           <View style={{ height: 10 }} />
         </ScrollView>
