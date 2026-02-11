@@ -177,14 +177,6 @@ export function HomeCard({
                             end={{ x: 0.9, y: 1 }}
                             style={[styles.iconPill, { borderColor: pill.ring }]}
                         >
-                            <LinearGradient
-                                pointerEvents="none"
-                                colors={["rgba(255,255,255,0.42)", "rgba(255,255,255,0.00)"]}
-                                start={{ x: 0.2, y: 0 }}
-                                end={{ x: 0.6, y: 1 }}
-                                style={styles.iconGloss}
-                            />
-
                             <View pointerEvents="none" style={[styles.iconInnerRing, { borderColor: pill.inner }]} />
 
                             <View pointerEvents="none" style={[styles.iconGlow, { shadowColor: pill.glow }]} />
@@ -324,15 +316,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 10 },
         elevation: 12,
     },
-    iconGloss: {
-        position: "absolute",
-        left: 6,
-        right: 6,
-        top: 6,
-        height: 22,
-        borderRadius: 999,
-        opacity: 0.9,
-    },
     iconInnerRing: {
         position: "absolute",
         left: 6,
@@ -359,5 +342,9 @@ const styles = StyleSheet.create({
     bud: {
         width: 40,
         height: 40,
+        shadowColor: "rgba(210,255,185,0.85)",
+        shadowOpacity: 0.34,
+        shadowRadius: 7,
+        shadowOffset: { width: 0, height: 0 },
     },
 });

@@ -4,6 +4,7 @@ import {
     ActivityIndicator,
     Alert,
     Image,
+    Linking,
     Modal,
     Pressable,
     ScrollView,
@@ -14,6 +15,7 @@ import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
+import * as FileSystem from "expo-file-system/legacy";
 import { theme } from "../../../lib/theme";
 
 const budImg = require("../../../assets/icons/bud.png");
@@ -182,7 +184,8 @@ function MenuRow({
             onPress={onPress}
             style={({ pressed }) => ({
                 paddingVertical: 14,
-                opacity: pressed ? 0.75 : 1,
+                opacity: pressed ? 0.82 : 1,
+                transform: [{ scale: pressed ? 0.992 : 1 }],
             })}
         >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -831,8 +834,34 @@ export default function UserMenuScreen() {
                 exportedAt: new Date().toISOString(),
             };
 
-            Alert.alert("Data export ready", "For now, your export is printed in the console (Metro).");
-            console.log("GDPR EXPORT:", JSON.stringify(exportData, null, 2));
+            const baseDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+            if (!baseDir) {
+                throw new Error("No local storage directory is available on this device.");
+            }
+
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const fileUri = `${baseDir}review-budz-export-${stamp}.json`;
+
+            await FileSystem.writeAsStringAsync(
+                fileUri,
+                JSON.stringify(exportData, null, 2),
+                { encoding: FileSystem.EncodingType.UTF8 }
+            );
+
+            try {
+                const canOpen = await Linking.canOpenURL(fileUri);
+                if (canOpen) {
+                    await Linking.openURL(fileUri);
+                }
+            } catch {
+                // Ignore open errors: file is still saved.
+            }
+
+            Alert.alert(
+                "Data export ready",
+                "Your data has been exported as a JSON file on this device. You can open or share it from Files."
+            );
+            console.log("GDPR EXPORT FILE:", fileUri);
         } catch (e: any) {
             Alert.alert("Export failed", e?.message ?? "Unknown error");
         }
@@ -858,10 +887,34 @@ export default function UserMenuScreen() {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+            <View
+                pointerEvents="none"
+                style={{
+                    position: "absolute",
+                    top: -120,
+                    left: -90,
+                    width: 320,
+                    height: 320,
+                    borderRadius: 999,
+                    backgroundColor: "rgba(120,255,210,0.08)",
+                }}
+            />
+            <View
+                pointerEvents="none"
+                style={{
+                    position: "absolute",
+                    top: 80,
+                    right: -140,
+                    width: 300,
+                    height: 300,
+                    borderRadius: 999,
+                    backgroundColor: "rgba(120,150,255,0.07)",
+                }}
+            />
             <ScrollView
                 contentContainerStyle={{
                     paddingHorizontal: 16,
-                    paddingTop: 10,
+                    paddingTop: 14,
                     paddingBottom: Math.max(24, insets.bottom + 18),
                 }}
                 showsVerticalScrollIndicator={false}
@@ -1056,8 +1109,8 @@ export default function UserMenuScreen() {
                     </Text>
 
                     <MenuRow
-                        title="Edit profile"
-                        subtitle="Update your display name, set a photo, or choose an avatar."
+                        title="Change profile picture"
+                        subtitle="Edit your username."
                         rightLabel={editRightLabel}
                         onPress={() => router.push("/(tabs)/user/edit-profile")}
                     />
@@ -1129,8 +1182,8 @@ export default function UserMenuScreen() {
                     <Divider />
 
                     <MenuRow
-                        title="Account and data"
-                        subtitle="Data, privacy basics, and account deletion."
+                        title="Terms and conditions"
+                        subtitle="Read terms, privacy, and legal information."
                         onPress={() => router.push("/(tabs)/user/legal")}
                     />
 
@@ -1148,7 +1201,7 @@ export default function UserMenuScreen() {
                         title="Delete account"
                         subtitle="This is permanent. No tricks."
                         danger
-                        onPress={() => router.push("/(tabs)/user/legal")}
+                        onPress={() => router.push("/(tabs)/user/delete-account")}
                     />
                 </GlassCard>
 

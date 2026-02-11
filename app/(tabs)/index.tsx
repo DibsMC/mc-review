@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import firestore from "@react-native-firebase/firestore";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import { HomeCard } from "../../components/home/HomeCard";
 import { buildHomeCards } from "../../components/home/homeFeed";
@@ -42,6 +43,8 @@ function clampSnippet(s: string, maxLen = 110) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const brandLogo = require("../../assets/brand/review-budz-logo.png");
+  const tabBarHeight = useBottomTabBarHeight();
 
   const [latestBadge, setLatestBadge] = useState<LatestBadge>(null);
   const [badgeLoading, setBadgeLoading] = useState(true);
@@ -277,40 +280,47 @@ export default function HomeScreen() {
 
   const feed = useMemo(() => buildHomeCards(input as any, handlers as any), [input, handlers]);
   const loading = badgeLoading || trendingLoading || updatedLoading;
+  const bottomPad = tabBarHeight + 34;
 
   return (
     <View style={styles.screen}>
       <AmbientBackground />
+      <View pointerEvents="none" style={styles.topGloss} />
 
       <SafeAreaView style={styles.safe} edges={["top"]}>
+
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
-          bounces={false}
+          bounces
+          scrollEnabled
         >
+
           <View style={styles.header}>
-            <Text style={styles.title}>What&apos;s happening ✨</Text>
+            <Text style={styles.titleCompact}>Fresh from the community ✨</Text>
           </View>
 
-          <View style={styles.stack}>
-            {loading ? (
-              <>
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-              </>
-            ) : (
-              feed.primary.map((c, index) => (
-                <HomeCard key={c.id} card={c} hero={index === 0} />
-              ))
-            )}
+          <View style={styles.cardsFrame}>
+            <View style={styles.stack}>
+              {loading ? (
+                <>
+                  <SkeletonCard />
+                  <SkeletonCard />
+                  <SkeletonCard />
+                </>
+              ) : (
+                feed.primary.map((c, index) => (
+                  <HomeCard key={c.id} card={c} hero={index === 0} />
+                ))
+              )}
+            </View>
           </View>
 
-          <Text style={styles.section}>UPDATES</Text>
+          <View style={styles.brandWrap}>
+            <Image source={brandLogo} resizeMode="contain" style={styles.brandLogo} />
+          </View>
 
-          <View style={styles.stack}>{feed.news && <HomeCard card={feed.news} />}</View>
-
-          <View style={{ height: 10 }} />
+          <View style={{ height: 8 }} />
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -320,13 +330,51 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "transparent" },
   safe: { flex: 1 },
-  content: { paddingTop: 18, paddingHorizontal: 18, paddingBottom: 14 },
-  header: { marginBottom: 12 },
+  content: { paddingTop: 10, paddingHorizontal: 18, paddingBottom: 20 },
+  topGloss: {
+    position: "absolute",
+    top: -120,
+    left: -90,
+    width: 360,
+    height: 360,
+    borderRadius: 999,
+    backgroundColor: "rgba(125, 250, 205, 0.09)",
+  },
+  header: { marginBottom: 8 },
+  titleCompact: {
+    fontSize: 34,
+    fontWeight: "900",
+    color: "rgba(255,255,255,0.97)",
+    letterSpacing: -0.6,
+    lineHeight: 40,
+    textShadowColor: "rgba(0,0,0,0.30)",
+    textShadowRadius: 10,
+  },
   title: {
     fontSize: 44,
     fontWeight: "900",
-    color: "rgba(255,255,255,0.94)",
-    letterSpacing: -0.6,
+    color: "rgba(255,255,255,0.97)",
+    letterSpacing: -0.8,
+    textShadowColor: "rgba(0,0,0,0.28)",
+    textShadowRadius: 12,
+  },
+  subtitle: {
+    marginTop: 6,
+    color: "rgba(255,255,255,0.62)",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
+  cardsFrame: {
+    borderRadius: 24,
+    padding: 5,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(8,11,20,0.30)",
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
   },
   section: {
     marginTop: 16,
@@ -338,4 +386,16 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.45)",
   },
   stack: { gap: 14 },
+  brandWrap: {
+    marginTop: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ translateY: -4 }],
+  },
+  brandLogo: {
+    width: "94%",
+    maxWidth: 560,
+    height: 154,
+    opacity: 0.99,
+  },
 });

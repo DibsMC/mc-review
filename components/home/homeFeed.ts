@@ -163,44 +163,18 @@ export function buildHomeCards(
     const laneBChoice = pickOne(laneB, seed + 3);
     if (laneBChoice) primary.push(laneBChoice);
 
-    /* ---------------- Lane C: recognition ---------------- */
+    /* ---------------- MC stock ---------------- */
 
-    if (input.badgeTitle) {
-        primary.push({
-            id: "laneC_badge",
-            type: "badge",
-            eyebrow: "Badge earned",
-            title: input.badgeTitle,
-            subtitle: input.badgeOwnerName ? `Awarded to ${input.badgeOwnerName}` : "Awarded recently",
-            onPress: () => handlers.goToBadgeOwner(input.badgeOwnerUid),
-        });
-    }
-
-    /* ---------------- Lane D: fallback ---------------- */
-
-    if (primary.length === 0) {
-        primary.push({
-            id: "caught_up",
-            type: "caught_up",
-            eyebrow: "All caught up",
-            title: "Nothing new since your last visit",
-            subtitle: "Browse flowers or write a review",
-            onPress: handlers.goToNewFlowers,
-        });
-    }
-
-    /* ---------------- Bottom card: MC stock ---------------- */
-
-    const news: HomeCardModel = {
+    // Always include MC stock as the 3rd card (fits screen, no "updates" section)
+    primary.push({
         id: "mc_stock_1",
         type: "news",
-        // no eyebrow to avoid repeating "MC stock"
         title: "Check MC stock",
         subtitle: "Availability on MedBud Wiki",
         meta: "Opens website",
         onPress: handlers.openMcStock,
-    };
+    });
 
-    // Limit to 3 cards so the MC stock card fits without scroll
-    return { primary: primary.slice(0, 3), news };
+    // Limit to 3 cards so the screen fits without scroll
+    return { primary: primary.slice(0, 3) };
 }

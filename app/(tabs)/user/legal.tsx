@@ -66,6 +66,24 @@ export default function LegalScreen() {
                         post, and that reviews are personal experiences.
                     </P>
 
+                    <H>Community behaviour</H>
+                    <P>
+                        Treat other members respectfully. Harassment, hate speech, bullying,
+                        threats, or repeated hostility are not allowed.
+                    </P>
+
+                    <H>Content standards</H>
+                    <P>
+                        Reviews should be honest, relevant, and based on real experience.
+                        Derogatory, abusive, or deliberately misleading content may be removed.
+                    </P>
+
+                    <H>Moderation and enforcement</H>
+                    <P>
+                        We may remove reviews or limit account access when content breaks these
+                        standards. Repeat offenders may be removed from the community.
+                    </P>
+
                     <H>Medical disclaimer</H>
                     <P>
                         Content in this app is informational only and is not medical advice.

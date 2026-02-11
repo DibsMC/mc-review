@@ -1,0 +1,102 @@
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { useState } from "react";
+import auth from "@react-native-firebase/auth";
+
+function Glass({ children }: { children: React.ReactNode }) {
+    return (
+        <View
+            style={{
+                backgroundColor: "rgba(255,255,255,0.08)",
+                borderColor: "rgba(255,255,255,0.16)",
+                borderWidth: 1,
+                borderRadius: 18,
+                padding: 16,
+            }}
+        >
+            {children}
+        </View>
+    );
+}
+
+export default function DeleteAccountScreen() {
+    const router = useRouter();
+    const [deleting, setDeleting] = useState(false);
+
+    const onDelete = () => {
+        Alert.alert(
+            "Delete account",
+            "This permanently deletes your account sign-in. This cannot be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: deleting ? "Deleting..." : "Delete account",
+                    style: "destructive",
+                    onPress: async () => {
+                        const user = auth().currentUser;
+                        if (!user) {
+                            Alert.alert("Not signed in", "Please sign in again and retry.");
+                            return;
+                        }
+
+                        try {
+                            setDeleting(true);
+                            await user.delete();
+                            Alert.alert("Account deleted", "Your account has been removed.");
+                            router.replace("/auth");
+                        } catch (e: any) {
+                            const code = typeof e?.code === "string" ? e.code : "";
+                            if (code.includes("requires-recent-login")) {
+                                Alert.alert(
+                                    "Re-authentication required",
+                                    "Please sign out, sign back in, then try deleting your account again."
+                                );
+                            } else {
+                                Alert.alert("Delete failed", e?.message ?? "Unknown error");
+                            }
+                        } finally {
+                            setDeleting(false);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    return (
+        <SafeAreaView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 58 }}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+                <Glass>
+                    <Text style={{ fontSize: 22, fontWeight: "900", color: "white" }}>Delete account</Text>
+                    <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 8, lineHeight: 22 }}>
+                        Deleting your account is permanent. This removes your sign-in account for this app.
+                    </Text>
+
+                    <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 10, lineHeight: 22 }}>
+                        If prompted, you may need to sign in again before deletion can complete.
+                    </Text>
+
+                    <Pressable
+                        onPress={onDelete}
+                        disabled={deleting}
+                        style={({ pressed }) => ({
+                            marginTop: 16,
+                            borderRadius: 14,
+                            paddingVertical: 14,
+                            alignItems: "center",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,120,120,0.45)",
+                            backgroundColor: "rgba(255,120,120,0.18)",
+                            opacity: deleting ? 0.5 : pressed ? 0.88 : 1,
+                        })}
+                    >
+                        <Text style={{ color: "rgba(255,190,190,1)", fontWeight: "900", fontSize: 16 }}>
+                            {deleting ? "Deleting..." : "Delete account"}
+                        </Text>
+                    </Pressable>
+                </Glass>
+            </ScrollView>
+        </SafeAreaView>
+    );
+}

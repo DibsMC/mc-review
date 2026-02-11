@@ -63,7 +63,7 @@ export default function EditProfileScreen() {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 58 }}>
                 <Text
                     style={{
                         color: theme.colors.textOnDark,

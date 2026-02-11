@@ -291,9 +291,9 @@ const styles = StyleSheet.create({
         borderRadius: 26,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(255,255,255,0.08)",
+        backgroundColor: "rgba(255,255,255,0.12)",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.14)",
+        borderColor: "rgba(255,255,255,0.22)",
     },
     backChevron: { fontSize: 22, fontWeight: "900", color: "rgba(255,255,255,0.92)", includeFontPadding: false },
 
@@ -302,8 +302,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.18)",
-        backgroundColor: "rgba(246,247,248,0.30)",
+        borderColor: "rgba(255,255,255,0.24)",
+        backgroundColor: "rgba(255,255,255,0.16)",
     },
 
     favPill: {
@@ -313,8 +313,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(255,255,255,0.08)",
+        borderColor: "rgba(255,255,255,0.22)",
+        backgroundColor: "rgba(255,255,255,0.12)",
         alignSelf: "flex-start",
     },
     favPillActive: { borderColor: "rgba(185,70,95,0.45)", backgroundColor: "rgba(185,70,95,0.14)" },
@@ -344,8 +344,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(255,255,255,0.10)",
+        borderColor: "rgba(255,255,255,0.22)",
+        backgroundColor: "rgba(255,255,255,0.12)",
     },
     actionPillActive: { borderColor: "rgba(212,175,55,0.55)", backgroundColor: "rgba(212, 175, 55, 0.22)" },
     actionPillDisabled: { opacity: 0.55 },
@@ -370,8 +370,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 18,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,120,120,0.32)",
-        backgroundColor: "rgba(255,120,120,0.14)",
+        borderColor: "rgba(255,120,120,0.45)",
+        backgroundColor: "rgba(255,120,120,0.18)",
     },
     dangerPillText: { fontWeight: "900", color: "rgba(255,160,160,1)", includeFontPadding: false },
 
@@ -380,8 +380,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(0,0,0,0.25)",
+        borderColor: "rgba(255,255,255,0.22)",
+        backgroundColor: "rgba(255,255,255,0.10)",
     },
     adminPillText: { fontWeight: "900", color: "rgba(255,255,255,0.78)" },
 
@@ -390,8 +390,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
-        backgroundColor: "rgba(0,0,0,0.28)",
+        borderColor: "rgba(255,255,255,0.22)",
+        backgroundColor: "rgba(255,255,255,0.10)",
     },
     reportPillText: { fontWeight: "900", color: "rgba(255,255,255,0.78)" },
 
@@ -408,7 +408,9 @@ const styles = StyleSheet.create({
     formBtn: {
         paddingVertical: 14,
         borderRadius: 16,
-        backgroundColor: "rgba(0,0,0,0.70)",
+        backgroundColor: "rgba(0,0,0,0.78)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
         alignItems: "center",
         justifyContent: "center",
     },
@@ -416,12 +418,12 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.14)",
-        backgroundColor: "rgba(255,255,255,0.10)",
+        borderColor: "rgba(255,255,255,0.22)",
+        backgroundColor: "rgba(255,255,255,0.14)",
         alignItems: "center",
         justifyContent: "center",
     },
-    formBtnText: { fontWeight: "900", textAlign: "center", color: "#fff", includeFontPadding: false },
+    formBtnText: { fontWeight: "900", fontSize: 16, letterSpacing: 0.2, textAlign: "center", color: "#fff", includeFontPadding: false },
 
     modalCard: {
         width: "100%",
@@ -498,7 +500,7 @@ const styles = StyleSheet.create({
     editorHeader: {
         paddingHorizontal: 16,
         paddingTop: 14,
-        paddingBottom: 12,
+        paddingBottom: 14,
         flexDirection: "row",
         alignItems: "center",
     },
@@ -509,9 +511,9 @@ const styles = StyleSheet.create({
         borderRadius: 22,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(255,255,255,0.10)",
+        backgroundColor: "rgba(255,255,255,0.12)",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.14)",
+        borderColor: "rgba(255,255,255,0.22)",
     },
     editorCloseText: { color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 },
     editorDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.10)" },
@@ -1001,13 +1003,6 @@ export default function FlowerDetail() {
 
     /* -------------------- Write/Edit helpers -------------------- */
 
-    const myLatestReview = useMemo(() => {
-        if (!currentUid) return null;
-        const mine = reviews.filter((r) => r.userId === currentUid);
-        if (mine.length === 0) return null;
-        return mine.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a))[0];
-    }, [currentUid, reviews]);
-
     const openWriteNewReview = useCallback(() => {
         const user = auth().currentUser;
         if (!user) {
@@ -1054,11 +1049,6 @@ export default function FlowerDetail() {
         },
         [currentUid]
     );
-
-    const openEditLastReview = useCallback(() => {
-        if (!myLatestReview) return;
-        openEditReview(myLatestReview);
-    }, [myLatestReview, openEditReview]);
 
     const closeEditor = useCallback(() => {
         if (submitting) return;
@@ -1305,7 +1295,14 @@ export default function FlowerDetail() {
                         {typeof product?.cbdPct === "number" ? ` · CBD ${formatPct(product?.cbdPct)}` : ""}
                     </Text>
 
-                    <Pressable onPress={toggleFavorite} style={[styles.favPill, isFavorite ? styles.favPillActive : null, { marginTop: 14 }]}>
+                    <Pressable
+                        onPress={toggleFavorite}
+                        style={({ pressed }) => [
+                            styles.favPill,
+                            isFavorite ? styles.favPillActive : null,
+                            { marginTop: 14, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] },
+                        ]}
+                    >
                         <Text style={[styles.favStar, isFavorite ? styles.favStarOn : styles.favStarOff]}>☆</Text>
                         <Text style={[styles.favText, isFavorite ? styles.favTextOn : styles.favTextOff]}>Favourite</Text>
                     </Pressable>
@@ -1377,7 +1374,10 @@ export default function FlowerDetail() {
                     <Text style={{ fontSize: 48, fontWeight: "900", color: theme.colors.textOnDark }}>Reviews</Text>
 
                     <View ref={sortBtnRef as any}>
-                        <Pressable onPress={openSortMenu} style={styles.sortPill}>
+                        <Pressable
+                            onPress={openSortMenu}
+                            style={({ pressed }) => [styles.sortPill, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
+                        >
                             <Text style={{ fontWeight: "900", color: theme.colors.textOnDark }}>{sortLabel}</Text>
                         </Pressable>
                     </View>
@@ -1385,17 +1385,18 @@ export default function FlowerDetail() {
 
                 <View style={{ height: 12 }} />
 
-                {/* Only show edit-last-review if you actually have one */}
-                {myLatestReview ? (
-                    <>
-                        <Pressable onPress={openEditLastReview} disabled={isCooldown} style={[styles.formBtn, { borderRadius: 26, opacity: isCooldown ? 0.6 : 1 }]}>
-                            <Text style={[styles.formBtnText, { fontSize: 22 }]}>{isCooldown ? `Wait ${secondsLeft}s` : "Edit last review"}</Text>
-                        </Pressable>
-                        <View style={{ height: 12 }} />
-                    </>
-                ) : null}
-
-                <Pressable onPress={openWriteNewReview} disabled={isCooldown} style={[styles.formBtnAlt, { borderRadius: 26, opacity: isCooldown ? 0.6 : 1 }]}>
+                <Pressable
+                    onPress={openWriteNewReview}
+                    disabled={isCooldown}
+                    style={({ pressed }) => [
+                        styles.formBtnAlt,
+                        {
+                            borderRadius: 26,
+                            opacity: isCooldown ? 0.45 : pressed ? 0.9 : 1,
+                            transform: [{ scale: pressed ? 0.985 : 1 }],
+                        },
+                    ]}
+                >
                     <Text style={[styles.formBtnText, { color: theme.colors.textOnDark, fontSize: 22 }]}>{isCooldown ? `Wait ${secondsLeft}s` : "Write a new review"}</Text>
                 </Pressable>
 
@@ -1406,8 +1407,6 @@ export default function FlowerDetail() {
         effectsSummary,
         isCooldown,
         isFavorite,
-        myLatestReview,
-        openEditLastReview,
         openSortMenu,
         openWriteNewReview,
         product?.cbdPct,
@@ -1434,7 +1433,17 @@ export default function FlowerDetail() {
                     </Text>
 
                     <View style={{ marginTop: 14 }}>
-                        <Pressable onPress={openWriteNewReview} disabled={isCooldown} style={[styles.formBtn, isCooldown ? { opacity: 0.6 } : null]}>
+                        <Pressable
+                            onPress={openWriteNewReview}
+                            disabled={isCooldown}
+                            style={({ pressed }) => [
+                                styles.formBtn,
+                                {
+                                    opacity: isCooldown ? 0.45 : pressed ? 0.9 : 1,
+                                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                                },
+                            ]}
+                        >
                             <Text style={styles.formBtnText}>{isCooldown ? `Wait ${secondsLeft}s` : "Write the first review"}</Text>
                         </Pressable>
                     </View>
@@ -1484,7 +1493,11 @@ export default function FlowerDetail() {
 
                 {/* Back button */}
                 <View style={[styles.backBtnWrap, { top: insets.top + 6 }]}>
-                    <Pressable onPress={handleBack} hitSlop={16} style={({ pressed }) => [styles.backBtn, pressed ? { opacity: 0.85 } : null]}>
+                    <Pressable
+                        onPress={handleBack}
+                        hitSlop={16}
+                        style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+                    >
                         <Text style={styles.backChevron}>‹</Text>
                     </Pressable>
                 </View>
@@ -1540,10 +1553,14 @@ export default function FlowerDetail() {
 
                         <SafeAreaView style={styles.editorSafe} edges={["top", "bottom"]}>
                             <KeyboardAvoidingView style={styles.editorKav} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}>
-                                <View style={styles.editorHeader}>
+                                <View style={[styles.editorHeader, { paddingTop: Math.max(insets.top + 14, 56) }]}>
                                     <Text style={styles.editorTitle}>{editingReviewId ? "Edit a review" : "Write a review"}</Text>
 
-                                    <Pressable onPress={closeEditor} style={({ pressed }) => [styles.editorCloseBtn, pressed ? { opacity: 0.9 } : null]}>
+                                    <Pressable
+                                        onPress={closeEditor}
+                                        hitSlop={12}
+                                        style={({ pressed }) => [styles.editorCloseBtn, pressed ? { opacity: 0.9 } : null]}
+                                    >
                                         <Text style={styles.editorCloseText}>✕</Text>
                                     </Pressable>
                                 </View>
@@ -1605,11 +1622,34 @@ export default function FlowerDetail() {
                                 </ScrollView>
 
                                 <View style={styles.editorFooter}>
-                                    <Pressable onPress={closeEditor} disabled={submitting} style={[styles.formBtnAlt, { flex: 1, marginRight: 10, opacity: submitting ? 0.7 : 1 }]}>
+                                    <Pressable
+                                        onPress={closeEditor}
+                                        disabled={submitting}
+                                        style={({ pressed }) => [
+                                            styles.formBtnAlt,
+                                            {
+                                                flex: 1,
+                                                marginRight: 10,
+                                                opacity: submitting ? 0.45 : pressed ? 0.9 : 1,
+                                                transform: [{ scale: pressed ? 0.985 : 1 }],
+                                            },
+                                        ]}
+                                    >
                                         <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Cancel</Text>
                                     </Pressable>
 
-                                    <Pressable onPress={saveReview} disabled={submitting || isCooldown} style={[styles.formBtn, { flex: 1, opacity: submitting || isCooldown ? 0.7 : 1 }]}>
+                                    <Pressable
+                                        onPress={saveReview}
+                                        disabled={submitting || isCooldown}
+                                        style={({ pressed }) => [
+                                            styles.formBtn,
+                                            {
+                                                flex: 1,
+                                                opacity: submitting || isCooldown ? 0.45 : pressed ? 0.9 : 1,
+                                                transform: [{ scale: pressed ? 0.985 : 1 }],
+                                            },
+                                        ]}
+                                    >
                                         <Text style={styles.formBtnText}>{submitting ? "Saving..." : isCooldown ? `Wait ${secondsLeft}s` : "Save review"}</Text>
                                     </Pressable>
                                 </View>
@@ -1690,13 +1730,32 @@ export default function FlowerDetail() {
                                                 if (reportSubmitting) return;
                                                 setReportOpen(false);
                                             }}
-                                            style={[styles.formBtnAlt, { marginRight: 10, opacity: reportSubmitting ? 0.7 : 1, flex: 1 }]}
+                                            style={({ pressed }) => [
+                                                styles.formBtnAlt,
+                                                {
+                                                    marginRight: 10,
+                                                    flex: 1,
+                                                    opacity: reportSubmitting ? 0.45 : pressed ? 0.9 : 1,
+                                                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                                                },
+                                            ]}
                                             disabled={reportSubmitting}
                                         >
                                             <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Cancel</Text>
                                         </Pressable>
 
-                                        <Pressable onPress={submitReport} style={[styles.formBtn, { opacity: reportSubmitting ? 0.7 : 1, flex: 1 }]} disabled={reportSubmitting}>
+                                        <Pressable
+                                            onPress={submitReport}
+                                            style={({ pressed }) => [
+                                                styles.formBtn,
+                                                {
+                                                    flex: 1,
+                                                    opacity: reportSubmitting ? 0.45 : pressed ? 0.9 : 1,
+                                                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                                                },
+                                            ]}
+                                            disabled={reportSubmitting}
+                                        >
                                             <Text style={styles.formBtnText}>{reportSubmitting ? "Submitting..." : "Submit report"}</Text>
                                         </Pressable>
                                     </View>
@@ -1776,7 +1835,12 @@ export default function FlowerDetail() {
                                         <Pressable
                                             onPress={() => toggleHelpful(review.id)}
                                             disabled={!canVote}
-                                            style={[styles.actionPill, hasVoted ? styles.actionPillActive : null, !canVote ? styles.actionPillDisabled : null]}
+                                            style={({ pressed }) => [
+                                                styles.actionPill,
+                                                hasVoted ? styles.actionPillActive : null,
+                                                !canVote ? styles.actionPillDisabled : null,
+                                                { opacity: !canVote ? 0.45 : pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] },
+                                            ]}
                                         >
                                             <Text style={styles.actionPillText}>{isMine ? "Helpful (yours)" : "Helpful"}</Text>
                                             {(review.helpfulCount ?? 0) > 0 ? (
@@ -1787,27 +1851,39 @@ export default function FlowerDetail() {
                                         </Pressable>
 
                                         {!isMine ? (
-                                            <Pressable onPress={() => openReport(review)} style={styles.reportPill}>
+                                            <Pressable
+                                                onPress={() => openReport(review)}
+                                                style={({ pressed }) => [styles.reportPill, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
+                                            >
                                                 <Text style={styles.reportPillText}>Report</Text>
                                             </Pressable>
                                         ) : null}
 
                                         {isMine ? (
-                                            <Pressable onPress={() => openEditReview(review)} style={styles.actionPill}>
+                                            <Pressable
+                                                onPress={() => openEditReview(review)}
+                                                style={({ pressed }) => [styles.actionPill, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
+                                            >
                                                 <Text style={styles.actionPillText}>Edit</Text>
                                             </Pressable>
                                         ) : null}
 
                                         {isMine ? (
                                             <View style={{ width: "100%", alignItems: "center" }}>
-                                                <Pressable onPress={() => confirmDelete(review.id, "owner")} style={styles.dangerPill}>
+                                                <Pressable
+                                                    onPress={() => confirmDelete(review.id, "owner")}
+                                                    style={({ pressed }) => [styles.dangerPill, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
+                                                >
                                                     <Text style={styles.dangerPillText}>Delete</Text>
                                                 </Pressable>
                                             </View>
                                         ) : null}
 
                                         {isAdmin ? (
-                                            <Pressable onPress={() => confirmDelete(review.id, "admin")} style={styles.adminPill}>
+                                            <Pressable
+                                                onPress={() => confirmDelete(review.id, "admin")}
+                                                style={({ pressed }) => [styles.adminPill, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
+                                            >
                                                 <Text style={styles.adminPillText}>Admin delete</Text>
                                             </Pressable>
                                         ) : null}
