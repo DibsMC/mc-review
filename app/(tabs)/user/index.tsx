@@ -1,26 +1,20 @@
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useEffect, useMemo, useState } from "react";
-import { EmailAuthProvider } from "@react-native-firebase/auth";
 import {
+    ActivityIndicator,
     Alert,
     Image,
-    LayoutAnimation,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     Text,
-    TextInput,
-    UIManager,
     View,
-    ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
 import { theme } from "../../../lib/theme";
-import { getUnlockedBadges } from "../../../lib/communityBadges";
 
 const budImg = require("../../../assets/icons/bud.png");
 
@@ -53,44 +47,47 @@ const AVATARS: AvatarOption[] = [
     { id: "juice", emoji: "🧃", label: "Juice" },
 ];
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+type RecentReviewRow = {
+    id: string;
+    productId: string;
+    rating?: number | null;
+    score?: number | null;
+    createdAtMs?: number | null;
+    helpfulCount?: number | null;
+};
+
+type ProductMini = {
+    id: string;
+    name: string;
+    maker?: string | null;
+};
 
 function Divider() {
     return (
         <View
             style={{
                 height: 1,
-                backgroundColor: theme.colors.dividerOnDark,
+                backgroundColor: "rgba(255,255,255,0.10)",
                 opacity: 0.9,
             }}
         />
     );
 }
 
-function SectionLabel({
-    children,
-    icon,
-}: {
-    children: string;
-    icon?: React.ReactNode;
-}) {
+function SectionLabel({ children }: { children: string }) {
     return (
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-            {icon ? <View style={{ marginRight: 8 }}>{icon}</View> : null}
-            <Text
-                style={{
-                    fontSize: 12,
-                    letterSpacing: 0.9,
-                    textTransform: "uppercase",
-                    color: "rgba(255,255,255,0.55)",
-                    fontWeight: "900",
-                }}
-            >
-                {children}
-            </Text>
-        </View>
+        <Text
+            style={{
+                fontSize: 12,
+                letterSpacing: 0.9,
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.55)",
+                marginBottom: 10,
+                fontWeight: "900",
+            }}
+        >
+            {children}
+        </Text>
     );
 }
 
@@ -107,22 +104,61 @@ function GlassCard({
         <View
             style={[
                 {
-                    backgroundColor: "rgba(246,247,248,0.12)",
-                    borderColor: borderTint ?? "rgba(255,255,255,0.16)",
-                    borderWidth: 1,
-                    borderRadius: 22,
+                    borderRadius: 24,
                     overflow: "hidden",
+                    borderWidth: 1,
+                    borderColor: borderTint ?? "rgba(255,255,255,0.16)",
+                    backgroundColor: "rgba(255,255,255,0.08)",
                 },
                 style,
             ]}
         >
+            {/* Base glass wash */}
             <LinearGradient
                 pointerEvents="none"
-                colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.10)"]}
-                start={{ x: 0.25, y: 0 }}
-                end={{ x: 0.75, y: 1 }}
+                colors={[
+                    "rgba(255,255,255,0.14)",
+                    "rgba(255,255,255,0.06)",
+                    "rgba(0,0,0,0.16)",
+                ]}
+                start={{ x: 0.12, y: 0 }}
+                end={{ x: 0.88, y: 1 }}
                 style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
             />
+
+            {/* Top highlight band */}
+            <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(255,255,255,0.16)", "rgba(255,255,255,0.00)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={{ position: "absolute", top: 0, left: 0, right: 0, height: 46, opacity: 0.85 }}
+            />
+
+            {/* Subtle edge vignette */}
+            <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(0,0,0,0.00)", "rgba(0,0,0,0.18)"]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, opacity: 0.7 }}
+            />
+
+            {/* Inner stroke (etched look) */}
+            <View
+                pointerEvents="none"
+                style={{
+                    position: "absolute",
+                    top: 1,
+                    left: 1,
+                    right: 1,
+                    bottom: 1,
+                    borderRadius: 23,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.10)",
+                }}
+            />
+
             <View style={{ padding: 16 }}>{children}</View>
         </View>
     );
@@ -205,16 +241,37 @@ function MenuRow({
     );
 }
 
+function maskEmail(email: string) {
+    const parts = email.split("@");
+    if (parts.length !== 2) return "";
+    const name = parts[0] ?? "";
+    const domain = parts[1] ?? "";
+    const first = name.slice(0, 1);
+    return `${first}***@${domain}`;
+}
+
+function getDiceBearPngUrl(seed: string, size: number) {
+    const safeSeed = encodeURIComponent(seed || "guest");
+    const safeSize = Math.min(256, Math.max(32, Math.round(size)));
+    return `https://api.dicebear.com/9.x/lorelei/png?seed=${safeSeed}&size=${safeSize}`;
+}
+
 function AvatarCircle({
     avatarId,
     photoURL,
     size = 56,
+    seed,
 }: {
     avatarId: string | null;
     photoURL?: string | null;
     size?: number;
+    seed: string;
 }) {
     const picked = useMemo(() => AVATARS.find((a) => a.id === avatarId) ?? null, [avatarId]);
+
+    const [dicebearFailed, setDicebearFailed] = useState(false);
+    const dicebearUrl = useMemo(() => getDiceBearPngUrl(seed, size), [seed, size]);
+    const showDiceBear = !photoURL && !picked && !dicebearFailed;
 
     return (
         <View
@@ -232,7 +289,11 @@ function AvatarCircle({
         >
             <LinearGradient
                 pointerEvents="none"
-                colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.04)", "rgba(0,0,0,0.14)"]}
+                colors={[
+                    "rgba(255,255,255,0.12)",
+                    "rgba(255,255,255,0.05)",
+                    "rgba(0,0,0,0.16)",
+                ]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
@@ -242,173 +303,289 @@ function AvatarCircle({
                 <Image source={{ uri: photoURL }} style={{ width: size, height: size }} />
             ) : picked ? (
                 <Text style={{ fontSize: Math.round(size * 0.52) }}>{picked.emoji}</Text>
+            ) : showDiceBear ? (
+                <Image
+                    source={{ uri: dicebearUrl }}
+                    style={{ width: size, height: size }}
+                    onError={() => setDicebearFailed(true)}
+                />
             ) : (
                 <Image
                     source={budImg}
                     resizeMode="contain"
-                    style={{
-                        width: Math.round(size * 0.52),
-                        height: Math.round(size * 0.52),
-                    }}
+                    style={{ width: Math.round(size * 0.52), height: Math.round(size * 0.52) }}
                 />
             )}
         </View>
     );
 }
 
-function maskEmail(email: string) {
-    const parts = email.split("@");
-    if (parts.length !== 2) return "";
-    const name = parts[0] ?? "";
-    const domain = parts[1] ?? "";
-    const first = name.slice(0, 1);
-    return `${first}***@${domain}`;
-}
+/**
+ * New premium stat row:
+ * - "etched" slot background
+ * - subtle divider
+ * - value in a glass pill
+ */
+import { StyleSheet } from "react-native";
 
-function StatRow({ label, value }: { label: string; value: number }) {
+function StatRow({
+    label,
+    value,
+    showDivider,
+}: {
+    label: string;
+    value: number;
+    showDivider?: boolean;
+}) {
     return (
-        <View
-            style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                paddingVertical: 10,
-            }}
-        >
-            <Text style={{ color: "rgba(255,255,255,0.70)", fontSize: 18, fontWeight: "900" }}>
-                {label}
-            </Text>
-            <Text style={{ color: theme.colors.textOnDark, fontSize: 26, fontWeight: "900" }}>
-                {String(value)}
-            </Text>
+        <View>
+            <View
+                style={{
+                    borderRadius: 18,
+                    overflow: "hidden",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.12)",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                }}
+            >
+                {/* Smooth glass wash */}
+                <LinearGradient
+                    pointerEvents="none"
+                    colors={["rgba(255,255,255,0.10)", "rgba(0,0,0,0.12)"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                />
+
+                {/* Soft top highlight */}
+                <LinearGradient
+                    pointerEvents="none"
+                    colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0.00)"]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: 24,
+                        opacity: 0.9,
+                    }}
+                />
+
+                <View
+                    style={{
+                        paddingVertical: 12,
+                        paddingHorizontal: 14,
+                        flexDirection: "row",
+                        alignItems: "center",
+                    }}
+                >
+                    <Text
+                        style={{
+                            flex: 1,
+                            color: "rgba(255,255,255,0.72)",
+                            fontWeight: "900",
+                            fontSize: 15,
+                            letterSpacing: 0.2,
+                        }}
+                    >
+                        {label}
+                    </Text>
+
+                    <View
+                        style={{
+                            minWidth: 56,
+                            paddingVertical: 6,
+                            paddingHorizontal: 12,
+                            borderRadius: 999,
+                            backgroundColor: "rgba(255,255,255,0.10)",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.16)",
+                        }}
+                    >
+                        <Text
+                            style={{
+                                color: theme.colors.textOnDark,
+                                fontWeight: "900",
+                                fontSize: 20,
+                                textAlign: "center",
+                                letterSpacing: 0.3,
+                            }}
+                        >
+                            {value}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Inner sheen (hairline) - avoids the “mid line” / double-border look */}
+                <View
+                    pointerEvents="none"
+                    style={{
+                        ...StyleSheet.absoluteFillObject,
+                        margin: 1,
+                        borderRadius: 18,
+                        borderWidth: StyleSheet.hairlineWidth,
+                        borderColor: "rgba(255,255,255,0.10)",
+                    }}
+                />
+            </View>
+
+            {showDivider ? <View style={{ height: 10 }} /> : null}
         </View>
     );
-}
-
-type BadgeTier = "bronze" | "silver" | "gold" | "emerald" | "platinum";
-
-function tierStyle(tier: BadgeTier) {
-    switch (tier) {
-        case "bronze":
-            return { dot: "rgba(205,127,50,0.90)", border: "rgba(205,127,50,0.35)", bg: "rgba(205,127,50,0.10)" };
-        case "silver":
-            return { dot: "rgba(200,200,210,0.95)", border: "rgba(200,200,210,0.35)", bg: "rgba(200,200,210,0.10)" };
-        case "gold":
-            return { dot: "rgba(212,175,55,0.95)", border: "rgba(212,175,55,0.40)", bg: "rgba(212,175,55,0.10)" };
-        case "emerald":
-            return { dot: "rgba(80,220,160,0.95)", border: "rgba(80,220,160,0.35)", bg: "rgba(80,220,160,0.10)" };
-        case "platinum":
-            return { dot: "rgba(235,235,245,0.95)", border: "rgba(235,235,245,0.45)", bg: "rgba(255,255,255,0.10)" };
-    }
 }
 
 function BadgeRow({
     title,
     subtitle,
-    emoji,
-    tier,
+    achieved,
 }: {
     title: string;
     subtitle: string;
-    emoji: string;
-    tier: BadgeTier;
-}) {
-    const t = tierStyle(tier);
-
-    return (
-        <View
-            style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingVertical: 14,
-                paddingHorizontal: 14,
-                borderRadius: 18,
-                backgroundColor: t.bg,
-                borderWidth: 1,
-                borderColor: t.border,
-                marginBottom: 10,
-            }}
-        >
-            <View
-                style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 16,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: "rgba(0,0,0,0.14)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.10)",
-                    marginRight: 12,
-                }}
-            >
-                <Text style={{ fontSize: 22 }}>{emoji}</Text>
-            </View>
-
-            <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.colors.textOnDark, fontSize: 18, fontWeight: "900", lineHeight: 22 }}>
-                    {title}
-                </Text>
-                <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.70)", fontSize: 14, fontWeight: "800", lineHeight: 18 }}>
-                    {subtitle}
-                </Text>
-            </View>
-
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: t.dot, opacity: 0.95 }} />
-        </View>
-    );
-}
-
-function InfoParagraph({ children }: { children: string }) {
-    return (
-        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 20, fontSize: 14, marginTop: 8 }}>
-            {children}
-        </Text>
-    );
-}
-
-function AccordionItem({
-    title,
-    isOpen,
-    onToggle,
-    children,
-}: {
-    title: string;
-    isOpen: boolean;
-    onToggle: () => void;
-    children: React.ReactNode;
+    achieved: boolean;
 }) {
     return (
         <View
             style={{
                 borderRadius: 18,
                 overflow: "hidden",
-                backgroundColor: "rgba(0,0,0,0.12)",
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
+                borderColor: achieved ? "rgba(212,175,55,0.26)" : "rgba(255,255,255,0.12)",
+                backgroundColor: achieved ? "rgba(212,175,55,0.08)" : "rgba(255,255,255,0.06)",
+                marginBottom: 10,
             }}
         >
-            <Pressable
-                onPress={onToggle}
-                style={({ pressed }) => ({
-                    paddingVertical: 14,
-                    paddingHorizontal: 14,
-                    opacity: pressed ? 0.8 : 1,
-                })}
+            {/* Main glass wash */}
+            <LinearGradient
+                pointerEvents="none"
+                colors={
+                    achieved
+                        ? ["rgba(255,255,255,0.14)", "rgba(212,175,55,0.06)", "rgba(0,0,0,0.14)"]
+                        : ["rgba(255,255,255,0.10)", "rgba(255,255,255,0.04)", "rgba(0,0,0,0.14)"]
+                }
+                start={{ x: 0.25, y: 0 }}
+                end={{ x: 0.75, y: 1 }}
+                style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+
+            {/* Soft top highlight */}
+            <LinearGradient
+                pointerEvents="none"
+                colors={
+                    achieved
+                        ? ["rgba(255,255,255,0.14)", "rgba(255,255,255,0.00)"]
+                        : ["rgba(255,255,255,0.10)", "rgba(255,255,255,0.00)"]
+                }
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 26,
+                    opacity: achieved ? 0.9 : 0.75,
+                }}
+            />
+
+            <View
+                style={{
+                    padding: 14,
+                    flexDirection: "row",
+                    alignItems: "center",
+                }}
             >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={{ flex: 1, color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
+                {/* Badge dot */}
+                <View
+                    style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: 999,
+                        marginRight: 12,
+                        backgroundColor: achieved ? "rgba(212,175,55,1)" : "rgba(255,255,255,0.22)",
+                        borderWidth: 1,
+                        borderColor: achieved ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.14)",
+                    }}
+                />
+
+                <View style={{ flex: 1 }}>
+                    <Text
+                        style={{
+                            color: theme.colors.textOnDark,
+                            fontWeight: "900",
+                            fontSize: 18,
+                            letterSpacing: 0.2,
+                            opacity: achieved ? 1 : 0.92,
+                        }}
+                    >
                         {title}
                     </Text>
-                    <Text style={{ color: "rgba(255,255,255,0.60)", fontSize: 18 }}>
-                        {isOpen ? "-" : "+"}
+
+                    <Text
+                        style={{
+                            marginTop: 3,
+                            color: theme.colors.textOnDarkSecondary,
+                            fontWeight: "800",
+                            fontSize: 13,
+                            lineHeight: 18,
+                            opacity: achieved ? 0.95 : 0.8,
+                        }}
+                    >
+                        {subtitle}
                     </Text>
                 </View>
-            </Pressable>
 
-            {isOpen ? <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 2 }}>{children}</View> : null}
+                {/* Right pill: Earned / Locked */}
+                <View
+                    style={{
+                        marginLeft: 12,
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderRadius: 999,
+                        backgroundColor: achieved ? "rgba(212,175,55,0.16)" : "rgba(255,255,255,0.08)",
+                        borderWidth: 1,
+                        borderColor: achieved ? "rgba(212,175,55,0.28)" : "rgba(255,255,255,0.12)",
+                    }}
+                >
+                    <Text
+                        style={{
+                            fontSize: 12,
+                            fontWeight: "900",
+                            color: achieved ? "rgba(255,235,190,0.98)" : "rgba(255,255,255,0.60)",
+                            letterSpacing: 0.2,
+                        }}
+                    >
+                        {achieved ? "Earned" : "Locked"}
+                    </Text>
+                </View>
+            </View>
+
+            {/* Inner etched stroke (subtle depth) */}
+            <View
+                pointerEvents="none"
+                style={{
+                    position: "absolute",
+                    top: 1,
+                    left: 1,
+                    right: 1,
+                    bottom: 1,
+                    borderRadius: 17,
+                    borderWidth: 1,
+                    borderColor: achieved ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.08)",
+                }}
+            />
         </View>
     );
+}
+
+function formatDate(ms: number | null | undefined) {
+    if (!ms) return "";
+    try {
+        return new Date(ms).toLocaleDateString();
+    } catch {
+        return "";
+    }
 }
 
 export default function UserMenuScreen() {
@@ -418,251 +595,195 @@ export default function UserMenuScreen() {
     const user = auth().currentUser;
     const uid = user?.uid ?? "";
 
-    // Prefer Firestore displayName when available; Auth fallback
-    const authDisplayName = user?.displayName?.trim() ? user.displayName : "Member";
-
+    const displayName = user?.displayName?.trim() ? user.displayName : "Anonymous";
     const photoURL = user?.photoURL ?? null;
     const emailMasked = user?.email ? maskEmail(user.email) : "";
 
     const [avatarId, setAvatarId] = useState<string | null>(null);
     const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
 
-
-
-    // Optional, future-ready: stats stored on the user doc
     const [joinYear, setJoinYear] = useState<number | null>(null);
-    const [reviewCount, setReviewCount] = useState<number | null>(null);
-    const [productCount, setProductCount] = useState<number | null>(null);
-    const [lastActiveLabel, setLastActiveLabel] = useState<string | null>(null);
 
-    const [deleteOpen, setDeleteOpen] = useState(false);
-    const [deletePw, setDeletePw] = useState("");
-    const [deleteBusy, setDeleteBusy] = useState(false);
-    const [deleteErr, setDeleteErr] = useState<string | null>(null);
-
-    const openDelete = () => {
-        setDeleteErr(null);
-        setDeletePw("");
-        setDeleteOpen(true);
-    };
-
-    const closeDelete = () => {
-        if (deleteBusy) return;
-        setDeleteOpen(false);
-        setDeletePw("");
-        setDeleteErr(null);
-    };
-
-    const deleteAccountNow = async () => {
-        const user = auth().currentUser;
-        if (!user) {
-            Alert.alert("Not signed in", "Please sign in again.");
-            return;
-        }
-
-        const email = user.email;
-        const pw = deletePw.trim();
-
-        if (!email) {
-            Alert.alert("Missing email", "This account has no email attached. Cannot re-authenticate.");
-            return;
-        }
-
-        if (!pw) {
-            setDeleteErr("Please enter your password to confirm.");
-            return;
-        }
-
-        setDeleteBusy(true);
-        setDeleteErr(null);
-
-        try {
-            // 1) Re-authenticate (Firebase requires recent login for delete)
-            const cred = EmailAuthProvider.credential(email, pw);
-            await user.reauthenticateWithCredential(cred);
-
-            // 2) Delete user subcollection: /users/{uid}/helpful/*
-            const userRef = firestore().collection("users").doc(user.uid);
-            try {
-                const helpfulSnap = await userRef.collection("helpful").get();
-                if (!helpfulSnap.empty) {
-                    const batch = firestore().batch();
-                    helpfulSnap.docs.forEach((d) => batch.delete(d.ref));
-                    await batch.commit();
-                }
-            } catch {
-                // If rules block this, we still proceed with account delete.
-                // Worst case: orphaned helpful docs that are no longer used.
-            }
-
-            // 3) Delete the user profile doc (so name/favourites disappear)
-            try {
-                await userRef.delete();
-            } catch {
-                // same idea: proceed anyway
-            }
-
-            // 4) Delete the Auth user (actual account)
-            await user.delete();
-
-            // 5) Close modal + best-effort sign out
-            closeDelete();
-            try {
-                await auth().signOut();
-            } catch {
-                // ignore
-            }
-
-            Alert.alert("Account deleted", "Your account has been deleted from this device.");
-        } catch (e: any) {
-            const code = e?.code || "";
-            const msg = e?.message || "Unknown error";
-
-            // Common cases with nicer messages
-            if (code === "auth/wrong-password") {
-                setDeleteErr("That password doesn’t match this account.");
-            } else if (code === "auth/too-many-requests") {
-                setDeleteErr("Too many attempts. Try again in a bit.");
-            } else if (code === "auth/requires-recent-login") {
-                setDeleteErr("Please sign out and back in, then try deleting again.");
-            } else {
-                setDeleteErr(msg);
-            }
-        } finally {
-            setDeleteBusy(false);
-        }
-    };
-
-
-    // Display name from Firestore (fixes "Member"/"Info" issues)
-    const [publicDisplayName, setPublicDisplayName] = useState<string | null>(null);
-
-    // Extra stats (safe defaults)
+    // Stats
+    const [reviewsWritten, setReviewsWritten] = useState<number>(0);
     const [helpfulReceived, setHelpfulReceived] = useState<number>(0);
     const [helpfulGiven, setHelpfulGiven] = useState<number>(0);
     const [favouritesCount, setFavouritesCount] = useState<number>(0);
+    const [loadingStats, setLoadingStats] = useState<boolean>(true);
 
-    // Community stats fallback state
-    const [reviewCountLoading, setReviewCountLoading] = useState<boolean>(false);
+    const [recentReviews, setRecentReviews] = useState<RecentReviewRow[]>([]);
+    const [loadingRecent, setLoadingRecent] = useState<boolean>(true);
 
-    const [openInfoKey, setOpenInfoKey] = useState<string | null>(null);
+    const [productMap, setProductMap] = useState<Record<string, ProductMini>>({});
 
-    // User doc listener (avatar, joinYear, doc-based stats)
+    // Products map (for recent review cards)
     useEffect(() => {
         if (!uid) return;
 
-        const unsub = firestore()
-            .collection("users")
-            .doc(uid)
+        const unsubProducts = firestore().collection("products").onSnapshot(
+            (snap) => {
+                const next: Record<string, ProductMini> = {};
+                snap.docs.forEach((d) => {
+                    const data = (d.data() as any) ?? {};
+                    next[d.id] = {
+                        id: d.id,
+                        name: typeof data?.name === "string" ? data.name : "",
+                        maker: typeof data?.maker === "string" ? data.maker : null,
+                    };
+                });
+                setProductMap(next);
+            },
+            () => {
+                // ignore
+            }
+        );
+
+        return () => unsubProducts();
+    }, [uid]);
+
+    // Users doc (avatar + join year)
+    useEffect(() => {
+        if (!uid) return;
+
+        const unsubUser = firestore().collection("users").doc(uid).onSnapshot(
+            (doc) => {
+                const data = (doc.data() as any) ?? {};
+
+                const v = typeof data?.avatarId === "string" ? data.avatarId : null;
+                setAvatarId(v);
+
+                const createdAt: any = data?.createdAt ?? data?.created_at ?? null;
+                if (createdAt?.toDate) setJoinYear(createdAt.toDate().getFullYear());
+                else if (typeof createdAt === "number") setJoinYear(new Date(createdAt).getFullYear());
+                else setJoinYear(null);
+            },
+            () => {
+                // ignore
+            }
+        );
+
+        return () => unsubUser();
+    }, [uid]);
+
+    // Reviews written + helpful received fallback from /reviews
+    useEffect(() => {
+        if (!uid) return;
+
+        setLoadingStats(true);
+
+        const unsubMyReviews = firestore()
+            .collection("reviews")
+            .where("userId", "==", uid)
             .onSnapshot(
-                (doc) => {
-                    const data = (doc.data() as any) ?? {};
+                (snap) => {
+                    let count = 0;
+                    let helpfulSum = 0;
 
-                    const v = typeof data?.avatarId === "string" ? data.avatarId : null;
-                    setAvatarId(v);
+                    snap.docs.forEach((d) => {
+                        count += 1;
+                        const data = (d.data() as any) ?? {};
+                        const hc = typeof data?.helpfulCount === "number" ? data.helpfulCount : 0;
+                        helpfulSum += hc;
+                    });
 
-                    const dnRaw = typeof data?.displayName === "string" ? data.displayName.trim() : "";
-                    // Avoid placeholder junk values (e.g. "Info")
-                    const dn = dnRaw && dnRaw.toLowerCase() !== "info" ? dnRaw : "";
-                    setPublicDisplayName(dn || null);
-
-                    const createdAt: any = data?.createdAt ?? data?.created_at ?? null;
-                    if (createdAt?.toDate) setJoinYear(createdAt.toDate().getFullYear());
-                    else if (typeof createdAt === "number") setJoinYear(new Date(createdAt).getFullYear());
-                    else setJoinYear(null);
-
-                    const rc = typeof data?.reviewCount === "number" ? data.reviewCount : null;
-                    const pc = typeof data?.productCount === "number" ? data.productCount : null;
-                    setReviewCount(rc);
-                    setProductCount(pc);
-
-                    const la = typeof data?.lastActiveLabel === "string" ? data.lastActiveLabel : null;
-                    setLastActiveLabel(la);
-
-                    // Favourites count derived from the real source of truth
-                    const favIdsA = Array.isArray(data?.favoriteProductIds)
-                        ? data.favoriteProductIds.filter((x: any) => typeof x === "string")
-                        : [];
-
-                    const favIdsB = Array.isArray(data?.favouriteProductIds)
-                        ? data.favouriteProductIds.filter((x: any) => typeof x === "string")
-                        : [];
-
-                    // If both exist for some reason, merge unique
-                    const mergedFavs = Array.from(new Set([...(favIdsA as string[]), ...(favIdsB as string[])]));
-
-                    setFavouritesCount(mergedFavs.length);
-
+                    setReviewsWritten(count);
+                    setHelpfulReceived(helpfulSum);
+                    setLoadingStats(false);
                 },
+                () => setLoadingStats(false)
+            );
+
+        const unsubHelpfulVotes = firestore()
+            .collection("reviewHelpfulVotes")
+            .where("userId", "==", uid)
+            .onSnapshot(
+                (snap) => setHelpfulGiven(snap.size),
                 () => {
                     // ignore
                 }
             );
 
-        return () => unsub();
+        return () => {
+            unsubMyReviews();
+            unsubHelpfulVotes();
+        };
     }, [uid]);
 
-    // Helpful GIVEN + RECEIVED (MUST be a sibling hook, not nested)
+    // Favourites count
+    useEffect(() => {
+        if (!uid) {
+            setFavouritesCount(0);
+            return;
+        }
+
+        // US spelling (your reviews page uses /favorites)
+        const refUS = firestore().collection("users").doc(uid).collection("favorites");
+        // Safety: if anything writes UK spelling
+        const refUK = firestore().collection("users").doc(uid).collection("favourites");
+
+        const unsubUS = refUS.onSnapshot(
+            (snap) => setFavouritesCount(snap.size),
+            (err) => {
+                console.log("favorites count error:", err);
+                setFavouritesCount(0);
+            }
+        );
+
+        const unsubUK = refUK.onSnapshot(
+            (snap) => setFavouritesCount((prev) => Math.max(prev, snap.size)),
+            () => {
+                // ignore
+            }
+        );
+
+        return () => {
+            unsubUS();
+            unsubUK();
+        };
+    }, [uid]);
+
+    // Recent reviews (top 5)
     useEffect(() => {
         if (!uid) return;
 
-        // Helpful GIVEN = count of my votes (/users/{uid}/helpful)
-        const unsubGiven = firestore()
-            .collection("users")
-            .doc(uid)
-            .collection("helpful")
-            .onSnapshot(
-                (snap) => setHelpfulGiven(snap.size),
-                () => setHelpfulGiven(0)
-            );
+        setLoadingRecent(true);
 
-        // Helpful RECEIVED = sum of helpfulCount on all reviews where userId == uid
-        const unsubReceived = firestore()
+        const unsubRecent = firestore()
             .collection("reviews")
             .where("userId", "==", uid)
+            .orderBy("createdAt", "desc")
+            .limit(5)
             .onSnapshot(
                 (snap) => {
-                    let total = 0;
-                    snap.docs.forEach((d) => {
-                        const hc = (d.data() as any)?.helpfulCount;
-                        if (typeof hc === "number" && Number.isFinite(hc)) total += hc;
+                    const rows: RecentReviewRow[] = snap.docs.map((d) => {
+                        const data = (d.data() as any) ?? {};
+                        const createdAt: any = data?.createdAt ?? null;
+
+                        let ms: number | null = null;
+                        if (createdAt?.toDate) ms = createdAt.toDate().getTime();
+                        else if (typeof createdAt === "number") ms = createdAt;
+
+                        return {
+                            id: d.id,
+                            productId: typeof data?.productId === "string" ? data.productId : "",
+                            rating: typeof data?.rating === "number" ? data.rating : null,
+                            score: typeof data?.score === "number" ? data.score : null,
+                            helpfulCount: typeof data?.helpfulCount === "number" ? data.helpfulCount : 0,
+                            createdAtMs: ms,
+                        };
                     });
-                    setHelpfulReceived(total);
+
+                    setRecentReviews(rows.filter((r) => !!r.productId));
+                    setLoadingRecent(false);
                 },
-                () => setHelpfulReceived(0)
+                () => {
+                    setRecentReviews([]);
+                    setLoadingRecent(false);
+                }
             );
 
-        return () => {
-            unsubGiven();
-            unsubReceived();
-        };
+        return () => unsubRecent();
     }, [uid]);
-
-    // Fallback: if users/{uid}.reviewCount isn't present, count reviews once
-    useEffect(() => {
-        if (!uid) return;
-        if (typeof reviewCount === "number") return;
-
-        let cancelled = false;
-
-        const run = async () => {
-            setReviewCountLoading(true);
-            try {
-                const snap = await firestore().collection("reviews").where("userId", "==", uid).get();
-                if (!cancelled) setReviewCount(snap.size);
-            } catch {
-                // keep resilient: leave reviewCount as null if this fails
-            } finally {
-                if (!cancelled) setReviewCountLoading(false);
-            }
-        };
-
-        run();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [uid, reviewCount]);
 
     const saveAvatar = async (next: string | null) => {
         if (!uid) return;
@@ -682,31 +803,58 @@ export default function UserMenuScreen() {
         }
     };
 
+    const downloadMyData = async () => {
+        const u = auth().currentUser;
+        if (!u) {
+            Alert.alert("Error", "No signed-in user found.");
+            return;
+        }
+
+        try {
+            const uId = u.uid;
+
+            const userDoc = await firestore().collection("users").doc(uId).get();
+            const profileData = userDoc.data() ?? null;
+
+            const reviewsSnap = await firestore().collection("reviews").where("userId", "==", uId).get();
+            const reviews = reviewsSnap.docs.map((d) => ({ reviewId: d.id, ...(d.data() as any) }));
+
+            const exportData = {
+                account: {
+                    uid: uId,
+                    email: u.email ?? null,
+                    createdAt: u.metadata.creationTime ?? null,
+                    lastSignIn: u.metadata.lastSignInTime ?? null,
+                },
+                profile: profileData,
+                reviews,
+                exportedAt: new Date().toISOString(),
+            };
+
+            Alert.alert("Data export ready", "For now, your export is printed in the console (Metro).");
+            console.log("GDPR EXPORT:", JSON.stringify(exportData, null, 2));
+        } catch (e: any) {
+            Alert.alert("Export failed", e?.message ?? "Unknown error");
+        }
+    };
+
     const headerBorder = theme.colors.goldGlassBorder;
     const headerBg = theme.colors.goldGlass;
     const editRightLabel = photoURL ? "Photo" : avatarId ? "Avatar" : "Set up";
 
     const headerOneLiner = joinYear ? `Part of the community since ${joinYear}` : "Sharing honest experiences with the community";
 
-    const statsBits: string[] = [];
-    if (typeof reviewCount === "number") statsBits.push(`${reviewCount} reviews`);
-    if (typeof productCount === "number") statsBits.push(`${productCount} products`);
-    if (lastActiveLabel) statsBits.push(`Last active ${lastActiveLabel}`);
-    const statsLine = statsBits.length ? statsBits.join(" · ") : null;
+    const seed = uid || displayName;
 
-    const safeReviewCount = typeof reviewCount === "number" ? reviewCount : 0;
-
-    const unlockedBadges = getUnlockedBadges({
-        reviewsWritten: safeReviewCount,
-        helpfulReceived,
-    });
-
-    const toggleInfo = (key: string) => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setOpenInfoKey((prev) => (prev === key ? null : key));
-    };
-
-    const displayName = publicDisplayName || authDisplayName || "Member";
+    const badges = useMemo(() => {
+        return [
+            { key: "contributor", title: "Contributor", subtitle: "Posted your first review", achieved: reviewsWritten >= 1 },
+            { key: "regular", title: "Regular", subtitle: "5+ reviews written", achieved: reviewsWritten >= 5 },
+            { key: "super", title: "Super Reviewer", subtitle: "15+ reviews written", achieved: reviewsWritten >= 15 },
+            { key: "helpful1", title: "Helpful", subtitle: "10+ helpful received", achieved: helpfulReceived >= 10 },
+            { key: "helpful2", title: "Trusted", subtitle: "50+ helpful received", achieved: helpfulReceived >= 50 },
+        ];
+    }, [reviewsWritten, helpfulReceived]);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
@@ -732,10 +880,7 @@ export default function UserMenuScreen() {
                         colors={["rgba(212,175,55,0.18)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.10)"]}
                         start={{ x: 0.05, y: 0 }}
                         end={{ x: 0.95, y: 1 }}
-                        style={{
-                            padding: 16,
-                            backgroundColor: headerBg,
-                        }}
+                        style={{ padding: 16, backgroundColor: headerBg }}
                     >
                         <View style={{ flexDirection: "row", alignItems: "center" }}>
                             <Pressable
@@ -745,18 +890,11 @@ export default function UserMenuScreen() {
                                     marginRight: 14,
                                 })}
                             >
-                                <AvatarCircle avatarId={avatarId} photoURL={photoURL} size={64} />
+                                <AvatarCircle avatarId={avatarId} photoURL={photoURL} size={62} seed={seed} />
                             </Pressable>
 
                             <View style={{ flex: 1 }}>
-                                <Text
-                                    style={{
-                                        fontSize: 24,
-                                        fontWeight: "900",
-                                        color: theme.colors.textOnDark,
-                                        lineHeight: 28,
-                                    }}
-                                >
+                                <Text style={{ fontSize: 24, fontWeight: "900", color: theme.colors.textOnDark, lineHeight: 28 }}>
                                     {displayName}
                                 </Text>
 
@@ -771,140 +909,142 @@ export default function UserMenuScreen() {
                                 >
                                     {headerOneLiner}
                                 </Text>
-
-                                {statsLine ? (
-                                    <Text
-                                        style={{
-                                            marginTop: 8,
-                                            fontSize: 12,
-                                            color: "rgba(255,255,255,0.60)",
-                                            fontWeight: "800",
-                                        }}
-                                    >
-                                        {statsLine}
-                                    </Text>
-                                ) : null}
                             </View>
                         </View>
                     </LinearGradient>
                 </View>
 
-                {/* YOUR STATS */}
+                {/* Your Stats */}
                 <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel
-                        icon={<Image source={budImg} resizeMode="contain" style={{ width: 14, height: 14, opacity: 0.9 }} />}
-                    >
-                        Your stats
-                    </SectionLabel>
+                    <SectionLabel>Your stats</SectionLabel>
 
-                    <StatRow label="Reviews written" value={reviewCountLoading ? 0 : safeReviewCount} />
-                    <StatRow label="Helpful received" value={helpfulReceived} />
-                    <StatRow label="Helpful given" value={helpfulGiven} />
+                    {loadingStats ? (
+                        <View style={{ paddingVertical: 10, flexDirection: "row", alignItems: "center" }}>
+                            <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
+                            <Text style={{ marginLeft: 10, color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
+                                Loading stats...
+                            </Text>
+                        </View>
+                    ) : null}
+
+                    <StatRow label="Reviews written" value={reviewsWritten} showDivider />
+                    <StatRow label="Helpful received" value={helpfulReceived} showDivider />
+                    <StatRow label="Helpful given" value={helpfulGiven} showDivider />
                     <StatRow label="Favourites" value={favouritesCount} />
 
-                    <Text
-                        style={{
-                            marginTop: 14,
-                            color: "rgba(255,255,255,0.55)",
-                            lineHeight: 22,
-                            fontSize: 16,
-                            fontWeight: "700",
-                        }}
-                    >
+                    <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
                         Reviews written is the number of reviews you have posted. Helpful received is the total number of helpful votes on all of your reviews.
                     </Text>
                 </GlassCard>
 
-                {/* HELPFUL INFORMATION */}
+                {/* Community Badges */}
                 <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel>Helpful information</SectionLabel>
+                    <SectionLabel>Community badges</SectionLabel>
+                    {badges.map((b) => (
+                        <BadgeRow key={b.key} title={b.title} subtitle={b.subtitle} achieved={b.achieved} />
+                    ))}
+                </GlassCard>
 
-                    <View style={{ gap: 10 }}>
-                        <AccordionItem
-                            title="Reviews & Scale"
-                            isOpen={openInfoKey === "reviewsScale"}
-                            onToggle={() => toggleInfo("reviewsScale")}
-                        >
-                            <InfoParagraph>
-                                Every review includes a bud rating and written notes. The bud rating is a quick signal, while the written review is where the useful detail lives.
-                            </InfoParagraph>
-                            <InfoParagraph>
-                                If you are deciding between products, look for repeated themes across multiple reviews rather than relying on a single opinion.
-                            </InfoParagraph>
+                {/* Your Activity */}
+                <GlassCard style={{ marginBottom: 14 }}>
+                    <SectionLabel>Your activity</SectionLabel>
 
-                            <View style={{ marginTop: 10 }}>
-                                <MenuRow
-                                    title="Read the scoring guide"
-                                    subtitle="How the bud score works and how to write reviews that actually help."
-                                    onPress={() => router.push("/(tabs)/user/reviews-info")}
-                                />
-                            </View>
-                        </AccordionItem>
+                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16, marginBottom: 6 }}>
+                        Your recent reviews
+                    </Text>
 
-                        <AccordionItem title="About the App" isOpen={openInfoKey === "about"} onToggle={() => toggleInfo("about")}>
-                            <InfoParagraph>This app started as a simple idea: make it easier to learn from real patient experiences.</InfoParagraph>
-                            <InfoParagraph>
-                                Medical cannabis reviews are often scattered across YouTube, Facebook groups, Reddit, and word of mouth. That makes it hard to compare products and spot consistent patterns.
-                            </InfoParagraph>
-                            <InfoParagraph>
-                                By bringing reviews into one place, we can aggregate experiences. For example, if lots of people report a product helps with migraines, that pattern can be useful, while still acknowledging that everyone responds differently.
-                            </InfoParagraph>
-                            <InfoParagraph>
-                                The goal is a community-driven platform that helps people navigate options with more confidence, using shared experience as a guide.
-                            </InfoParagraph>
+                    {loadingRecent ? (
+                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                            Loading your recent reviews...
+                        </Text>
+                    ) : recentReviews.length === 0 ? (
+                        <>
+                            <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                                Your reviews will show up here once you post a few.
+                            </Text>
+                            <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                                This is about contribution, not competition.
+                            </Text>
+                        </>
+                    ) : (
+                        <View style={{ marginTop: 8 }}>
+                            {recentReviews.map((r) => {
+                                const prod = productMap[r.productId];
+                                const title = prod?.name?.trim() ? prod.name : "Product";
+                                const maker = prod?.maker?.trim() ? prod.maker : null;
 
-                            <View style={{ marginTop: 10 }}>
-                                <MenuRow title="More about the app" subtitle="The longer version, plus the community angle." onPress={() => router.push("/(tabs)/user/about")} />
-                            </View>
-                        </AccordionItem>
+                                const scoreVal =
+                                    typeof r.score === "number" && r.score >= 1 && r.score <= 5
+                                        ? r.score
+                                        : typeof r.rating === "number"
+                                            ? r.rating
+                                            : null;
 
-                        <AccordionItem title="What’s Coming" isOpen={openInfoKey === "coming"} onToggle={() => toggleInfo("coming")}>
-                            <InfoParagraph>This is the first launch of the app, and it will evolve.</InfoParagraph>
-                            <InfoParagraph>We are open to feedback, especially when it is constructive and helps improve the experience for everyone.</InfoParagraph>
-                            <InfoParagraph>
-                                The app was built based on the creator’s own experience as a medical cannabis patient, with the aim of expanding over time to support more people, more products, and more use cases.
-                            </InfoParagraph>
-                            <InfoParagraph>Plans, not promises.</InfoParagraph>
-                        </AccordionItem>
+                                return (
+                                    <Pressable
+                                        key={r.id}
+                                        onPress={() => router.push(`/reviews/${r.productId}`)}
+                                        style={({ pressed }) => ({
+                                            borderRadius: 18,
+                                            padding: 14,
+                                            marginTop: 10,
+                                            backgroundColor: "rgba(255,255,255,0.06)",
+                                            borderWidth: 1,
+                                            borderColor: "rgba(255,255,255,0.12)",
+                                            opacity: pressed ? 0.85 : 1,
+                                        })}
+                                    >
+                                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
+                                            {title}
+                                        </Text>
 
-                        <AccordionItem title="What This App Is Not" isOpen={openInfoKey === "not"} onToggle={() => toggleInfo("not")}>
-                            <InfoParagraph>This app is not medical advice.</InfoParagraph>
-                            <InfoParagraph>Reviews are personal experiences, not clinical guidance.</InfoParagraph>
-                            <InfoParagraph>
-                                Always take responsibility for your own decisions and speak to a qualified professional if you need medical support or advice, especially if you have underlying conditions, take other medications, or experience side effects.
-                            </InfoParagraph>
-                        </AccordionItem>
+                                        <Text
+                                            style={{
+                                                marginTop: 4,
+                                                color: theme.colors.textOnDarkSecondary,
+                                                fontWeight: "800",
+                                                fontSize: 12,
+                                            }}
+                                        >
+                                            {[
+                                                maker ? maker : "",
+                                                scoreVal ? `Score ${scoreVal.toFixed(1)}` : "",
+                                                typeof r.helpfulCount === "number" ? `Helpful ${r.helpfulCount}` : "",
+                                                r.createdAtMs ? formatDate(r.createdAtMs) : "",
+                                            ]
+                                                .filter(Boolean)
+                                                .join(" | ")}
+                                        </Text>
+                                    </Pressable>
+                                );
+                            })}
 
-                        <AccordionItem title="Why Reviews Matter" isOpen={openInfoKey === "matter"} onToggle={() => toggleInfo("matter")}>
-                            <InfoParagraph>Peer insight can be valuable because it reflects real-world use.</InfoParagraph>
-                            <InfoParagraph>One review is just one experience, but patterns across many reviews can help guide decisions and set expectations.</InfoParagraph>
-                            <InfoParagraph>Use reviews to learn what to look out for, what tends to help others, and what might not suit you.</InfoParagraph>
-                        </AccordionItem>
+                            <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                                This is about contribution, not competition.
+                            </Text>
+                        </View>
+                    )}
+
+                    <View style={{ marginTop: 12 }}>
+                        <MenuRow
+                            title="How review scoring works"
+                            subtitle="How the score is calculated and how to write reviews that actually help."
+                            onPress={() => router.push("/(tabs)/user/reviews-info")}
+                        />
                     </View>
                 </GlassCard>
 
-                {/* COMMUNITY BADGES */}
+                {/* Community Impact */}
                 <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel>Community badges</SectionLabel>
+                    <SectionLabel>Your impact</SectionLabel>
 
-                    {unlockedBadges.length > 0 ? (
-                        <View>
-                            {unlockedBadges.map((b) => (
-                                <BadgeRow key={b.id} title={b.title} subtitle={b.subtitle} emoji={b.emoji} tier={b.tier} />
-                            ))}
-                        </View>
-                    ) : (
-                        <Text
-                            style={{
-                                color: "rgba(255,255,255,0.55)",
-                                lineHeight: 22,
-                                fontSize: 16,
-                                fontWeight: "700",
-                            }}
-                        >
-                            No badges yet. Write your first review to unlock one.
-                        </Text>
-                    )}
+                    <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                        Your reviews help others make informed choices. Community ratings are built from honest experiences like yours.
+                    </Text>
+
+                    <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                        Every review improves the accuracy of recommendations over time.
+                    </Text>
                 </GlassCard>
 
                 {/* Preferences */}
@@ -917,7 +1057,7 @@ export default function UserMenuScreen() {
 
                     <MenuRow
                         title="Edit profile"
-                        subtitle="Update your display name - More features coming soon."
+                        subtitle="Update your display name, set a photo, or choose an avatar."
                         rightLabel={editRightLabel}
                         onPress={() => router.push("/(tabs)/user/edit-profile")}
                     />
@@ -931,7 +1071,38 @@ export default function UserMenuScreen() {
                         This app is evolving. Your feedback helps shape what comes next.
                     </Text>
 
-                    <MenuRow title="Send feedback" subtitle="Bugs, ideas, features, new products. Anything welcome." onPress={() => router.push("/(tabs)/user/feedback")} />
+                    <MenuRow
+                        title="Send feedback"
+                        subtitle="Bugs, ideas, features, new products. Anything welcome."
+                        onPress={() => router.push("/(tabs)/user/feedback")}
+                    />
+                </GlassCard>
+
+                {/* Future */}
+                <GlassCard style={{ marginBottom: 14 }}>
+                    <SectionLabel>What’s coming</SectionLabel>
+
+                    <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                        More ways to personalise your experience
+                    </Text>
+                    <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                        Expanded profiles and community features
+                    </Text>
+                    <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                        Smarter recommendations over time
+                    </Text>
+
+                    <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", lineHeight: 18 }}>
+                        Plans, not promises.
+                    </Text>
+
+                    <View style={{ marginTop: 12 }}>
+                        <MenuRow
+                            title="About"
+                            subtitle="Where the app is heading and why the community side matters."
+                            onPress={() => router.push("/(tabs)/user/about")}
+                        />
+                    </View>
                 </GlassCard>
 
                 {/* Account */}
@@ -939,17 +1110,37 @@ export default function UserMenuScreen() {
                     <SectionLabel>Account</SectionLabel>
 
                     <View style={{ marginBottom: 10 }}>
-                        <Text style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, fontWeight: "900" }}>Email</Text>
-                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", marginTop: 4 }}>{emailMasked || "Not available"}</Text>
+                        <Text style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, fontWeight: "900" }}>
+                            Email
+                        </Text>
+                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", marginTop: 4 }}>
+                            {emailMasked || "Not available"}
+                        </Text>
                     </View>
 
                     <Divider />
 
-                    <MenuRow title="Change email" subtitle="Update the email you use to sign in." onPress={() => router.push("/(tabs)/user/change-email")} />
+                    <MenuRow
+                        title="Change email"
+                        subtitle="Update the email you use to sign in."
+                        onPress={() => router.push("/(tabs)/user/change-email")}
+                    />
 
                     <Divider />
 
-                    <MenuRow title="Terms and legal" subtitle="Privacy, terms, and the sensible bits." onPress={() => router.push("/(tabs)/user/legal")} />
+                    <MenuRow
+                        title="Account and data"
+                        subtitle="Data, privacy basics, and account deletion."
+                        onPress={() => router.push("/(tabs)/user/legal")}
+                    />
+
+                    <Divider />
+
+                    <MenuRow
+                        title="Download my data"
+                        subtitle="Export your profile and reviews (GDPR)."
+                        onPress={() => downloadMyData()}
+                    />
 
                     <Divider />
 
@@ -957,17 +1148,7 @@ export default function UserMenuScreen() {
                         title="Delete account"
                         subtitle="This is permanent. No tricks."
                         danger
-                        onPress={() => {
-                            Alert.alert(
-                                "Delete account",
-                                "This will permanently delete your account on this device. You will need your password to confirm.",
-                                [
-                                    { text: "Cancel", style: "cancel" },
-                                    { text: "Continue", style: "destructive", onPress: openDelete },
-                                ]
-                            );
-                        }}
-
+                        onPress={() => router.push("/(tabs)/user/legal")}
                     />
                 </GlassCard>
 
@@ -992,111 +1173,6 @@ export default function UserMenuScreen() {
                     </Text>
                 </View>
             </ScrollView>
-            {/* Delete Account Modal */}
-            <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={closeDelete}>
-                <Pressable
-                    onPress={closeDelete}
-                    style={{
-                        flex: 1,
-                        backgroundColor: "rgba(0,0,0,0.45)",
-                        padding: 16,
-                        justifyContent: "center",
-                    }}
-                >
-                    <Pressable
-                        onPress={() => { }}
-                        style={{
-                            borderRadius: 22,
-                            overflow: "hidden",
-                            borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.18)",
-                            backgroundColor: "rgba(20,24,32,0.92)",
-                        }}
-                    >
-                        <LinearGradient
-                            colors={["rgba(255,120,120,0.16)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.20)"]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={{ padding: 16 }}
-                        >
-                            <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>
-                                Confirm account deletion
-                            </Text>
-
-                            <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                                This is permanent. Enter your password to confirm.
-                            </Text>
-
-                            <TextInput
-                                value={deletePw}
-                                onChangeText={(t: string) => setDeletePw(t)}
-                                placeholder="Password"
-                                placeholderTextColor="rgba(255,255,255,0.35)"
-                                secureTextEntry
-                                editable={!deleteBusy}
-                                style={{
-                                    marginTop: 12,
-                                    borderWidth: 1,
-                                    borderColor: "rgba(255,255,255,0.16)",
-                                    backgroundColor: "rgba(0,0,0,0.25)",
-                                    paddingVertical: 12,
-                                    paddingHorizontal: 14,
-                                    borderRadius: 14,
-                                    color: theme.colors.textOnDark,
-                                    fontWeight: "800",
-                                }}
-                            />
-
-                            {deleteErr ? (
-                                <Text style={{ marginTop: 10, color: "rgba(255,160,160,1)", fontWeight: "900" }}>
-                                    {deleteErr}
-                                </Text>
-                            ) : null}
-
-                            <View style={{ flexDirection: "row", marginTop: 14 }}>
-                                <Pressable
-                                    onPress={closeDelete}
-                                    disabled={deleteBusy}
-                                    style={({ pressed }) => ({
-                                        flex: 1,
-                                        paddingVertical: 12,
-                                        borderRadius: 14,
-                                        alignItems: "center",
-                                        backgroundColor: "rgba(255,255,255,0.10)",
-                                        borderWidth: 1,
-                                        borderColor: "rgba(255,255,255,0.14)",
-                                        marginRight: 10,
-                                        opacity: deleteBusy ? 0.6 : pressed ? 0.85 : 1,
-                                    })}
-                                >
-                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Cancel</Text>
-                                </Pressable>
-
-                                <Pressable
-                                    onPress={deleteAccountNow}
-                                    disabled={deleteBusy}
-                                    style={({ pressed }) => ({
-                                        flex: 1,
-                                        paddingVertical: 12,
-                                        borderRadius: 14,
-                                        alignItems: "center",
-                                        backgroundColor: "rgba(255,120,120,0.22)",
-                                        borderWidth: 1,
-                                        borderColor: "rgba(255,120,120,0.32)",
-                                        opacity: deleteBusy ? 0.6 : pressed ? 0.85 : 1,
-                                    })}
-                                >
-                                    {deleteBusy ? (
-                                        <ActivityIndicator />
-                                    ) : (
-                                        <Text style={{ color: "rgba(255,200,200,1)", fontWeight: "900" }}>Delete</Text>
-                                    )}
-                                </Pressable>
-                            </View>
-                        </LinearGradient>
-                    </Pressable>
-                </Pressable>
-            </Modal>
 
             {/* Avatar Picker */}
             <Modal visible={avatarPickerOpen} transparent animationType="fade" onRequestClose={() => setAvatarPickerOpen(false)}>
@@ -1126,7 +1202,9 @@ export default function UserMenuScreen() {
                             style={{ padding: 16 }}
                         >
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>Pick an avatar</Text>
+                                <Text style={{ fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>
+                                    Pick an avatar
+                                </Text>
 
                                 <Pressable
                                     onPress={() => setAvatarPickerOpen(false)}
@@ -1145,7 +1223,7 @@ export default function UserMenuScreen() {
                             </View>
 
                             <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                                Simple, adult-friendly avatars for now. Proper themed packs can come later.
+                                Emoji avatars are manual picks. If you don’t choose one, you’ll get a fun persona by default.
                             </Text>
 
                             <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap" }}>
@@ -1198,13 +1276,14 @@ export default function UserMenuScreen() {
                                     opacity: pressed ? 0.8 : 1,
                                 })}
                             >
-                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Use default bud</Text>
+                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                                    Use default bud (no persona)
+                                </Text>
                             </Pressable>
                         </LinearGradient>
                     </Pressable>
                 </Pressable>
             </Modal>
         </SafeAreaView>
-
     );
 }
