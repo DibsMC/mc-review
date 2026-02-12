@@ -4,6 +4,7 @@ import auth from "@react-native-firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 const LAST_EMAIL_KEY = "lastEmail";
+const authLogo = require("../assets/brand/review-budz-logo.png");
 
 // Visual constants (keeps auth screen immune to "wash" overlays)
 const BG = "#0B1220";
@@ -34,6 +36,43 @@ function Glass({ children }: { children: React.ReactNode }) {
 
 function safeStr(v: unknown) {
   return typeof v === "string" ? v.trim() : "";
+}
+
+function getFriendlyAuthError(error: any, mode: "signIn" | "create") {
+  const code = typeof error?.code === "string" ? error.code : "";
+
+  if (code.includes("network-request-failed")) {
+    return "No internet connection. Check your signal and try again.";
+  }
+  if (code.includes("too-many-requests")) {
+    return "Too many attempts. Wait a moment, then try again.";
+  }
+  if (mode === "signIn") {
+    if (
+      code.includes("invalid-credential") ||
+      code.includes("invalid-login-credentials") ||
+      code.includes("wrong-password") ||
+      code.includes("user-not-found")
+    ) {
+      return "Email or password is incorrect.";
+    }
+    if (code.includes("invalid-email")) {
+      return "Please enter a valid email address.";
+    }
+  }
+  if (mode === "create") {
+    if (code.includes("email-already-in-use")) {
+      return "That email is already in use. Try signing in instead.";
+    }
+    if (code.includes("weak-password")) {
+      return "Password is too weak. Use at least 6 characters.";
+    }
+    if (code.includes("invalid-email")) {
+      return "Please enter a valid email address.";
+    }
+  }
+
+  return safeStr(error?.message) || "Something went wrong. Please try again.";
 }
 
 export default function AuthScreen() {
@@ -79,7 +118,7 @@ export default function AuthScreen() {
         router.replace(String(returnTo));
       }
     } catch (e: any) {
-      Alert.alert("Sign in failed", e?.message ?? "Unknown error");
+      Alert.alert("Sign in failed", getFriendlyAuthError(e, "signIn"));
     } finally {
       setLoading(false);
     }
@@ -136,7 +175,7 @@ export default function AuthScreen() {
         router.replace(String(returnTo));
       }
     } catch (e: any) {
-      Alert.alert("Create account failed", e?.message ?? "Unknown error");
+      Alert.alert("Create account failed", getFriendlyAuthError(e, "create"));
     } finally {
       setLoading(false);
     }
@@ -247,9 +286,11 @@ export default function AuthScreen() {
             </Glass>
           </View>
         </KeyboardAvoidingView>
-      </ImageBackground>
 
-      {/* Logo must be OUTSIDE ImageBackground so it sits above it */}
+        <View pointerEvents="none" style={styles.logoWrap}>
+          <Image source={authLogo} resizeMode="contain" style={styles.logo} />
+        </View>
+      </ImageBackground>
     </SafeAreaView>
   );
 }
@@ -371,5 +412,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 18,
+  },
+
+  logoWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 36,
+    alignItems: "center",
+  },
+
+  logo: {
+    width: 262,
+    height: 108,
+    opacity: 0.96,
   },
 });

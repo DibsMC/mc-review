@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import auth from "@react-native-firebase/auth";
+import firestore, { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
 
 function Glass({ children }: { children: React.ReactNode }) {
     return (
@@ -23,6 +24,58 @@ function Glass({ children }: { children: React.ReactNode }) {
 export default function DeleteAccountScreen() {
     const router = useRouter();
     const [deleting, setDeleting] = useState(false);
+    const [statusText, setStatusText] = useState("");
+
+    const deleteDocsByQuery = async (query: FirebaseFirestoreTypes.Query<FirebaseFirestoreTypes.DocumentData>) => {
+        while (true) {
+            const snap = await query.limit(200).get();
+            if (snap.empty) break;
+            const batch = firestore().batch();
+            snap.docs.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+            if (snap.size < 200) break;
+        }
+    };
+
+    const deleteDocsInSubcollection = async (uid: string, subcollection: string) => {
+        while (true) {
+            const snap = await firestore().collection("users").doc(uid).collection(subcollection).limit(200).get();
+            if (snap.empty) break;
+            const batch = firestore().batch();
+            snap.docs.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+            if (snap.size < 200) break;
+        }
+    };
+
+    const purgeUserDataBestEffort = async (uid: string) => {
+        // Keep this tolerant: auth delete should still succeed even if a collection is blocked by rules.
+        const runSafely = async (fn: () => Promise<void>) => {
+            try {
+                await fn();
+            } catch {
+                // ignore best-effort cleanup errors
+            }
+        };
+
+        setStatusText("Removing your reviews...");
+        await runSafely(async () => {
+            await deleteDocsByQuery(firestore().collection("reviews").where("userId", "==", uid));
+        });
+
+        setStatusText("Removing votes and reports...");
+        await runSafely(async () => deleteDocsInSubcollection(uid, "helpful"));
+        await runSafely(async () => deleteDocsInSubcollection(uid, "reportedReviews"));
+
+        setStatusText("Removing favourites...");
+        await runSafely(async () => deleteDocsInSubcollection(uid, "favorites"));
+        await runSafely(async () => deleteDocsInSubcollection(uid, "favourites"));
+
+        setStatusText("Removing profile data...");
+        await runSafely(async () => {
+            await firestore().collection("users").doc(uid).delete();
+        });
+    };
 
     const onDelete = () => {
         Alert.alert(
@@ -42,7 +95,13 @@ export default function DeleteAccountScreen() {
 
                         try {
                             setDeleting(true);
+                            setStatusText("Preparing account deletion...");
+                            await purgeUserDataBestEffort(user.uid);
+
+                            setStatusText("Deleting sign-in account...");
                             await user.delete();
+
+                            setStatusText("");
                             Alert.alert("Account deleted", "Your account has been removed.");
                             router.replace("/auth");
                         } catch (e: any) {
@@ -56,6 +115,7 @@ export default function DeleteAccountScreen() {
                                 Alert.alert("Delete failed", e?.message ?? "Unknown error");
                             }
                         } finally {
+                            setStatusText("");
                             setDeleting(false);
                         }
                     },
@@ -76,6 +136,12 @@ export default function DeleteAccountScreen() {
                     <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 10, lineHeight: 22 }}>
                         If prompted, you may need to sign in again before deletion can complete.
                     </Text>
+
+                    {deleting && statusText ? (
+                        <Text style={{ color: "rgba(255,255,255,0.75)", marginTop: 12, lineHeight: 20 }}>
+                            {statusText}
+                        </Text>
+                    ) : null}
 
                     <Pressable
                         onPress={onDelete}

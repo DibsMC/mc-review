@@ -74,6 +74,37 @@ type UserProfile = {
     favoriteProductIds?: string[] | null;
 };
 
+type FavoriteSlot = "general" | "daytime" | "afternoon" | "night";
+type FavoriteSlots = Record<FavoriteSlot, boolean>;
+
+const EMPTY_SLOTS: FavoriteSlots = {
+    general: false,
+    daytime: false,
+    afternoon: false,
+    night: false,
+};
+
+const FAVORITE_SLOT_META: Array<{ key: FavoriteSlot; label: string; icon: string; color: string }> = [
+    { key: "general", label: "Favourite", icon: "★", color: "rgba(201,88,108,0.98)" },
+    { key: "daytime", label: "Daytime", icon: "☀", color: "rgba(229,189,72,0.98)" },
+    { key: "afternoon", label: "Afternoon", icon: "◔", color: "rgba(231,152,85,0.98)" },
+    { key: "night", label: "Night", icon: "☾", color: "rgba(122,155,255,0.98)" },
+];
+
+function normalizeFavoriteSlots(raw: any): FavoriteSlots {
+    if (!raw || typeof raw !== "object") return { ...EMPTY_SLOTS };
+    return {
+        general: !!raw.general,
+        daytime: !!raw.daytime,
+        afternoon: !!raw.afternoon,
+        night: !!raw.night,
+    };
+}
+
+function hasAnyFavoriteSlot(slots: FavoriteSlots) {
+    return slots.general || slots.daytime || slots.afternoon || slots.night;
+}
+
 type SortMode = "recent" | "high" | "low";
 
 type EffectKey =
@@ -90,15 +121,15 @@ type EffectKey =
 type ReviewDraft = {
     rating: number;
     text: string;
-    daytime: number;
-    sleepy: number;
-    calm: number;
-    clarity: number;
-    backPain: number;
-    jointPain: number;
-    legPain: number;
-    headacheRelief: number;
-    racingThoughts: number;
+    daytime: number | null;
+    sleepy: number | null;
+    calm: number | null;
+    clarity: number | null;
+    backPain: number | null;
+    jointPain: number | null;
+    legPain: number | null;
+    headacheRelief: number | null;
+    racingThoughts: number | null;
 };
 
 function safeName(v: unknown) {
@@ -138,6 +169,31 @@ function getCreatedAtMs(r: Review) {
     if (typeof (c as any)?.toMillis === "function") return (c as any).toMillis();
     if (typeof (c as any)?.seconds === "number") return (c as any).seconds * 1000;
     return 0;
+}
+
+function getFriendlyReviewError(error: any, action: "save" | "delete" | "helpful" | "report" | "favourite") {
+    const code = typeof error?.code === "string" ? error.code : "";
+
+    if (code.includes("network-request-failed") || code.includes("unavailable")) {
+        return "No internet connection right now. Please try again when you're back online.";
+    }
+    if (code.includes("permission-denied")) {
+        return "You don't have permission to do that action.";
+    }
+    if (code.includes("unauthenticated")) {
+        return "Your session has expired. Please sign in again.";
+    }
+    if (code.includes("resource-exhausted") || code.includes("too-many-requests")) {
+        return "Too many requests in a short time. Please wait a moment and try again.";
+    }
+
+    if (action === "save") return "We couldn't save your review. Please try again.";
+    if (action === "delete") return "We couldn't delete that review. Please try again.";
+    if (action === "helpful") return "We couldn't update your helpful vote. Please try again.";
+    if (action === "report") return "We couldn't submit your report. Please try again.";
+    if (action === "favourite") return "We couldn't update favourites right now. Please try again.";
+
+    return typeof error?.message === "string" && error.message.trim() ? error.message : "Something went wrong. Please try again.";
 }
 
 /* -------------------- Robust scoring -------------------- */
@@ -247,13 +303,13 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
 
 /* -------------------- Bud selector (for write/edit modal) -------------------- */
 
-function BudSelectRow({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-    const safe = clamp(Math.round(value), 1, 5);
+function BudSelectRow({ value, onChange }: { value: number | null; onChange: (n: number) => void }) {
+    const safe = typeof value === "number" ? clamp(Math.round(value), 1, 5) : null;
 
     return (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
             {[1, 2, 3, 4, 5].map((n) => {
-                const selected = safe === n;
+                const selected = safe !== null && safe === n;
                 return (
                     <Pressable
                         key={`pick-${n}`}
@@ -587,7 +643,8 @@ export default function FlowerDetail() {
     const [submitting, setSubmitting] = useState(false);
 
     const [isAdmin, setIsAdmin] = useState(false);
-    const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+    const [legacyFavoriteProductIds, setLegacyFavoriteProductIds] = useState<string[]>([]);
+    const [favoriteSlots, setFavoriteSlots] = useState<FavoriteSlots>({ ...EMPTY_SLOTS });
     const [myHelpfulIds, setMyHelpfulIds] = useState<Set<string>>(new Set());
     const [myReportedIds, setMyReportedIds] = useState<Set<string>>(new Set());
 
@@ -605,19 +662,24 @@ export default function FlowerDetail() {
         () => ({
             rating: 3,
             text: "",
-            daytime: 3,
-            sleepy: 3,
-            calm: 3,
-            clarity: 3,
-            backPain: 3,
-            jointPain: 3,
-            legPain: 3,
-            headacheRelief: 3,
-            racingThoughts: 3,
+            daytime: null,
+            sleepy: null,
+            calm: null,
+            clarity: null,
+            backPain: null,
+            jointPain: null,
+            legPain: null,
+            headacheRelief: null,
+            racingThoughts: null,
         }),
         []
     );
     const [draft, setDraft] = useState<ReviewDraft>(emptyDraft);
+
+    const sanitizeEffectScore = useCallback((v: unknown): number | null => {
+        if (typeof v !== "number" || !Number.isFinite(v)) return null;
+        return clamp(Math.round(v), 1, 5);
+    }, []);
 
     const secondsLeft = useMemo(() => {
         if (!isCooldown) return 0;
@@ -650,11 +712,12 @@ export default function FlowerDetail() {
     useEffect(() => {
         if (!currentUid) {
             setIsAdmin(false);
-            setFavoriteProductIds([]);
+            setLegacyFavoriteProductIds([]);
+            setFavoriteSlots({ ...EMPTY_SLOTS });
             return;
         }
 
-        const unsub = firestore()
+        const unsubUser = firestore()
             .collection("users")
             .doc(currentUid)
             .onSnapshot(
@@ -665,16 +728,38 @@ export default function FlowerDetail() {
                     const favs = Array.isArray(data?.favoriteProductIds)
                         ? (data.favoriteProductIds as any[]).filter((x) => typeof x === "string")
                         : [];
-                    setFavoriteProductIds(favs as string[]);
+                    setLegacyFavoriteProductIds(favs as string[]);
                 },
                 () => {
                     setIsAdmin(false);
-                    setFavoriteProductIds([]);
+                    setLegacyFavoriteProductIds([]);
                 }
             );
 
-        return () => unsub();
-    }, [currentUid]);
+        const unsubFavoriteDoc = firestore()
+            .collection("users")
+            .doc(currentUid)
+            .collection("favorites")
+            .doc(productId)
+            .onSnapshot(
+                (doc) => {
+                    const data = (doc.data() as any) ?? null;
+                    setFavoriteSlots(normalizeFavoriteSlots(data?.slots));
+                },
+                () => setFavoriteSlots({ ...EMPTY_SLOTS })
+            );
+
+        return () => {
+            unsubUser();
+            unsubFavoriteDoc();
+        };
+    }, [currentUid, productId]);
+
+    useEffect(() => {
+        if (!productId) return;
+        if (!legacyFavoriteProductIds.includes(productId)) return;
+        setFavoriteSlots((prev) => (prev.general ? prev : { ...prev, general: true }));
+    }, [legacyFavoriteProductIds, productId]);
 
     // Helpful votes listener
     useEffect(() => {
@@ -728,9 +813,7 @@ export default function FlowerDetail() {
         return () => unsub();
     }, [currentUid]);
 
-    const isFavorite = !!productId && favoriteProductIds.includes(productId);
-
-    const toggleFavorite = useCallback(async () => {
+    const toggleFavoriteSlot = useCallback(async (slot: FavoriteSlot) => {
         const user = auth().currentUser;
         if (!user) {
             Alert.alert("Sign in required", "Please sign in to use favourites.");
@@ -739,18 +822,29 @@ export default function FlowerDetail() {
         if (!productId) return;
 
         const userRef = firestore().collection("users").doc(user.uid);
+        const favoriteRef = userRef.collection("favorites").doc(productId);
 
         try {
-            if (isFavorite) {
-                await userRef.set({ favoriteProductIds: firestore.FieldValue.arrayRemove(productId) }, { merge: true });
-            } else {
+            const nextSlots: FavoriteSlots = { ...favoriteSlots, [slot]: !favoriteSlots[slot] };
+            const anySelected = hasAnyFavoriteSlot(nextSlots);
+
+            if (anySelected) {
+                // Overwrite document shape so legacy keys cannot cause rule rejections.
+                await favoriteRef.set({
+                    productId,
+                    slots: nextSlots,
+                    updatedAt: firestore.FieldValue.serverTimestamp(),
+                });
                 await userRef.set({ favoriteProductIds: firestore.FieldValue.arrayUnion(productId) }, { merge: true });
+            } else {
+                await favoriteRef.delete();
+                await userRef.set({ favoriteProductIds: firestore.FieldValue.arrayRemove(productId) }, { merge: true });
             }
         } catch (e: any) {
             console.log("toggleFavorite error:", e);
-            Alert.alert("Could not update favourite", e?.message ?? "Unknown error");
+            Alert.alert("Could not update favourite", getFriendlyReviewError(e, "favourite"));
         }
-    }, [isFavorite, productId]);
+    }, [favoriteSlots, productId]);
 
     // Product listener
     useEffect(() => {
@@ -1033,21 +1127,21 @@ export default function FlowerDetail() {
                 rating: clamp(Math.round(reviewToEdit.rating || 3), 1, 5),
                 text: safeName(reviewToEdit.text),
 
-                daytime: clamp(Math.round((reviewToEdit.daytime ?? 3) as number), 1, 5),
-                sleepy: clamp(Math.round((reviewToEdit.sleepy ?? 3) as number), 1, 5),
-                calm: clamp(Math.round((reviewToEdit.calm ?? 3) as number), 1, 5),
-                clarity: clamp(Math.round((reviewToEdit.clarity ?? 3) as number), 1, 5),
+                daytime: sanitizeEffectScore(reviewToEdit.daytime),
+                sleepy: sanitizeEffectScore(reviewToEdit.sleepy),
+                calm: sanitizeEffectScore(reviewToEdit.calm),
+                clarity: sanitizeEffectScore(reviewToEdit.clarity),
 
-                backPain: clamp(Math.round((reviewToEdit.backPain ?? 3) as number), 1, 5),
-                jointPain: clamp(Math.round((reviewToEdit.jointPain ?? 3) as number), 1, 5),
-                legPain: clamp(Math.round((reviewToEdit.legPain ?? 3) as number), 1, 5),
-                headacheRelief: clamp(Math.round((reviewToEdit.headacheRelief ?? 3) as number), 1, 5),
-                racingThoughts: clamp(Math.round((reviewToEdit.racingThoughts ?? 3) as number), 1, 5),
+                backPain: sanitizeEffectScore(reviewToEdit.backPain),
+                jointPain: sanitizeEffectScore(reviewToEdit.jointPain),
+                legPain: sanitizeEffectScore(reviewToEdit.legPain),
+                headacheRelief: sanitizeEffectScore(reviewToEdit.headacheRelief),
+                racingThoughts: sanitizeEffectScore(reviewToEdit.racingThoughts),
             });
 
             setEditorOpen(true);
         },
-        [currentUid]
+        [currentUid, sanitizeEffectScore]
     );
 
     const closeEditor = useCallback(() => {
@@ -1073,20 +1167,23 @@ export default function FlowerDetail() {
                 userId: user.uid,
                 rating: clamp(Math.round(draft.rating), 1, 5),
                 text: draft.text.trim() ? draft.text.trim() : null,
-
-                daytime: clamp(Math.round(draft.daytime), 1, 5),
-                sleepy: clamp(Math.round(draft.sleepy), 1, 5),
-                calm: clamp(Math.round(draft.calm), 1, 5),
-                clarity: clamp(Math.round(draft.clarity), 1, 5),
-
-                backPain: clamp(Math.round(draft.backPain), 1, 5),
-                jointPain: clamp(Math.round(draft.jointPain), 1, 5),
-                legPain: clamp(Math.round(draft.legPain), 1, 5),
-                headacheRelief: clamp(Math.round(draft.headacheRelief), 1, 5),
-                racingThoughts: clamp(Math.round(draft.racingThoughts), 1, 5),
-
                 updatedAt: firestore.FieldValue.serverTimestamp(),
             };
+
+            const effectEntries: Array<[EffectKey, number | null]> = [
+                ["daytime", sanitizeEffectScore(draft.daytime)],
+                ["sleepy", sanitizeEffectScore(draft.sleepy)],
+                ["calm", sanitizeEffectScore(draft.calm)],
+                ["clarity", sanitizeEffectScore(draft.clarity)],
+                ["backPain", sanitizeEffectScore(draft.backPain)],
+                ["jointPain", sanitizeEffectScore(draft.jointPain)],
+                ["legPain", sanitizeEffectScore(draft.legPain)],
+                ["headacheRelief", sanitizeEffectScore(draft.headacheRelief)],
+                ["racingThoughts", sanitizeEffectScore(draft.racingThoughts)],
+            ];
+            effectEntries.forEach(([key, value]) => {
+                payload[key] = value === null ? null : value;
+            });
 
             if (editingReviewId) {
                 await firestore().collection("reviews").doc(editingReviewId).update(payload);
@@ -1105,11 +1202,11 @@ export default function FlowerDetail() {
             startCooldown();
         } catch (e: any) {
             console.log("saveReview error:", e);
-            Alert.alert("Could not save review", e?.message ?? "Unknown error");
+            Alert.alert("Could not save review", getFriendlyReviewError(e, "save"));
         } finally {
             setSubmitting(false);
         }
-    }, [draft, editingReviewId, isCooldown, productId, startCooldown]);
+    }, [draft, editingReviewId, isCooldown, productId, sanitizeEffectScore, startCooldown]);
 
     /* -------------------- Delete -------------------- */
 
@@ -1124,7 +1221,7 @@ export default function FlowerDetail() {
             await firestore().collection("reviews").doc(reviewId).delete();
         } catch (e: any) {
             console.log("deleteReview error:", e);
-            Alert.alert("Could not delete review", e?.message ?? "Unknown error");
+            Alert.alert("Could not delete review", getFriendlyReviewError(e, "delete"));
         }
     }, []);
 
@@ -1187,7 +1284,7 @@ export default function FlowerDetail() {
             });
         } catch (e: any) {
             console.log("toggleHelpful error:", e);
-            Alert.alert("Could not update vote", e?.message ?? "Unknown error");
+            Alert.alert("Could not update vote", getFriendlyReviewError(e, "helpful"));
         }
     }, []);
 
@@ -1263,7 +1360,7 @@ export default function FlowerDetail() {
             Alert.alert("Reported", "Thanks. That review will be hidden for you.");
         } catch (e: any) {
             console.log("submitReport error:", e);
-            Alert.alert("Could not report", e?.message ?? "Unknown error");
+            Alert.alert("Could not report", getFriendlyReviewError(e, "report"));
         } finally {
             setReportSubmitting(false);
         }
@@ -1295,17 +1392,28 @@ export default function FlowerDetail() {
                         {typeof product?.cbdPct === "number" ? ` · CBD ${formatPct(product?.cbdPct)}` : ""}
                     </Text>
 
-                    <Pressable
-                        onPress={toggleFavorite}
-                        style={({ pressed }) => [
-                            styles.favPill,
-                            isFavorite ? styles.favPillActive : null,
-                            { marginTop: 14, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] },
-                        ]}
-                    >
-                        <Text style={[styles.favStar, isFavorite ? styles.favStarOn : styles.favStarOff]}>☆</Text>
-                        <Text style={[styles.favText, isFavorite ? styles.favTextOn : styles.favTextOff]}>Favourite</Text>
-                    </Pressable>
+                    <View style={{ marginTop: 14 }}>
+                        <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", marginBottom: 8 }}>Save tags</Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                            {FAVORITE_SLOT_META.map((slot) => {
+                                const active = !!favoriteSlots[slot.key];
+                                return (
+                                    <Pressable
+                                        key={slot.key}
+                                        onPress={() => toggleFavoriteSlot(slot.key)}
+                                        style={({ pressed }) => [
+                                            styles.favPill,
+                                            active ? [styles.favPillActive, { borderColor: slot.color, backgroundColor: "rgba(255,255,255,0.14)" }] : null,
+                                            { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] },
+                                        ]}
+                                    >
+                                        <Text style={[styles.favStar, { color: active ? slot.color : "rgba(255,255,255,0.55)" }]}>{slot.icon}</Text>
+                                        <Text style={[styles.favText, active ? styles.favTextOn : styles.favTextOff]}>{slot.label}</Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    </View>
 
                     <Text style={{ marginTop: 18, fontSize: 22, fontWeight: "900", color: theme.colors.textOnDark }}>Terpenes</Text>
 
@@ -1370,15 +1478,15 @@ export default function FlowerDetail() {
 
                 <View style={{ height: 14 }} />
 
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 6 }}>
-                    <Text style={{ fontSize: 48, fontWeight: "900", color: theme.colors.textOnDark }}>Reviews</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 8, marginTop: 2 }}>
+                    <Text style={{ fontSize: 42, fontWeight: "800", color: "rgba(255,255,255,0.90)", letterSpacing: -0.4 }}>Reviews</Text>
 
                     <View ref={sortBtnRef as any}>
                         <Pressable
                             onPress={openSortMenu}
                             style={({ pressed }) => [styles.sortPill, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}
                         >
-                            <Text style={{ fontWeight: "900", color: theme.colors.textOnDark }}>{sortLabel}</Text>
+                            <Text style={{ fontWeight: "800", color: "rgba(255,255,255,0.88)" }}>{sortLabel}</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -1406,7 +1514,7 @@ export default function FlowerDetail() {
     }, [
         effectsSummary,
         isCooldown,
-        isFavorite,
+        favoriteSlots,
         openSortMenu,
         openWriteNewReview,
         product?.cbdPct,
@@ -1420,7 +1528,7 @@ export default function FlowerDetail() {
         secondsLeft,
         sortLabel,
         terps,
-        toggleFavorite,
+        toggleFavoriteSlot,
     ]);
 
     const EmptyState = useMemo(() => {
@@ -1602,13 +1710,15 @@ export default function FlowerDetail() {
                                             { label: "Racing thoughts relief", key: "racingThoughts" as const },
                                         ] as Array<{ label: string; key: EffectKey }>
                                     ).map((row) => {
-                                        const v = (draft as any)[row.key] as number;
+                                        const v = ((draft as any)[row.key] ?? null) as number | null;
 
                                         return (
                                             <View key={row.key} style={styles.effectBlock}>
                                                 <View style={styles.effectHeaderRow}>
                                                     <Text style={styles.effectLabel}>{row.label}</Text>
-                                                    <Text style={styles.effectValue}>{v}</Text>
+                                                    <Text style={[styles.effectValue, v === null ? { color: "rgba(255,255,255,0.58)" } : null]}>
+                                                        {v === null ? "—" : v}
+                                                    </Text>
                                                 </View>
 
                                                 <View style={{ marginTop: 10 }}>

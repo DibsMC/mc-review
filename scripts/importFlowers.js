@@ -4,7 +4,13 @@ const path = require("path");
 
 console.log("Starting flower import...");
 
-const serviceAccount = require("./serviceAccountKey.json");
+const serviceAccountPath = path.join(__dirname, "serviceAccountKey.json");
+if (!fs.existsSync(serviceAccountPath)) {
+    console.error("Missing serviceAccountKey.json. Put it at scripts/serviceAccountKey.json");
+    process.exit(1);
+}
+
+const serviceAccount = require(serviceAccountPath);
 const flowers = JSON.parse(
     fs.readFileSync(path.join(__dirname, "flowers_seed.json"), "utf8")
 );

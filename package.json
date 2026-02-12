@@ -21,7 +21,6 @@
     "expo-file-system": "~19.0.21",
     "expo-linear-gradient": "~15.0.8",
     "expo-router": "~6.0.22",
-    "expo-sharing": "~14.0.8",
     "expo-status-bar": "~3.0.9",
     "firebase": "^12.8.0",
     "firebase-admin": "^13.6.0",

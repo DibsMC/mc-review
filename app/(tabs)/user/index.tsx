@@ -7,6 +7,7 @@ import {
     Linking,
     Modal,
     Pressable,
+    Share,
     ScrollView,
     Text,
     View,
@@ -63,6 +64,17 @@ type ProductMini = {
     name: string;
     maker?: string | null;
 };
+
+function getFriendlyAccountError(error: any) {
+    const code = typeof error?.code === "string" ? error.code : "";
+    if (code.includes("network-request-failed")) {
+        return "No internet connection. Check your signal and try again.";
+    }
+    if (code.includes("too-many-requests")) {
+        return "Too many attempts right now. Please wait and try again.";
+    }
+    return typeof error?.message === "string" && error.message.trim() ? error.message : "Something went wrong. Please try again.";
+}
 
 function Divider() {
     return (
@@ -802,7 +814,7 @@ export default function UserMenuScreen() {
         try {
             await auth().signOut();
         } catch (e: any) {
-            Alert.alert("Sign out failed", e?.message ?? "Unknown error");
+            Alert.alert("Sign out failed", getFriendlyAccountError(e));
         }
     };
 
@@ -834,34 +846,58 @@ export default function UserMenuScreen() {
                 exportedAt: new Date().toISOString(),
             };
 
-            const baseDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+            const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
             if (!baseDir) {
                 throw new Error("No local storage directory is available on this device.");
             }
 
             const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-            const fileUri = `${baseDir}review-budz-export-${stamp}.json`;
+            const fileUri = `${baseDir}review-budz-export-${stamp}.txt`;
+
+            const textExport = [
+                "Review Budz GDPR Export",
+                `Exported at: ${exportData.exportedAt}`,
+                "",
+                "=== Account ===",
+                JSON.stringify(exportData.account, null, 2),
+                "",
+                "=== Profile ===",
+                JSON.stringify(exportData.profile, null, 2),
+                "",
+                "=== Reviews ===",
+                JSON.stringify(exportData.reviews, null, 2),
+            ].join("\n");
 
             await FileSystem.writeAsStringAsync(
                 fileUri,
-                JSON.stringify(exportData, null, 2),
+                textExport,
                 { encoding: FileSystem.EncodingType.UTF8 }
             );
 
             try {
+                await Share.share({
+                    title: "Export your data",
+                    message: "GDPR export file. Choose 'Save to Files' to keep a copy on your phone.",
+                    url: fileUri,
+                });
+                Alert.alert(
+                    "Data export ready",
+                    "Use the share sheet and choose 'Save to Files' to keep the export on your phone."
+                );
+                return;
+            } catch {
+                // Fall back below if share sheet could not open.
+            }
+
+            // Fallback path: attempt direct open.
+            try {
                 const canOpen = await Linking.canOpenURL(fileUri);
-                if (canOpen) {
-                    await Linking.openURL(fileUri);
-                }
+                if (canOpen) await Linking.openURL(fileUri);
             } catch {
                 // Ignore open errors: file is still saved.
             }
 
-            Alert.alert(
-                "Data export ready",
-                "Your data has been exported as a JSON file on this device. You can open or share it from Files."
-            );
-            console.log("GDPR EXPORT FILE:", fileUri);
+            Alert.alert("Data export ready", `Export file saved at:\n${fileUri}`);
         } catch (e: any) {
             Alert.alert("Export failed", e?.message ?? "Unknown error");
         }
@@ -1190,8 +1226,8 @@ export default function UserMenuScreen() {
                     <Divider />
 
                     <MenuRow
-                        title="Download my data"
-                        subtitle="Export your profile and reviews (GDPR)."
+                        title="Export my data"
+                        subtitle="Create a GDPR text file and save it to Files."
                         onPress={() => downloadMyData()}
                     />
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import firestore from "@react-native-firebase/firestore";
@@ -43,8 +43,8 @@ function clampSnippet(s: string, maxLen = 110) {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const brandLogo = require("../../assets/brand/review-budz-logo.png");
   const tabBarHeight = useBottomTabBarHeight();
+  const { height: windowH } = useWindowDimensions();
 
   const [latestBadge, setLatestBadge] = useState<LatestBadge>(null);
   const [badgeLoading, setBadgeLoading] = useState(true);
@@ -54,6 +54,8 @@ export default function HomeScreen() {
 
   const [updated, setUpdated] = useState<Updated>(null);
   const [updatedLoading, setUpdatedLoading] = useState(true);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [reviewCountLoading, setReviewCountLoading] = useState(true);
 
   // ----------------------------
   // Badge earned
@@ -230,6 +232,20 @@ export default function HomeScreen() {
   }, []);
 
   // ----------------------------
+  // Live review counter
+  // ----------------------------
+  useEffect(() => {
+    const unsub = firestore().collection("reviews").onSnapshot(
+      (snap) => {
+        setReviewCount(snap.size);
+        setReviewCountLoading(false);
+      },
+      () => setReviewCountLoading(false)
+    );
+    return () => unsub();
+  }, []);
+
+  // ----------------------------
   // Feed wiring
   // ----------------------------
   const input = useMemo(
@@ -253,12 +269,12 @@ export default function HomeScreen() {
 
   const handlers = useMemo(
     () => ({
-      goToNewReviews: () => router.push("/reviews"),
-      goToNewFlowers: () => router.push("/reviews"),
+      goToNewReviews: () => router.push("/(tabs)/reviews"),
+      goToNewFlowers: () => router.push("/(tabs)/reviews"),
       goToUpdatedReviews: () =>
         input.updatedProductId
           ? router.push(`/(tabs)/reviews/${encodeURIComponent(input.updatedProductId)}`)
-          : router.push("/reviews"),
+          : router.push("/(tabs)/reviews"),
       goToFlower: (productId: string) =>
         router.push(`/(tabs)/reviews/${encodeURIComponent(productId)}`),
       goToBadgeOwner: (uid?: string) => {
@@ -281,6 +297,10 @@ export default function HomeScreen() {
   const feed = useMemo(() => buildHomeCards(input as any, handlers as any), [input, handlers]);
   const loading = badgeLoading || trendingLoading || updatedLoading;
   const bottomPad = tabBarHeight + 34;
+  const reviewCountDisplay = reviewCountLoading
+    ? "------"
+    : String(Math.max(0, reviewCount)).padStart(6, "0");
+  const compactLayout = windowH < 830;
 
   return (
     <View style={styles.screen}>
@@ -288,20 +308,17 @@ export default function HomeScreen() {
       <View pointerEvents="none" style={styles.topGloss} />
 
       <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={[styles.content, { paddingBottom: Math.max(8, tabBarHeight * 0.12) }]}>
 
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: bottomPad }]}
-          showsVerticalScrollIndicator={false}
-          bounces
-          scrollEnabled
-        >
-
-          <View style={styles.header}>
-            <Text style={styles.titleCompact}>Fresh from the community ✨</Text>
+          <View style={[styles.header, compactLayout ? styles.headerCompact : null]}>
+            <Text style={[styles.titleCompact, compactLayout ? styles.titleCompactSmall : null]}>Community updates ✨</Text>
+            <Text style={[styles.headerSub, compactLayout ? styles.headerSubCompact : null]}>
+              Fresh reviews, trends and stock at a glance.
+            </Text>
           </View>
 
-          <View style={styles.cardsFrame}>
-            <View style={styles.stack}>
+          <View style={[styles.cardsFrame, compactLayout ? styles.cardsFrameCompact : null]}>
+            <View style={[styles.stack, compactLayout ? styles.stackCompact : null]}>
               {loading ? (
                 <>
                   <SkeletonCard />
@@ -316,12 +333,13 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <View style={styles.brandWrap}>
-            <Image source={brandLogo} resizeMode="contain" style={styles.brandLogo} />
+          <View style={[styles.counterWrap, compactLayout ? styles.counterWrapCompact : null]}>
+            <Text style={styles.counterLabel}>Community reviews</Text>
+            <View style={styles.counterShell}>
+              <Text style={styles.counterDigits}>{reviewCountDisplay}</Text>
+            </View>
           </View>
-
-          <View style={{ height: 8 }} />
-        </ScrollView>
+        </View>
       </SafeAreaView>
     </View>
   );
@@ -330,7 +348,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "transparent" },
   safe: { flex: 1 },
-  content: { paddingTop: 10, paddingHorizontal: 18, paddingBottom: 20 },
+  content: { flex: 1, paddingTop: 10, paddingHorizontal: 18, paddingBottom: 12 },
   topGloss: {
     position: "absolute",
     top: -120,
@@ -340,7 +358,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(125, 250, 205, 0.09)",
   },
-  header: { marginBottom: 8 },
+  header: { marginBottom: 10, minHeight: 0, justifyContent: "center" },
+  headerCompact: {
+    minHeight: 0,
+    marginBottom: 6,
+  },
   titleCompact: {
     fontSize: 34,
     fontWeight: "900",
@@ -349,6 +371,21 @@ const styles = StyleSheet.create({
     lineHeight: 40,
     textShadowColor: "rgba(0,0,0,0.30)",
     textShadowRadius: 10,
+  },
+  titleCompactSmall: {
+    fontSize: 30,
+    lineHeight: 36,
+  },
+  headerSub: {
+    marginTop: 6,
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  headerSubCompact: {
+    marginTop: 4,
+    fontSize: 12,
   },
   title: {
     fontSize: 44,
@@ -376,6 +413,10 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
   },
+  cardsFrameCompact: {
+    borderRadius: 20,
+    padding: 4,
+  },
   section: {
     marginTop: 16,
     marginBottom: 10,
@@ -385,17 +426,48 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "rgba(255,255,255,0.45)",
   },
-  stack: { gap: 14 },
-  brandWrap: {
-    marginTop: 10,
+  stack: { gap: 12 },
+  stackCompact: { gap: 10 },
+  counterWrap: {
+    marginTop: 8,
+    alignItems: "center",
+    paddingHorizontal: 36,
+  },
+  counterWrapCompact: {
+    marginTop: 8,
+    paddingHorizontal: 44,
+  },
+  counterLabel: {
+    color: "rgba(255,204,120,0.94)",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  counterShell: {
+    alignSelf: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,188,88,0.34)",
+    backgroundColor: "rgba(28,18,6,0.92)",
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ translateY: -4 }],
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    shadowColor: "rgba(255,180,70,0.28)",
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  brandLogo: {
-    width: "94%",
-    maxWidth: 560,
-    height: 154,
-    opacity: 0.99,
+  counterDigits: {
+    color: "rgba(255,192,84,0.99)",
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 4.2,
+    fontVariant: ["tabular-nums"],
+    textShadowColor: "rgba(255,180,70,0.42)",
+    textShadowRadius: 2,
   },
 });

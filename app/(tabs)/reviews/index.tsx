@@ -47,17 +47,50 @@ type Review = {
   productId: string;
   rating: number;
   score?: number | null;
+  createdAtMs?: number | null;
 };
 
-type Stat = { count: number; avg: number };
+type Stat = { count: number; avg: number; latestReviewAtMs?: number };
+
+type FavoriteSlot = "general" | "daytime" | "afternoon" | "night";
+type FavoriteSlots = Record<FavoriteSlot, boolean>;
 
 type SortKey =
   | "mostReviewed"
+  | "recentReviews"
   | "highestRated"
   | "thcHighLow"
   | "thcLowHigh"
   | "maker"
   | "atoz";
+
+const EMPTY_SLOTS: FavoriteSlots = {
+  general: false,
+  daytime: false,
+  afternoon: false,
+  night: false,
+};
+
+const FAVORITE_SLOT_META: Array<{ key: FavoriteSlot; label: string; icon: React.ComponentProps<typeof Feather>["name"]; color: string }> = [
+  { key: "general", label: "Favourite", icon: "star", color: "rgba(201,88,108,0.98)" },
+  { key: "daytime", label: "Daytime", icon: "sun", color: "rgba(229,189,72,0.98)" },
+  { key: "afternoon", label: "Afternoon", icon: "clock", color: "rgba(231,152,85,0.98)" },
+  { key: "night", label: "Night", icon: "moon", color: "rgba(122,155,255,0.98)" },
+];
+
+function normalizeFavoriteSlots(raw: any): FavoriteSlots {
+  if (!raw || typeof raw !== "object") return { ...EMPTY_SLOTS };
+  return {
+    general: !!raw.general,
+    daytime: !!raw.daytime,
+    afternoon: !!raw.afternoon,
+    night: !!raw.night,
+  };
+}
+
+function hasAnyFavoriteSlot(slots: FavoriteSlots) {
+  return slots.general || slots.daytime || slots.afternoon || slots.night;
+}
 
 function formatPct(n: number | null | undefined) {
   if (n === null || n === undefined) return "-";
@@ -99,6 +132,8 @@ function sortLabel(k: SortKey) {
   switch (k) {
     case "mostReviewed":
       return "Most reviewed";
+    case "recentReviews":
+      return "Recent reviews";
     case "highestRated":
       return "Highest rated";
     case "thcHighLow":
@@ -233,7 +268,8 @@ export default function ReviewsIndex() {
 
   // Auth + favourites
   const [currentUid, setCurrentUid] = useState<string>("");
-  const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+  const [legacyFavoriteProductIds, setLegacyFavoriteProductIds] = useState<string[]>([]);
+  const [favoriteSlotsByProductId, setFavoriteSlotsByProductId] = useState<Record<string, FavoriteSlots>>({});
 
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("atoz");
@@ -242,8 +278,9 @@ export default function ReviewsIndex() {
   const [makerFilter, setMakerFilter] = useState<string | null>(null);
   const [terpeneFilter, setTerpeneFilter] = useState<string[]>([]);
 
-  // Favourites-only filter (applied)
-  const [favouritesOnly, setFavouritesOnly] = useState(false);
+  // Saved favourites filters (applied)
+  const [favoriteFilterAny, setFavoriteFilterAny] = useState(false);
+  const [favoriteFilterSlots, setFavoriteFilterSlots] = useState<FavoriteSlot[]>([]);
 
   // Modal open
   const [panelOpen, setPanelOpen] = useState(false);
@@ -253,10 +290,12 @@ export default function ReviewsIndex() {
   const [draftStrainFilter, setDraftStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
   const [draftMakerFilter, setDraftMakerFilter] = useState<string | null>(null);
   const [draftTerpeneFilter, setDraftTerpeneFilter] = useState<string[]>([]);
-  const [draftFavouritesOnly, setDraftFavouritesOnly] = useState(false);
+  const [draftFavoriteFilterAny, setDraftFavoriteFilterAny] = useState(false);
+  const [draftFavoriteFilterSlots, setDraftFavoriteFilterSlots] = useState<FavoriteSlot[]>([]);
 
   const [sortOpen, setSortOpen] = useState(false);
   const [makerOpen, setMakerOpen] = useState(false);
+  const [terpeneOpen, setTerpeneOpen] = useState(false);
 
   const headerOpacity = useRef(new Animated.Value(1)).current;
   const [headerH, setHeaderH] = useState(170);
@@ -286,11 +325,12 @@ export default function ReviewsIndex() {
 
   useEffect(() => {
     if (!currentUid) {
-      setFavoriteProductIds([]);
+      setLegacyFavoriteProductIds([]);
+      setFavoriteSlotsByProductId({});
       return;
     }
 
-    const unsub = firestore()
+    const unsubLegacy = firestore()
       .collection("users")
       .doc(currentUid)
       .onSnapshot(
@@ -299,15 +339,49 @@ export default function ReviewsIndex() {
           const favs = Array.isArray(data?.favoriteProductIds)
             ? data.favoriteProductIds.filter((x: any) => typeof x === "string")
             : [];
-          setFavoriteProductIds(favs);
+          setLegacyFavoriteProductIds(favs);
         },
-        () => setFavoriteProductIds([])
+        () => setLegacyFavoriteProductIds([])
       );
 
-    return () => unsub();
+    const unsubSlots = firestore()
+      .collection("users")
+      .doc(currentUid)
+      .collection("favorites")
+      .onSnapshot(
+        (snap) => {
+          const next: Record<string, FavoriteSlots> = {};
+          snap.docs.forEach((d) => {
+            const data = (d.data() as any) ?? {};
+            next[d.id] = normalizeFavoriteSlots(data?.slots);
+          });
+          setFavoriteSlotsByProductId(next);
+        },
+        () => setFavoriteSlotsByProductId({})
+      );
+
+    return () => {
+      unsubLegacy();
+      unsubSlots();
+    };
   }, [currentUid]);
 
-  const isFavorite = (productId: string) => favoriteProductIds.includes(productId);
+  const getSlotsForProduct = useCallback(
+    (productId: string): FavoriteSlots => {
+      const fromDoc = favoriteSlotsByProductId[productId];
+      if (fromDoc) {
+        // Keep backward compatibility: legacy array implies general favourite.
+        if (legacyFavoriteProductIds.includes(productId) && !fromDoc.general) {
+          return { ...fromDoc, general: true };
+        }
+        return fromDoc;
+      }
+      return legacyFavoriteProductIds.includes(productId)
+        ? { ...EMPTY_SLOTS, general: true }
+        : { ...EMPTY_SLOTS };
+    },
+    [favoriteSlotsByProductId, legacyFavoriteProductIds]
+  );
 
   // Products
   useEffect(() => {
@@ -365,12 +439,17 @@ export default function ReviewsIndex() {
           const data = d.data() as any;
           const rating = typeof data?.rating === "number" ? data.rating : 0;
           const score = typeof data?.score === "number" ? data.score : null;
+          const createdAtRaw = data?.createdAt ?? null;
+          let createdAtMs: number | null = null;
+          if (createdAtRaw?.toDate) createdAtMs = createdAtRaw.toDate().getTime();
+          else if (typeof createdAtRaw === "number") createdAtMs = createdAtRaw;
 
           return {
             id: d.id,
             productId: typeof data?.productId === "string" ? data.productId : "",
             rating,
             score,
+            createdAtMs,
           };
         });
 
@@ -384,11 +463,15 @@ export default function ReviewsIndex() {
 
           const existing = map[r.productId];
           if (!existing) {
-            map[r.productId] = { count: 1, avg: val };
+            map[r.productId] = { count: 1, avg: val, latestReviewAtMs: r.createdAtMs ?? 0 };
           } else {
             const newCount = existing.count + 1;
             const newAvg = (existing.avg * existing.count + val) / newCount;
-            map[r.productId] = { count: newCount, avg: newAvg };
+            map[r.productId] = {
+              count: newCount,
+              avg: newAvg,
+              latestReviewAtMs: Math.max(existing.latestReviewAtMs ?? 0, r.createdAtMs ?? 0),
+            };
           }
         }
 
@@ -403,46 +486,6 @@ export default function ReviewsIndex() {
 
     return () => unsub();
   }, []);
-
-  // STRAIN_DEBUG hooks (kept, but tidy)
-  useEffect(() => {
-    if (!__DEV__) return;
-    if (!items.length) return;
-
-    const counts: Record<string, number> = {};
-    for (const it of items as any[]) {
-      const raw = it?.strainType ?? null;
-      const k = raw === null ? "null" : String(raw);
-      counts[k] = (counts[k] || 0) + 1;
-    }
-
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
-    console.log("DEBUG strainType top values:", top);
-  }, [items]);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    if (!items.length) return;
-
-    const rawCounts: Record<string, number> = {};
-    const normCounts: Record<string, number> = {};
-
-    for (const it of items) {
-      const raw = (it as any).strainType ?? null;
-      const rawKey = raw === null ? "null" : String(raw);
-      rawCounts[rawKey] = (rawCounts[rawKey] || 0) + 1;
-
-      const norm = normalizeStrainType(raw);
-      normCounts[norm] = (normCounts[norm] || 0) + 1;
-    }
-
-    const topRaw = Object.entries(rawCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12);
-
-    console.log("DEBUG strain raw top:", topRaw);
-    console.log("DEBUG strain normalized counts:", normCounts);
-  }, [items]);
 
   const makers = useMemo(() => {
     const set = new Set<string>();
@@ -465,21 +508,23 @@ export default function ReviewsIndex() {
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
-    if (favouritesOnly) n += 1;
+    if (favoriteFilterAny) n += 1;
+    if (favoriteFilterSlots.length > 0) n += 1;
     if (strainFilter) n += 1;
     if (makerFilter) n += 1;
     if (terpeneFilter.length > 0) n += 1;
     return n;
-  }, [strainFilter, makerFilter, terpeneFilter, favouritesOnly]);
+  }, [strainFilter, makerFilter, terpeneFilter, favoriteFilterAny, favoriteFilterSlots]);
 
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
-    if (favouritesOnly) labels.push("Favourites only");
+    if (favoriteFilterAny) labels.push("Any favourite");
+    if (favoriteFilterSlots.length > 0) labels.push(`Favourite tags: ${favoriteFilterSlots.join(", ")}`);
     if (strainFilter) labels.push(`Strain: ${strainFilter}`);
     if (makerFilter) labels.push(`Maker: ${makerFilter}`);
     if (terpeneFilter.length > 0) labels.push(`Terpenes: ${terpeneFilter.join(", ")}`);
     return labels;
-  }, [strainFilter, makerFilter, terpeneFilter, favouritesOnly]);
+  }, [strainFilter, makerFilter, terpeneFilter, favoriteFilterAny, favoriteFilterSlots]);
 
   const displayItems = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -490,8 +535,14 @@ export default function ReviewsIndex() {
         if (!hay.includes(q)) return false;
       }
 
-      if (favouritesOnly) {
-        if (!isFavorite(it.id)) return false;
+      const slots = getSlotsForProduct(it.id);
+      if (favoriteFilterAny && !hasAnyFavoriteSlot(slots)) {
+        return false;
+      }
+
+      if (favoriteFilterSlots.length > 0) {
+        const matchesSlot = favoriteFilterSlots.some((slot) => !!slots[slot]);
+        if (!matchesSlot) return false;
       }
 
       if (strainFilter) {
@@ -539,6 +590,10 @@ export default function ReviewsIndex() {
 
       if (sortKey === "mostReviewed") {
         if (countA !== countB) return countB - countA;
+      } else if (sortKey === "recentReviews") {
+        const ra = sa?.latestReviewAtMs ?? 0;
+        const rb = sb?.latestReviewAtMs ?? 0;
+        if (ra !== rb) return rb - ra;
       } else if (sortKey === "highestRated") {
         if (avgA !== avgB) return avgB - avgA;
         if (countA !== countB) return countB - countA;
@@ -576,8 +631,9 @@ export default function ReviewsIndex() {
     strainFilter,
     makerFilter,
     terpeneFilter,
-    favouritesOnly,
-    favoriteProductIds,
+    favoriteFilterAny,
+    favoriteFilterSlots,
+    getSlotsForProduct,
   ]);
 
   const onChangeSearch = (text: string) => {
@@ -592,10 +648,12 @@ export default function ReviewsIndex() {
     setDraftStrainFilter(strainFilter);
     setDraftMakerFilter(makerFilter);
     setDraftTerpeneFilter(terpeneFilter);
-    setDraftFavouritesOnly(favouritesOnly);
+    setDraftFavoriteFilterAny(favoriteFilterAny);
+    setDraftFavoriteFilterSlots(favoriteFilterSlots);
 
     setSortOpen(false);
     setMakerOpen(false);
+    setTerpeneOpen(false);
     setPanelOpen(true);
   };
 
@@ -604,10 +662,12 @@ export default function ReviewsIndex() {
     setStrainFilter(draftStrainFilter);
     setMakerFilter(draftMakerFilter);
     setTerpeneFilter(draftTerpeneFilter);
-    setFavouritesOnly(draftFavouritesOnly);
+    setFavoriteFilterAny(draftFavoriteFilterAny);
+    setFavoriteFilterSlots(draftFavoriteFilterSlots);
 
     setSortOpen(false);
     setMakerOpen(false);
+    setTerpeneOpen(false);
     setPanelOpen(false);
   };
 
@@ -616,9 +676,11 @@ export default function ReviewsIndex() {
     setDraftStrainFilter(null);
     setDraftMakerFilter(null);
     setDraftTerpeneFilter([]);
-    setDraftFavouritesOnly(false);
+    setDraftFavoriteFilterAny(false);
+    setDraftFavoriteFilterSlots([]);
     setSortOpen(false);
     setMakerOpen(false);
+    setTerpeneOpen(false);
   };
 
   const windowH = Dimensions.get("window").height;
@@ -711,7 +773,8 @@ export default function ReviewsIndex() {
                 const parts = [`${maker}`, `THC ${formatPct(item.thcPct)}`, `CBD ${formatPct(item.cbdPct)}`].filter(Boolean);
                 const metaLine = parts.join(" · ");
 
-                const fav = isFavorite(item.id);
+                const favSlots = getSlotsForProduct(item.id);
+                const activeFavSlots = FAVORITE_SLOT_META.filter((s) => !!favSlots[s.key]);
 
                 return (
                   <CinematicCard
@@ -719,9 +782,13 @@ export default function ReviewsIndex() {
                     style={{ marginHorizontal: theme.spacing.xl, overflow: "hidden" }}
                   >
                     <View style={{ padding: 18 }}>
-                      {fav ? (
-                        <View style={styles.favBadge}>
-                          <Feather name="star" size={14} color="rgba(255,255,255,0.96)" />
+                      {activeFavSlots.length > 0 ? (
+                        <View style={styles.favBadgeRow}>
+                          {activeFavSlots.slice(0, 4).map((slot) => (
+                            <View key={slot.key} style={[styles.favBadge, { backgroundColor: slot.color }]}>
+                              <Feather name={slot.icon} size={12} color="rgba(255,255,255,0.98)" />
+                            </View>
+                          ))}
                         </View>
                       ) : null}
 
@@ -991,46 +1058,41 @@ export default function ReviewsIndex() {
                       keyboardShouldPersistTaps="handled"
                     >
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={{ fontSize: 26, fontWeight: "900", color: theme.colors.textOnDark, flex: 1 }}>
+                        <Text style={{ fontSize: 28, fontWeight: "900", color: theme.colors.textOnDark, flex: 1 }}>
                           Filters
                         </Text>
 
                         <Pressable
-                          onPress={closeAndSaveFilters}
+                          onPress={resetDraft}
                           style={({ pressed }) => ({
-                            width: 44,
-                            height: 44,
-                            borderRadius: 22,
+                            borderRadius: 999,
+                            paddingVertical: 10,
+                            paddingHorizontal: 14,
                             alignItems: "center",
                             justifyContent: "center",
-                            backgroundColor: "rgba(255,255,255,0.10)",
+                            backgroundColor: "rgba(190,72,96,0.24)",
                             borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.14)",
+                            borderColor: "rgba(255,150,170,0.44)",
                             opacity: pressed ? 0.9 : 1,
                           })}
                         >
-                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>✕</Text>
+                          <Text style={{ color: "rgba(255,214,224,0.98)", fontWeight: "900", fontSize: 13 }}>Reset</Text>
                         </Pressable>
                       </View>
 
-                      <Pressable
-                        onPress={resetDraft}
-                        style={({ pressed }) => ({
-                          marginTop: 12,
-                          alignSelf: "flex-start",
-                          borderRadius: 999,
-                          paddingVertical: 10,
-                          paddingHorizontal: 14,
-                          backgroundColor: "rgba(255,255,255,0.08)",
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.12)",
-                          opacity: pressed ? 0.9 : 1,
-                        })}
+                      <Text
+                        style={{
+                          marginTop: 8,
+                          color: theme.colors.textOnDarkSecondary,
+                          ...theme.typography.caption,
+                          lineHeight: 18,
+                        }}
                       >
-                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Reset</Text>
-                      </Pressable>
+                        Pick what matters most and keep the list focused.
+                      </Text>
 
-                      {(draftFavouritesOnly ||
+                      {(draftFavoriteFilterAny ||
+                        draftFavoriteFilterSlots.length > 0 ||
                         draftStrainFilter ||
                         !!draftMakerFilter ||
                         draftTerpeneFilter.length > 0) ? (
@@ -1039,15 +1101,16 @@ export default function ReviewsIndex() {
                             marginTop: 12,
                             borderRadius: 16,
                             padding: 12,
-                            backgroundColor: "rgba(255,255,255,0.06)",
+                            backgroundColor: "rgba(255,255,255,0.09)",
                             borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.10)",
+                            borderColor: "rgba(255,255,255,0.16)",
                           }}
                         >
                           <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Active</Text>
                           <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
                             {[
-                              draftFavouritesOnly ? "Favourites only" : "",
+                              draftFavoriteFilterAny ? "Any favourite" : "",
+                              draftFavoriteFilterSlots.length > 0 ? `Favourite tags: ${draftFavoriteFilterSlots.join(", ")}` : "",
                               draftStrainFilter ? `Strain: ${draftStrainFilter}` : "",
                               draftTerpeneFilter.length > 0 ? `Terpenes: ${draftTerpeneFilter.join(", ")}` : "",
                               draftMakerFilter ? `Maker: ${draftMakerFilter}` : "",
@@ -1059,15 +1122,15 @@ export default function ReviewsIndex() {
                       ) : null}
 
                       {/* Favourites quick filter */}
-                      <Text style={{ marginTop: 18, fontSize: 16, fontWeight: "900", color: theme.colors.textOnDark }}>
-                        Quick filters
+                      <Text style={{ marginTop: 18, fontSize: 13, letterSpacing: 0.8, fontWeight: "900", color: "rgba(255,255,255,0.68)", textTransform: "uppercase" }}>
+                        Favourite filters
                       </Text>
 
                       <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                         <Pressable
-                          onPress={() => setDraftFavouritesOnly((v) => !v)}
+                          onPress={() => setDraftFavoriteFilterAny((v) => !v)}
                           style={({ pressed }) => ({
-                            ...chipOnDark(draftFavouritesOnly),
+                            ...chipOnDark(draftFavoriteFilterAny),
                             opacity: pressed ? 0.85 : 1,
                             flexDirection: "row",
                             alignItems: "center",
@@ -1076,11 +1139,35 @@ export default function ReviewsIndex() {
                           <Feather
                             name="star"
                             size={14}
-                            color={draftFavouritesOnly ? "rgba(185,70,95,0.98)" : "rgba(255,255,255,0.55)"}
+                            color={draftFavoriteFilterAny ? "rgba(185,70,95,0.98)" : "rgba(255,255,255,0.55)"}
                             style={{ marginRight: 8 }}
                           />
-                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Favourites only</Text>
+                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Any favourite</Text>
                         </Pressable>
+
+                        {FAVORITE_SLOT_META.map((slot) => {
+                          const selected = draftFavoriteFilterSlots.includes(slot.key);
+                          return (
+                            <Pressable
+                              key={slot.key}
+                              onPress={() => {
+                                setDraftFavoriteFilterSlots((prev) => {
+                                  if (prev.includes(slot.key)) return prev.filter((x) => x !== slot.key);
+                                  return [...prev, slot.key];
+                                });
+                              }}
+                              style={({ pressed }) => ({
+                                ...chipOnDark(selected),
+                                opacity: pressed ? 0.85 : 1,
+                                flexDirection: "row",
+                                alignItems: "center",
+                              })}
+                            >
+                              <Feather name={slot.icon} size={13} color={selected ? slot.color : "rgba(255,255,255,0.55)"} style={{ marginRight: 8 }} />
+                              <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{slot.label}</Text>
+                            </Pressable>
+                          );
+                        })}
 
                         {!currentUid ? (
                           <Text
@@ -1091,13 +1178,13 @@ export default function ReviewsIndex() {
                               alignSelf: "center",
                             }}
                           >
-                            Sign in to use favourites.
+                            Sign in to use favourite tags.
                           </Text>
                         ) : null}
                       </View>
 
                       {/* Sort */}
-                      <Text style={{ marginTop: 22, fontSize: 16, fontWeight: "900", color: theme.colors.textOnDark }}>
+                      <Text style={{ marginTop: 22, fontSize: 13, letterSpacing: 0.8, fontWeight: "900", color: "rgba(255,255,255,0.68)", textTransform: "uppercase" }}>
                         Sort
                       </Text>
 
@@ -1124,7 +1211,7 @@ export default function ReviewsIndex() {
 
                       {sortOpen ? (
                         <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                          {(["mostReviewed", "highestRated", "thcHighLow", "thcLowHigh", "maker", "atoz"] as SortKey[]).map(
+                          {(["mostReviewed", "recentReviews", "highestRated", "thcHighLow", "thcLowHigh", "maker", "atoz"] as SortKey[]).map(
                             (k) => {
                               const selected = draftSortKey === k;
                               return (
@@ -1154,7 +1241,7 @@ export default function ReviewsIndex() {
                       ) : null}
 
                       {/* Filters */}
-                      <Text style={{ marginTop: 22, fontSize: 16, fontWeight: "900", color: theme.colors.textOnDark }}>
+                      <Text style={{ marginTop: 22, fontSize: 13, letterSpacing: 0.8, fontWeight: "900", color: "rgba(255,255,255,0.68)", textTransform: "uppercase" }}>
                         Filters
                       </Text>
 
@@ -1197,33 +1284,70 @@ export default function ReviewsIndex() {
                         Terpenes (major)
                       </Text>
 
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-                        {terpeneOptions.length === 0 ? (
-                          <Text style={{ color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
-                            No terpene data found yet.
-                          </Text>
-                        ) : (
-                          terpeneOptions.map((t) => {
-                            const selected = draftTerpeneFilter.some((x) => safeLower(x) === safeLower(t));
-                            return (
-                              <Pressable
-                                key={t}
-                                onPress={() => {
-                                  setDraftTerpeneFilter((prev) => {
-                                    const exists = prev.some((x) => safeLower(x) === safeLower(t));
-                                    if (exists) return prev.filter((x) => safeLower(x) !== safeLower(t));
-                                    if (prev.length >= 3) return prev;
-                                    return [...prev, t];
-                                  });
-                                }}
-                                style={({ pressed }) => ({ ...chipOnDark(selected), opacity: pressed ? 0.85 : 1 })}
-                              >
-                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{t}</Text>
-                              </Pressable>
-                            );
-                          })
-                        )}
-                      </View>
+                      <Pressable
+                        onPress={() => setTerpeneOpen((v) => !v)}
+                        style={({ pressed }) => ({
+                          marginTop: 10,
+                          borderRadius: 18,
+                          paddingVertical: 14,
+                          paddingHorizontal: 14,
+                          backgroundColor: "rgba(255,255,255,0.10)",
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.14)",
+                          opacity: pressed ? 0.9 : 1,
+                        })}
+                      >
+                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
+                          {draftTerpeneFilter.length > 0 ? `${draftTerpeneFilter.length} selected` : "Choose terpenes"}
+                        </Text>
+                        <Text style={{ marginTop: 4, color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
+                          {terpeneOpen ? "Tap to collapse" : "Tap to expand"}
+                        </Text>
+                      </Pressable>
+
+                      {terpeneOpen ? (
+                        <View
+                          style={{
+                            marginTop: 12,
+                            maxHeight: 220,
+                            borderRadius: 16,
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.12)",
+                            backgroundColor: "rgba(255,255,255,0.06)",
+                            padding: 10,
+                          }}
+                        >
+                          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                              {terpeneOptions.length === 0 ? (
+                                <Text style={{ color: theme.colors.textOnDarkSecondary, ...theme.typography.caption }}>
+                                  No terpene data found yet.
+                                </Text>
+                              ) : (
+                                terpeneOptions.map((t) => {
+                                  const selected = draftTerpeneFilter.some((x) => safeLower(x) === safeLower(t));
+                                  return (
+                                    <Pressable
+                                      key={t}
+                                      onPress={() => {
+                                        setDraftTerpeneFilter((prev) => {
+                                          const exists = prev.some((x) => safeLower(x) === safeLower(t));
+                                          if (exists) return prev.filter((x) => safeLower(x) !== safeLower(t));
+                                          if (prev.length >= 3) return prev;
+                                          return [...prev, t];
+                                        });
+                                      }}
+                                      style={({ pressed }) => ({ ...chipOnDark(selected), opacity: pressed ? 0.85 : 1 })}
+                                    >
+                                      <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{t}</Text>
+                                    </Pressable>
+                                  );
+                                })
+                              )}
+                            </View>
+                          </ScrollView>
+                        </View>
+                      ) : null}
 
                       {draftTerpeneFilter.length >= 3 ? (
                         <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontWeight: "700", fontSize: 12 }}>
@@ -1321,6 +1445,40 @@ export default function ReviewsIndex() {
                           ) : null}
                         </View>
                       ) : null}
+
+                      <View style={{ marginTop: 22, flexDirection: "row", gap: 10 }}>
+                        <Pressable
+                          onPress={closeAndSaveFilters}
+                          style={({ pressed }) => ({
+                            flex: 1,
+                            borderRadius: 16,
+                            paddingVertical: 14,
+                            alignItems: "center",
+                            backgroundColor: "rgba(255,255,255,0.09)",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.18)",
+                            opacity: pressed ? 0.9 : 1,
+                          })}
+                        >
+                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>Close</Text>
+                        </Pressable>
+
+                        <Pressable
+                          onPress={closeAndSaveFilters}
+                          style={({ pressed }) => ({
+                            flex: 1.15,
+                            borderRadius: 16,
+                            paddingVertical: 14,
+                            alignItems: "center",
+                            backgroundColor: "rgba(255,255,255,0.18)",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.24)",
+                            opacity: pressed ? 0.9 : 1,
+                          })}
+                        >
+                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>Apply</Text>
+                        </Pressable>
+                      </View>
                     </ScrollView>
                   </KeyboardAvoidingView>
                 </View>
@@ -1369,17 +1527,20 @@ const styles = StyleSheet.create({
     padding: 24,
   },
 
-  // Rich red, not "danger"
-  favBadge: {
+  favBadgeRow: {
     position: "absolute",
-    top: 14,
-    right: 14,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    top: 12,
+    right: 12,
+    flexDirection: "row",
+    gap: 6,
+  },
+
+  favBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(185,70,95,0.95)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
     shadowColor: "rgba(0,0,0,0.35)",

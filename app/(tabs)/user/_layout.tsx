@@ -21,7 +21,6 @@ export default function UserLayout() {
             <Stack.Screen name="edit-profile" options={{ headerShown: true }} />
             <Stack.Screen name="change-email" options={{ headerShown: true }} />
             <Stack.Screen name="feedback" options={{ headerShown: true }} />
-            <Stack.Screen name="privacy" options={{ headerShown: true }} />
             <Stack.Screen name="delete-account" options={{ headerShown: true }} />
         </Stack>
     );
