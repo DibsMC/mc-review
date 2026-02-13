@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review Budz - Support</title>
+    <style>
+      :root {
+        --bg: #0b0f18;
+        --card: rgba(255, 255, 255, 0.06);
+        --card2: rgba(255, 255, 255, 0.08);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.68);
+        --accent: rgba(255, 192, 84, 0.98);
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: radial-gradient(900px 600px at 20% -10%, rgba(125, 250, 205, 0.12), transparent 60%),
+                    radial-gradient(900px 600px at 110% 30%, rgba(120, 155, 255, 0.10), transparent 55%),
+                    var(--bg);
+        color: var(--text);
+      }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 48px 18px 64px; }
+      h1 { margin: 0; font-size: 32px; letter-spacing: -0.6px; }
+      .card {
+        margin-top: 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, var(--card2), var(--card));
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+      }
+      p, li { color: var(--muted); line-height: 1.55; }
+      ul { margin: 8px 0 0 18px; padding: 0; }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .footer { margin-top: 18px; font-size: 12px; color: rgba(255,255,255,0.55); }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Support</h1>
+      <div class="card">
+        <p>
+          Need help with Review Budz? Email:
+          <a href="mailto:dibsmccallum@sky.com">dibsmccallum@sky.com</a>
+        </p>
+        <p>Include:</p>
+        <ul>
+          <li>Your device model and iOS version</li>
+          <li>App version/build number</li>
+          <li>Steps to reproduce</li>
+          <li>A screenshot/screen recording if possible</li>
+        </ul>
+        <p class="footer">
+          <a href="../privacy-policy/">Privacy Policy</a>
+        </p>
+      </div>
+    </main>
+  </body>
+</html>
+
