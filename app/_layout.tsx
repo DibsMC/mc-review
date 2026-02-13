@@ -31,12 +31,18 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = auth().onAuthStateChanged((u) => {
-      setUser(u);
+    try {
+      const unsubscribe = auth().onAuthStateChanged((u) => {
+        setUser(u);
+        setInitialising(false);
+      });
+      return unsubscribe;
+    } catch (error) {
+      console.error("Auth init failed at startup", error);
+      setUser(null);
       setInitialising(false);
-    });
-
-    return unsubscribe;
+      return () => {};
+    }
   }, []);
 
   useEffect(() => {
