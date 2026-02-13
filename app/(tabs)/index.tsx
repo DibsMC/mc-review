@@ -3,7 +3,6 @@ import { Alert, Linking, StyleSheet, Text, View, useWindowDimensions } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import firestore from "@react-native-firebase/firestore";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import { HomeCard } from "../../components/home/HomeCard";
 import { buildHomeCards } from "../../components/home/homeFeed";
@@ -43,7 +42,6 @@ function clampSnippet(s: string, maxLen = 110) {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
   const { height: windowH } = useWindowDimensions();
 
   const [latestBadge, setLatestBadge] = useState<LatestBadge>(null);
@@ -341,7 +339,6 @@ export default function HomeScreen() {
 
   const feed = useMemo(() => buildHomeCards(input as any, handlers as any), [input, handlers]);
   const loading = badgeLoading || trendingLoading || updatedLoading;
-  const bottomPad = tabBarHeight + 34;
   const reviewCountDisplay = reviewCountLoading
     ? "------"
     : String(Math.max(0, reviewCount)).padStart(6, "0");
@@ -353,7 +350,7 @@ export default function HomeScreen() {
       <View pointerEvents="none" style={styles.topGloss} />
 
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={[styles.content, { paddingBottom: Math.max(8, tabBarHeight * 0.12) }]}>
+        <View style={[styles.content, { paddingBottom: compactLayout ? 10 : 14 }]}>
 
           <View style={[styles.header, compactLayout ? styles.headerCompact : null]}>
             <Text style={[styles.titleCompact, compactLayout ? styles.titleCompactSmall : null]}>Community updates ✨</Text>
