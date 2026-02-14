@@ -1,7 +1,6 @@
 import { Redirect, Stack, useSegments } from "expo-router";
 import React, { Component, ReactNode, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
 import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import AppBackground from "../components/AppBackground";
 
@@ -65,22 +64,29 @@ export default function RootLayout() {
   const segments = useSegments();
 
   const [initialising, setInitialising] = useState(true);
-  const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
+  const [user, setUser] = useState<any>(null);
   const startupErrorMessage = getStartupErrorMessage();
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
     try {
-      const unsubscribe = auth().onAuthStateChanged((u) => {
+      const authModule = require("@react-native-firebase/auth").default;
+      unsubscribe = authModule().onAuthStateChanged((u: any) => {
         setUser(u);
         setInitialising(false);
       });
-      return unsubscribe;
     } catch (error) {
       console.error("Auth init failed at startup", error);
       setUser(null);
       setInitialising(false);
-      return () => {};
     }
+
+    return () => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const navTheme = useMemo(() => {
