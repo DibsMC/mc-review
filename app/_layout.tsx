@@ -1,6 +1,6 @@
-import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { Redirect, Stack, useSegments } from "expo-router";
+import React, { Component, ReactNode, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
 import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import AppBackground from "../components/AppBackground";
@@ -11,10 +11,85 @@ import { enableFreeze, enableScreens } from "react-native-screens";
 enableScreens(false);
 enableFreeze(false);
 
+type GlobalErrorHandler = (error: unknown, isFatal?: boolean) => void;
+type ErrorUtilsShape = {
+  getGlobalHandler?: () => GlobalErrorHandler;
+  setGlobalHandler?: (handler: GlobalErrorHandler) => void;
+};
+
+let globalJsHandlerInstalled = false;
+
+function installGlobalJsErrorHandler() {
+  if (globalJsHandlerInstalled) return;
+  globalJsHandlerInstalled = true;
+
+  const maybeErrorUtils = (globalThis as { ErrorUtils?: ErrorUtilsShape }).ErrorUtils;
+  if (!maybeErrorUtils?.setGlobalHandler) return;
+
+  const previousHandler = maybeErrorUtils.getGlobalHandler?.();
+  maybeErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.error("Global JS error", error);
+
+    // Keep RedBox behavior in development.
+    if (__DEV__ && previousHandler) {
+      previousHandler(error, isFatal);
+    }
+  });
+}
+
+class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Root render error", error);
+  }
+
+  private handleTryAgain = () => {
+    this.setState({ hasError: false });
+  };
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 24 }}>
+        <Text style={{ color: "white", fontSize: 19, fontWeight: "700", textAlign: "center" }}>
+          App startup failed
+        </Text>
+        <Text
+          style={{
+            marginTop: 8,
+            color: "rgba(255,255,255,0.75)",
+            fontSize: 14,
+            textAlign: "center",
+          }}
+        >
+          Try again. If it keeps happening, reinstall from TestFlight.
+        </Text>
+        <Pressable
+          onPress={this.handleTryAgain}
+          style={{
+            marginTop: 18,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.3)",
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "700" }}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+}
+
 export default function RootLayout() {
-  const router = useRouter();
   const segments = useSegments();
-  const navState = useRootNavigationState();
 
   const [initialising, setInitialising] = useState(true);
   const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
@@ -28,6 +103,10 @@ export default function RootLayout() {
         card: "transparent",
       },
     };
+  }, []);
+
+  useEffect(() => {
+    installGlobalJsErrorHandler();
   }, []);
 
   useEffect(() => {
@@ -45,16 +124,6 @@ export default function RootLayout() {
     }
   }, []);
 
-  useEffect(() => {
-    // Avoid dispatching navigation actions before the root navigator is ready.
-    if (!navState?.key) return;
-    if (initialising) return;
-
-    const inAuth = segments[0] === "auth";
-    if (!user && !inAuth) router.replace("/auth");
-    if (user && inAuth) router.replace("/(tabs)");
-  }, [user, initialising, router, segments, navState?.key]);
-
   if (initialising) {
     return (
       <AppBackground>
@@ -65,15 +134,21 @@ export default function RootLayout() {
     );
   }
 
+  const inAuth = segments[0] === "auth";
+  if (!user && !inAuth) return <Redirect href="/auth" />;
+  if (user && inAuth) return <Redirect href="/(tabs)" />;
+
   return (
     <AppBackground>
       <ThemeProvider value={navTheme}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "transparent" },
-          }}
-        />
+        <RootErrorBoundary>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: "transparent" },
+            }}
+          />
+        </RootErrorBoundary>
       </ThemeProvider>
     </AppBackground>
   );
