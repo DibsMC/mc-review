@@ -4,11 +4,6 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
 import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import AppBackground from "../components/AppBackground";
-import { enableFreeze, enableScreens } from "react-native-screens";
-
-// Keep iOS startup stable; enabling native screens has repeatedly triggered launch crashes.
-enableScreens(false);
-enableFreeze(false);
 
 function getStartupErrorMessage() {
   const raw = (globalThis as { __MC_STARTUP_ERROR__?: unknown }).__MC_STARTUP_ERROR__;
