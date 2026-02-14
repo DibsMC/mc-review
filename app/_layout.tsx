@@ -10,30 +10,9 @@ import { enableFreeze, enableScreens } from "react-native-screens";
 enableScreens(false);
 enableFreeze(false);
 
-type GlobalErrorHandler = (error: unknown, isFatal?: boolean) => void;
-type ErrorUtilsShape = {
-  getGlobalHandler?: () => GlobalErrorHandler;
-  setGlobalHandler?: (handler: GlobalErrorHandler) => void;
-};
-
-let globalJsHandlerInstalled = false;
-
-function installGlobalJsErrorHandler() {
-  if (globalJsHandlerInstalled) return;
-  globalJsHandlerInstalled = true;
-
-  const maybeErrorUtils = (globalThis as { ErrorUtils?: ErrorUtilsShape }).ErrorUtils;
-  if (!maybeErrorUtils?.setGlobalHandler) return;
-
-  const previousHandler = maybeErrorUtils.getGlobalHandler?.();
-  maybeErrorUtils.setGlobalHandler((error, isFatal) => {
-    console.error("Global JS error", error);
-
-    // Keep RedBox behavior in development.
-    if (__DEV__ && previousHandler) {
-      previousHandler(error, isFatal);
-    }
-  });
+function getStartupErrorMessage() {
+  const raw = (globalThis as { __MC_STARTUP_ERROR__?: unknown }).__MC_STARTUP_ERROR__;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -92,21 +71,7 @@ export default function RootLayout() {
 
   const [initialising, setInitialising] = useState(true);
   const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
-
-  const navTheme = useMemo(() => {
-    return {
-      ...DefaultTheme,
-      colors: {
-        ...DefaultTheme.colors,
-        background: "transparent",
-        card: "transparent",
-      },
-    };
-  }, []);
-
-  useEffect(() => {
-    installGlobalJsErrorHandler();
-  }, []);
+  const startupErrorMessage = getStartupErrorMessage();
 
   useEffect(() => {
     try {
@@ -122,6 +87,50 @@ export default function RootLayout() {
       return () => {};
     }
   }, []);
+
+  const navTheme = useMemo(() => {
+    return {
+      ...DefaultTheme,
+      colors: {
+        ...DefaultTheme.colors,
+        background: "transparent",
+        card: "transparent",
+      },
+    };
+  }, []);
+
+  if (startupErrorMessage) {
+    return (
+      <AppBackground>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 24 }}>
+          <Text style={{ color: "white", fontSize: 19, fontWeight: "700", textAlign: "center" }}>
+            Startup error detected
+          </Text>
+          <Text
+            style={{
+              marginTop: 8,
+              color: "rgba(255,255,255,0.75)",
+              fontSize: 14,
+              textAlign: "center",
+            }}
+          >
+            The app hit a startup exception and recovered. Please reopen once.
+          </Text>
+          <Text
+            style={{
+              marginTop: 10,
+              color: "rgba(255,255,255,0.65)",
+              fontSize: 12,
+              textAlign: "center",
+            }}
+            numberOfLines={5}
+          >
+            {startupErrorMessage}
+          </Text>
+        </View>
+      </AppBackground>
+    );
+  }
 
   if (initialising) {
     return (
