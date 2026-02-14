@@ -3,6 +3,7 @@ import React, { Component, ReactNode, useEffect, useMemo, useState } from "react
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import AppBackground from "../components/AppBackground";
+import { getFirebaseAuth } from "../lib/nativeDeps";
 
 function getStartupErrorMessage() {
   const raw = (globalThis as { __MC_STARTUP_ERROR__?: unknown }).__MC_STARTUP_ERROR__;
@@ -70,8 +71,14 @@ export default function RootLayout() {
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
+    const authModule = getFirebaseAuth();
+    if (!authModule) {
+      setUser(null);
+      setInitialising(false);
+      return () => {};
+    }
+
     try {
-      const authModule = require("@react-native-firebase/auth").default;
       unsubscribe = authModule().onAuthStateChanged((u: any) => {
         setUser(u);
         setInitialising(false);

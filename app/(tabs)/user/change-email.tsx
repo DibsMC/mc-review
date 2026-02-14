@@ -1,7 +1,7 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { useState } from "react";
-import auth from "@react-native-firebase/auth";
+import { getFirebaseAuth } from "../../../lib/nativeDeps";
 
 function Glass({ children }: { children: React.ReactNode }) {
     return (
@@ -20,6 +20,19 @@ function Glass({ children }: { children: React.ReactNode }) {
 }
 
 export default function ChangeEmailScreen() {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+        return (
+            <SafeAreaView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 58 }}>
+                <Glass>
+                    <Text style={{ fontSize: 20, fontWeight: "900", color: "white" }}>Unavailable</Text>
+                    <Text style={{ color: "rgba(255,255,255,0.7)", marginTop: 8 }}>
+                        Auth module did not load. Please close and reopen the app.
+                    </Text>
+                </Glass>
+            </SafeAreaView>
+        );
+    }
     const user = auth().currentUser;
     const [email, setEmail] = useState<string>(user?.email ?? "");
     const [newEmail, setNewEmail] = useState<string>("");

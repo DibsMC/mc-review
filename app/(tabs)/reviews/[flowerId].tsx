@@ -23,9 +23,9 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import firestore, { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
-import auth from "@react-native-firebase/auth";
+import type { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
 import { theme } from "../../../lib/theme";
+import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 
 const budImg = require("../../../assets/icons/bud.png");
 const flowersBg = require("../../../assets/images/flowers-bg.png");
@@ -603,8 +603,26 @@ const styles = StyleSheet.create({
 /* ==================== SCREEN ==================== */
 
 export default function FlowerDetail() {
+    const firestore = getFirebaseFirestore();
+    const auth = getFirebaseAuth();
     const router = useRouter();
     const insets = useSafeAreaInsets();
+
+    if (!firestore || !auth) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+                <ImageBackground source={flowersBg} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+                    <Text style={{ color: "white", fontSize: 18, fontWeight: "900", textAlign: "center" }}>
+                        Product screen unavailable
+                    </Text>
+                    <Text style={{ color: "rgba(255,255,255,0.75)", marginTop: 8, textAlign: "center" }}>
+                        Please close and reopen the app.
+                    </Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     const { flowerId, productId: productIdParam } = useLocalSearchParams<{ flowerId?: string; productId?: string }>();
     const productId = typeof productIdParam === "string" ? productIdParam : typeof flowerId === "string" ? flowerId : "";

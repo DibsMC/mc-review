@@ -23,9 +23,8 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import firestore from "@react-native-firebase/firestore";
-import auth from "@react-native-firebase/auth";
 import { theme } from "../../../lib/theme";
+import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 
 const budImg = require("../../../assets/icons/bud.png");
 const flowersBg = require("../../../assets/images/flowers-bg.png");
@@ -253,8 +252,26 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
 }
 
 export default function ReviewsIndex() {
+  const firestore = getFirebaseFirestore();
+  const auth = getFirebaseAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  if (!firestore || !auth) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+        <ImageBackground source={flowersBg} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+          <Text style={{ color: "white", fontSize: 18, fontWeight: "900", textAlign: "center" }}>
+            Reviews unavailable
+          </Text>
+          <Text style={{ color: "rgba(255,255,255,0.75)", marginTop: 8, textAlign: "center" }}>
+            Please close and reopen the app.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const listRef = useRef<FlatList<Product> | null>(null);
 

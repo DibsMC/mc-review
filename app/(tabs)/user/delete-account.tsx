@@ -2,8 +2,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import auth from "@react-native-firebase/auth";
-import firestore, { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
+import type { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
+import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 
 function Glass({ children }: { children: React.ReactNode }) {
     return (
@@ -23,8 +23,23 @@ function Glass({ children }: { children: React.ReactNode }) {
 
 export default function DeleteAccountScreen() {
     const router = useRouter();
+    const auth = getFirebaseAuth();
+    const firestore = getFirebaseFirestore();
     const [deleting, setDeleting] = useState(false);
     const [statusText, setStatusText] = useState("");
+
+    if (!auth || !firestore) {
+        return (
+            <SafeAreaView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 58 }}>
+                <Glass>
+                    <Text style={{ fontSize: 20, fontWeight: "900", color: "white" }}>Unavailable</Text>
+                    <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 8 }}>
+                        Account tools are unavailable right now. Please close and reopen the app.
+                    </Text>
+                </Glass>
+            </SafeAreaView>
+        );
+    }
 
     const deleteDocsByQuery = async (query: FirebaseFirestoreTypes.Query<FirebaseFirestoreTypes.DocumentData>) => {
         while (true) {

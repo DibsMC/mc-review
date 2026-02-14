@@ -1,6 +1,6 @@
 /**
- * Configure navigation screens early, but do not suppress fatal errors.
- * We want real crashes to surface so they can be diagnosed and fixed.
+ * Configure navigation screens early and capture startup errors.
+ * In production we keep the app alive long enough to render fallback UI.
  */
 (function configureReactNativeScreensEarly() {
   try {
@@ -33,8 +33,8 @@
     global.__MC_STARTUP_ERROR__ = message;
     console.error("Global JS error", error);
 
-    // Always forward to RN default handling so fatal crashes are not swallowed.
-    if (typeof previousHandler === "function") {
+    // In production, keep the app alive long enough to render fallback UI.
+    if (__DEV__ && typeof previousHandler === "function") {
       previousHandler(error, isFatal);
     }
   });

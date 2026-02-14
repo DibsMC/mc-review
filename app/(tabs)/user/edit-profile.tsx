@@ -3,12 +3,28 @@ import React, { useEffect, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import auth from "@react-native-firebase/auth";
-import firestore from "@react-native-firebase/firestore";
 import { theme } from "../../../lib/theme";
+import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 
 export default function EditProfileScreen() {
     const router = useRouter();
+    const auth = getFirebaseAuth();
+    const firestore = getFirebaseFirestore();
+
+    if (!auth || !firestore) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+                <View style={{ paddingHorizontal: 16, paddingTop: 58 }}>
+                    <Text style={{ color: theme.colors.textOnDark, fontSize: 20, fontWeight: "900" }}>
+                        Profile unavailable
+                    </Text>
+                    <Text style={{ color: theme.colors.textOnDarkSecondary, marginTop: 8 }}>
+                        Required modules did not load. Please close and reopen the app.
+                    </Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     const [displayName, setDisplayName] = useState<string>("");
     const [saving, setSaving] = useState(false);

@@ -14,10 +14,9 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import auth from "@react-native-firebase/auth";
-import firestore from "@react-native-firebase/firestore";
 import * as FileSystem from "expo-file-system/legacy";
 import { theme } from "../../../lib/theme";
+import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 
 const budImg = require("../../../assets/icons/bud.png");
 
@@ -604,6 +603,24 @@ function formatDate(ms: number | null | undefined) {
 }
 
 export default function UserMenuScreen() {
+    const auth = getFirebaseAuth();
+    const firestore = getFirebaseFirestore();
+
+    if (!auth || !firestore) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+                    <Text style={{ color: "white", fontSize: 20, fontWeight: "900", textAlign: "center" }}>
+                        User screen unavailable
+                    </Text>
+                    <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 8, textAlign: "center" }}>
+                        Required modules did not load. Please close and reopen the app.
+                    </Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     const router = useRouter();
     const insets = useSafeAreaInsets();
 

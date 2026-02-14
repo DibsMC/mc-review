@@ -2,12 +2,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Linking, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import firestore from "@react-native-firebase/firestore";
 
 import { HomeCard } from "../../components/home/HomeCard";
 import { buildHomeCards } from "../../components/home/homeFeed";
 import { AmbientBackground } from "../../components/home/AmbientBackground";
 import { SkeletonCard } from "../../components/home/SkeletonCard";
+import { getFirebaseFirestore } from "../../lib/nativeDeps";
 
 type LatestBadge =
   | { badgeTitle: string; badgeOwnerName: string; badgeOwnerUid?: string }
@@ -43,6 +43,23 @@ function clampSnippet(s: string, maxLen = 110) {
 export default function HomeScreen() {
   const router = useRouter();
   const { height: windowH } = useWindowDimensions();
+  const firestore = getFirebaseFirestore();
+
+  if (!firestore) {
+    return (
+      <SafeAreaView style={{ flex: 1 }}>
+        <AmbientBackground />
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+          <Text style={{ color: "white", fontSize: 18, fontWeight: "700", textAlign: "center" }}>
+            Unable to start Home
+          </Text>
+          <Text style={{ color: "rgba(255,255,255,0.75)", marginTop: 8, textAlign: "center" }}>
+            Please close and reopen the app.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const [latestBadge, setLatestBadge] = useState<LatestBadge>(null);
   const [badgeLoading, setBadgeLoading] = useState(true);

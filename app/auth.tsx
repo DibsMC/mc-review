@@ -1,7 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import firestore from "@react-native-firebase/firestore";
-import auth from "@react-native-firebase/auth";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Alert,
   Image,
@@ -16,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { getAsyncStorage, getFirebaseAuth, getFirebaseFirestore } from "../lib/nativeDeps";
 
 const LAST_EMAIL_KEY = "lastEmail";
 const authLogo = require("../assets/brand/review-budz-logo.png");
@@ -78,12 +76,17 @@ function getFriendlyAuthError(error: any, mode: "signIn" | "create") {
 export default function AuthScreen() {
   const router = useRouter();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const firestore = getFirebaseFirestore();
+  const auth = getFirebaseAuth();
+  const AsyncStorage = getAsyncStorage();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const nativeDepsReady = !!firestore && !!auth && !!AsyncStorage;
 
   useEffect(() => {
+    if (!AsyncStorage) return;
     (async () => {
       try {
         const saved = await AsyncStorage.getItem(LAST_EMAIL_KEY);
@@ -100,6 +103,11 @@ export default function AuthScreen() {
   }, [email, password, loading]);
 
   async function handleSignIn() {
+    if (!auth || !AsyncStorage) {
+      Alert.alert("Startup issue", "Authentication is not available yet. Please reopen the app.");
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -125,6 +133,11 @@ export default function AuthScreen() {
   }
 
   async function handleCreateAccount() {
+    if (!auth || !firestore || !AsyncStorage) {
+      Alert.alert("Startup issue", "Authentication is not available yet. Please reopen the app.");
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -179,6 +192,21 @@ export default function AuthScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!nativeDepsReady) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={[styles.center, { justifyContent: "center", alignItems: "center" }]}>
+          <Glass>
+            <Text style={styles.title}>Starting up…</Text>
+            <Text style={styles.subtitle}>
+              We could not load secure sign-in modules. Please fully close and reopen the app.
+            </Text>
+          </Glass>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (

@@ -11,9 +11,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import firestore from "@react-native-firebase/firestore";
-import auth from "@react-native-firebase/auth";
 import { theme } from "../../../../lib/theme";
+import { getFirebaseAuth, getFirebaseFirestore } from "../../../../lib/nativeDeps";
 
 const budImg = require("../../../../assets/icons/bud.png");
 
@@ -176,6 +175,24 @@ function getCreatedAtMs(createdAt: any): number {
 }
 
 export default function PublicProfileScreen() {
+    const firestore = getFirebaseFirestore();
+    const auth = getFirebaseAuth();
+
+    if (!firestore || !auth) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+                    <Text style={{ color: "white", fontSize: 20, fontWeight: "900", textAlign: "center" }}>
+                        Profile unavailable
+                    </Text>
+                    <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 8, textAlign: "center" }}>
+                        Required modules did not load. Please close and reopen the app.
+                    </Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
