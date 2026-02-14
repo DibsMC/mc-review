@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import * as FileSystem from "expo-file-system/legacy";
 import { theme } from "../../../lib/theme";
 import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 
@@ -262,6 +261,14 @@ function maskEmail(email: string) {
     const domain = parts[1] ?? "";
     const first = name.slice(0, 1);
     return `${first}***@${domain}`;
+}
+
+function getLegacyFileSystemModule() {
+    try {
+        return require("expo-file-system/legacy");
+    } catch {
+        return null;
+    }
 }
 
 function getDiceBearPngUrl(seed: string, size: number) {
@@ -844,6 +851,12 @@ export default function UserMenuScreen() {
         }
 
         try {
+            const FileSystem = getLegacyFileSystemModule();
+            if (!FileSystem) {
+                Alert.alert("Export unavailable", "File export is not available on this install.");
+                return;
+            }
+
             const uId = u.uid;
 
             const userDoc = await firestore().collection("users").doc(uId).get();
