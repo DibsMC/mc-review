@@ -21,7 +21,6 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import firestore, { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
@@ -543,12 +542,12 @@ const styles = StyleSheet.create({
     },
 
     // Editor modal (new layout)
-    editorModalRoot: { flex: 1, position: "relative" },
-    editorBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.92)" },
-    editorSafe: { flex: 1 },
+    editorModalRoot: { flex: 1, position: "relative", backgroundColor: "#0A0B0F" },
+    editorBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "#0A0B0F" },
+    editorSafe: { flex: 1, backgroundColor: "#0A0B0F" },
     editorKav: {
         flex: 1,
-        backgroundColor: "rgba(10,10,10,0.98)",
+        backgroundColor: "#0A0B0F",
         borderTopLeftRadius: 18,
         borderTopRightRadius: 18,
         overflow: "hidden",
@@ -606,13 +605,14 @@ const styles = StyleSheet.create({
 export default function FlowerDetail() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const tabBarHeight = useBottomTabBarHeight();
 
     const { flowerId, productId: productIdParam } = useLocalSearchParams<{ flowerId?: string; productId?: string }>();
     const productId = typeof productIdParam === "string" ? productIdParam : typeof flowerId === "string" ? flowerId : "";
 
     const TOP_PAD = 72;
-    const bottomSpace = tabBarHeight + Math.max(insets.bottom, 12) + 24;
+    // Avoid tab-context hook crashes by using a stable tab-bar height estimate.
+    const estimatedTabBarHeight = 56;
+    const bottomSpace = estimatedTabBarHeight + Math.max(insets.bottom, 12) + 24;
 
     const { height: windowH } = Dimensions.get("window");
     const bgShift = Math.round(windowH * 0.18);
@@ -1655,9 +1655,9 @@ export default function FlowerDetail() {
                 </Modal>
 
                 {/* Write/Edit modal (NEW: full-screen surface + ScrollView + pinned footer) */}
-                <Modal visible={editorOpen} transparent animationType="fade" onRequestClose={closeEditor}>
+                <Modal visible={editorOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeEditor}>
                     <View style={styles.editorModalRoot}>
-                        <Pressable style={styles.editorBackdrop} onPress={closeEditor} />
+                        <View style={styles.editorBackdrop} />
 
                         <SafeAreaView style={styles.editorSafe} edges={["top", "bottom"]}>
                             <KeyboardAvoidingView style={styles.editorKav} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}>

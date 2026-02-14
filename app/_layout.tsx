@@ -6,9 +6,8 @@ import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import AppBackground from "../components/AppBackground";
 import { enableFreeze, enableScreens } from "react-native-screens";
 
-// Defensive: avoid a known class of production crashes caused by screen lifecycle events
-// firing while the bridge is redirecting on startup/auth changes.
-enableScreens(false);
+// Keep native screen management enabled for correct tab/screen layering.
+enableScreens();
 enableFreeze(false);
 
 type GlobalErrorHandler = (error: unknown, isFatal?: boolean) => void;
