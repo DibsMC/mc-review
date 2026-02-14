@@ -6,6 +6,8 @@
   try {
     const screens = require("react-native-screens");
     if (screens && typeof screens.enableScreens === "function") {
+      const originalEnableScreens = screens.enableScreens.bind(screens);
+      screens.enableScreens = () => originalEnableScreens(false);
       screens.enableScreens(false);
     }
     if (screens && typeof screens.enableFreeze === "function") {
@@ -13,6 +15,48 @@
     }
   } catch (error) {
     console.error("Failed to configure react-native-screens early", error);
+  }
+})();
+
+(function patchNativeExceptionsManagerEarly() {
+  try {
+    const { NativeModules } = require("react-native");
+    const manager = NativeModules?.ExceptionsManager;
+    if (!manager) return;
+
+    const getMessage = (payload, args) => {
+      if (payload && typeof payload === "object" && typeof payload.message === "string") {
+        return payload.message;
+      }
+      if (typeof args?.[0] === "string") return args[0];
+      return "A native exception was reported during startup.";
+    };
+
+    const remember = (message, payload) => {
+      global.__MC_STARTUP_ERROR__ = message;
+      console.error("Native ExceptionsManager payload", payload);
+    };
+
+    if (typeof manager.reportException === "function") {
+      const original = manager.reportException.bind(manager);
+      manager.reportException = (...args) => {
+        const payload = args[0];
+        remember(getMessage(payload, args), payload);
+        if (__DEV__) return original(...args);
+        return undefined;
+      };
+    }
+
+    if (typeof manager.reportFatalException === "function") {
+      const original = manager.reportFatalException.bind(manager);
+      manager.reportFatalException = (...args) => {
+        remember(getMessage(undefined, args), args);
+        if (__DEV__) return original(...args);
+        return undefined;
+      };
+    }
+  } catch (error) {
+    console.error("Failed to patch ExceptionsManager early", error);
   }
 })();
 
