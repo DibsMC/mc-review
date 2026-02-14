@@ -124,6 +124,8 @@ export default function AuthScreen() {
 
       if (returnTo) {
         router.replace(String(returnTo));
+      } else {
+        router.replace("/(tabs)");
       }
     } catch (e: any) {
       Alert.alert("Sign in failed", getFriendlyAuthError(e, "signIn"));
@@ -186,6 +188,8 @@ export default function AuthScreen() {
 
       if (returnTo) {
         router.replace(String(returnTo));
+      } else {
+        router.replace("/(tabs)");
       }
     } catch (e: any) {
       Alert.alert("Create account failed", getFriendlyAuthError(e, "create"));

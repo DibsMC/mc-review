@@ -284,7 +284,13 @@ export default function ReviewsIndex() {
   const [statsByProductId, setStatsByProductId] = useState<Record<string, Stat>>({});
 
   // Auth + favourites
-  const [currentUid, setCurrentUid] = useState<string>("");
+  const [currentUid, setCurrentUid] = useState<string>(() => {
+    try {
+      return auth().currentUser?.uid ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [legacyFavoriteProductIds, setLegacyFavoriteProductIds] = useState<string[]>([]);
   const [favoriteSlotsByProductId, setFavoriteSlotsByProductId] = useState<Record<string, FavoriteSlots>>({});
 
@@ -334,11 +340,12 @@ export default function ReviewsIndex() {
   }, []);
 
   useEffect(() => {
-    const unsub = auth().onAuthStateChanged((u) => {
-      setCurrentUid(u?.uid ?? "");
-    });
-    return () => unsub();
-  }, []);
+    try {
+      setCurrentUid(auth().currentUser?.uid ?? "");
+    } catch {
+      setCurrentUid("");
+    }
+  }, [auth]);
 
   useEffect(() => {
     if (!currentUid) {

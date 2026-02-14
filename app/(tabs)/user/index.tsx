@@ -830,6 +830,7 @@ export default function UserMenuScreen() {
     const handleSignOut = async () => {
         try {
             await auth().signOut();
+            router.replace("/auth");
         } catch (e: any) {
             Alert.alert("Sign out failed", getFriendlyAccountError(e));
         }

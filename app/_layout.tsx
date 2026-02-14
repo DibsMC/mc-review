@@ -1,9 +1,8 @@
-import { Redirect, Stack, useSegments } from "expo-router";
+import { Stack } from "expo-router";
 import React, { Component, ReactNode, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import AppBackground from "../components/AppBackground";
-import { getFirebaseAuth } from "../lib/nativeDeps";
 
 function getStartupErrorMessage() {
   const raw = (globalThis as { __MC_STARTUP_ERROR__?: unknown }).__MC_STARTUP_ERROR__;
@@ -62,37 +61,15 @@ class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: b
 }
 
 export default function RootLayout() {
-  const segments = useSegments();
-
   const [initialising, setInitialising] = useState(true);
-  const [user, setUser] = useState<any>(null);
   const startupErrorMessage = getStartupErrorMessage();
 
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-
-    const authModule = getFirebaseAuth();
-    if (!authModule) {
-      setUser(null);
+    const id = requestAnimationFrame(() => {
       setInitialising(false);
-      return () => {};
-    }
-
-    try {
-      unsubscribe = authModule().onAuthStateChanged((u: any) => {
-        setUser(u);
-        setInitialising(false);
-      });
-    } catch (error) {
-      console.error("Auth init failed at startup", error);
-      setUser(null);
-      setInitialising(false);
-    }
-
+    });
     return () => {
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
+      cancelAnimationFrame(id);
     };
   }, []);
 
@@ -149,10 +126,6 @@ export default function RootLayout() {
       </AppBackground>
     );
   }
-
-  const inAuth = segments[0] === "auth";
-  if (!user && !inAuth) return <Redirect href="/auth" />;
-  if (user && inAuth) return <Redirect href="/(tabs)" />;
 
   return (
     <AppBackground>
