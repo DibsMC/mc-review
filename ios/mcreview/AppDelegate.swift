@@ -3,6 +3,33 @@ import FirebaseCore
 import React
 import ReactAppDependencyProvider
 
+private let startupFatalDefaultsKey = "MCNativeStartupFatal"
+
+private func persistStartupFatal(_ message: String) {
+  let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !trimmed.isEmpty else { return }
+  UserDefaults.standard.set(trimmed, forKey: startupFatalDefaultsKey)
+  NSLog("[MC][StartupFatal] %@", trimmed)
+}
+
+private func installReactNativeFatalHandlers() {
+  RCTSetFatalHandler { error in
+    let message = "RCTFatal: \(error.localizedDescription)"
+    persistStartupFatal(message)
+  }
+
+  RCTSetFatalExceptionHandler { exception in
+    let reason = exception.reason ?? "Unknown reason"
+    let stack = exception.callStackSymbols.prefix(8).joined(separator: "\n")
+    let message = """
+    RCTFatalException: \(exception.name.rawValue)
+    \(reason)
+    \(stack)
+    """
+    persistStartupFatal(message)
+  }
+}
+
 @UIApplicationMain
 public class AppDelegate: ExpoAppDelegate {
   var window: UIWindow?
@@ -21,6 +48,7 @@ public class AppDelegate: ExpoAppDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
+    installReactNativeFatalHandlers()
 
 #if os(iOS) || os(tvOS)
     window = UIWindow(frame: UIScreen.main.bounds)

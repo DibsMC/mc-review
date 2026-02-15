@@ -16,6 +16,9 @@
   }
 })();
 
+const STARTUP_ERROR_KEY = "__MC_STARTUP_ERROR__";
+const STARTUP_GUARD_KEY = "__MC_ERROR_GUARD_INSTALLED__";
+
 function formatStartupError(error) {
   if (!error) return "Unknown startup error";
   if (typeof error === "string") return error;
@@ -29,23 +32,80 @@ function formatStartupError(error) {
   }
 }
 
+function setStartupError(error) {
+  global[STARTUP_ERROR_KEY] = formatStartupError(error);
+}
+
+function registerBootstrapShell() {
+  try {
+    const React = require("react");
+    const { registerRootComponent } = require("expo");
+    const { ActivityIndicator, View } = require("react-native");
+
+    function BootstrapShell() {
+      return React.createElement(
+        View,
+        {
+          style: {
+            flex: 1,
+            backgroundColor: "#0A0B0F",
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        },
+        React.createElement(ActivityIndicator, { size: "small", color: "#FFFFFF" })
+      );
+    }
+
+    registerRootComponent(BootstrapShell);
+  } catch {
+    // Keep bootstrap resilient if shell registration fails.
+  }
+}
+
 function installGlobalJsErrorGuard() {
+  if (global[STARTUP_GUARD_KEY]) return;
+
   const errorUtils = global.ErrorUtils;
   if (!errorUtils || typeof errorUtils.setGlobalHandler !== "function") {
     return;
   }
 
-  const previousHandler =
+  const originalSetGlobalHandler = errorUtils.setGlobalHandler.bind(errorUtils);
+  const currentHandler =
     typeof errorUtils.getGlobalHandler === "function" ? errorUtils.getGlobalHandler() : null;
 
-  errorUtils.setGlobalHandler((error, isFatal) => {
-    global.__MC_STARTUP_ERROR__ = formatStartupError(error);
+  const guardHandler = (error, isFatal) => {
+    setStartupError(error);
 
-    // Keep dev error overlay behaviour unchanged.
-    if (__DEV__ && typeof previousHandler === "function") {
-      previousHandler(error, isFatal);
+    if (__DEV__) {
+      // Preserve rich diagnostics while we harden release startup.
+      console.error("Startup/global error captured", error, "isFatal:", isFatal);
     }
-  });
+  };
+
+  const wrapHandler = (nextHandler) => (error, isFatal) => {
+    guardHandler(error, isFatal);
+
+    if (__DEV__ && typeof nextHandler === "function") {
+      try {
+        nextHandler(error, isFatal);
+      } catch (handlerError) {
+        console.error("Error inside global error handler", handlerError);
+      }
+    }
+  };
+
+  // Install once immediately.
+  originalSetGlobalHandler(wrapHandler(currentHandler));
+
+  // Some libraries overwrite ErrorUtils during bootstrap.
+  // Ensure our guard stays first and suppresses release abort loops.
+  errorUtils.setGlobalHandler = (nextHandler) => {
+    originalSetGlobalHandler(wrapHandler(nextHandler));
+  };
+
+  global[STARTUP_GUARD_KEY] = true;
 }
 
 function registerBootstrapFallback(error) {
@@ -54,7 +114,7 @@ function registerBootstrapFallback(error) {
   const { View, Text } = require("react-native");
   const message = formatStartupError(error);
 
-  global.__MC_STARTUP_ERROR__ = message;
+  setStartupError(message);
 
   function BootstrapFallback() {
     return React.createElement(
@@ -98,6 +158,7 @@ function registerBootstrapFallback(error) {
   registerRootComponent(BootstrapFallback);
 }
 
+registerBootstrapShell();
 installGlobalJsErrorGuard();
 
 try {
