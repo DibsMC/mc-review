@@ -610,7 +610,7 @@ export default function FlowerDetail() {
 
     if (!firestore || !auth) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.appBgSolid }}>
                 <ImageBackground source={flowersBg} style={StyleSheet.absoluteFill} resizeMode="cover" />
                 <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
                     <Text style={{ color: "white", fontSize: 18, fontWeight: "900", textAlign: "center" }}>
@@ -719,6 +719,8 @@ export default function FlowerDetail() {
 
     // Back button
     const handleBack = useCallback(() => {
+        Keyboard.dismiss();
+        setSortOpen(false);
         try {
             router.back();
         } catch {
@@ -1582,7 +1584,7 @@ export default function FlowerDetail() {
 
     if (loadingProduct) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top", "bottom"]}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.appBgSolid }} edges={["top", "bottom"]}>
                 <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 72 }}>
                     <ActivityIndicator color={theme.colors.textOnDarkSecondary} />
                     <Text style={{ marginTop: 12, color: theme.colors.textOnDarkSecondary }}>Loading product...</Text>
@@ -1593,7 +1595,7 @@ export default function FlowerDetail() {
 
     if (!product) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top", "bottom"]}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.appBgSolid }} edges={["top", "bottom"]}>
                 <View style={{ flex: 1, padding: 16 }}>
                     <Text style={{ fontSize: 18, fontWeight: "900", marginTop: 16, color: theme.colors.textOnDark }}>Product not found</Text>
                     <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary }}>That product id doesnt exist in Firestore.</Text>
@@ -1608,7 +1610,7 @@ export default function FlowerDetail() {
         <>
             <Stack.Screen options={{ headerShown: false }} />
 
-            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top", "bottom"]}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.appBgSolid }} edges={["top", "bottom"]}>
                 <ImageBackground source={flowersBg} resizeMode="cover" style={StyleSheet.absoluteFillObject} imageStyle={{ transform: [{ translateY: bgShift }, { scale: bgScale }] }} />
 
                 <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0, 0, 0, 0.49)" }]} />

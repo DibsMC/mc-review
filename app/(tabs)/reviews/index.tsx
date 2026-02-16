@@ -11,6 +11,7 @@ import {
   FlatList,
   Image,
   ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -294,6 +295,9 @@ export default function ReviewsIndex() {
   const [legacyFavoriteProductIds, setLegacyFavoriteProductIds] = useState<string[]>([]);
   const [favoriteSlotsByProductId, setFavoriteSlotsByProductId] = useState<Record<string, FavoriteSlots>>({});
 
+  const searchInputRef = useRef<TextInput | null>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("atoz");
 
@@ -325,6 +329,31 @@ export default function ReviewsIndex() {
 
   // Back-to-top button state
   const [showTop, setShowTop] = useState(false);
+
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+
+    const trimmed = queryInput.trim();
+    if (!trimmed) {
+      setQuery("");
+      return;
+    }
+
+    searchDebounceRef.current = setTimeout(() => {
+      setQuery(queryInput);
+      searchDebounceRef.current = null;
+    }, 120);
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+    };
+  }, [queryInput]);
 
   const onListScroll = useCallback(
     (e: any) => {
@@ -390,21 +419,23 @@ export default function ReviewsIndex() {
     };
   }, [currentUid]);
 
+  const legacyFavoriteSet = useMemo(() => new Set(legacyFavoriteProductIds), [legacyFavoriteProductIds]);
+
   const getSlotsForProduct = useCallback(
     (productId: string): FavoriteSlots => {
       const fromDoc = favoriteSlotsByProductId[productId];
       if (fromDoc) {
         // Keep backward compatibility: legacy array implies general favourite.
-        if (legacyFavoriteProductIds.includes(productId) && !fromDoc.general) {
+        if (legacyFavoriteSet.has(productId) && !fromDoc.general) {
           return { ...fromDoc, general: true };
         }
         return fromDoc;
       }
-      return legacyFavoriteProductIds.includes(productId)
+      return legacyFavoriteSet.has(productId)
         ? { ...EMPTY_SLOTS, general: true }
         : { ...EMPTY_SLOTS };
     },
-    [favoriteSlotsByProductId, legacyFavoriteProductIds]
+    [favoriteSlotsByProductId, legacyFavoriteSet]
   );
 
   // Products
@@ -660,12 +691,9 @@ export default function ReviewsIndex() {
     getSlotsForProduct,
   ]);
 
-  const onChangeSearch = (text: string) => {
-    setQuery(text);
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    });
-  };
+  const onChangeSearch = useCallback((text: string) => {
+    setQueryInput(text);
+  }, []);
 
   const openFilters = () => {
     setDraftSortKey(sortKey);
@@ -767,7 +795,13 @@ export default function ReviewsIndex() {
                 listRef.current = r as any;
               }}
               onScroll={onListScroll}
+              onScrollBeginDrag={() => {
+                searchInputRef.current?.blur();
+                Keyboard.dismiss();
+              }}
               scrollEventThrottle={16}
+              keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+              keyboardShouldPersistTaps="handled"
               data={displayItems}
               keyExtractor={(item) => item.id}
               style={{ flex: 1, backgroundColor: "transparent" }}
@@ -802,7 +836,11 @@ export default function ReviewsIndex() {
 
                 return (
                   <CinematicCard
-                    onPress={() => router.push(`/(tabs)/reviews/${encodeURIComponent(item.id)}`)}
+                    onPress={() => {
+                      searchInputRef.current?.blur();
+                      Keyboard.dismiss();
+                      router.push(`/(tabs)/reviews/${encodeURIComponent(item.id)}`);
+                    }}
                     style={{ marginHorizontal: theme.spacing.xl, overflow: "hidden" }}
                   >
                     <View style={{ padding: 18 }}>
@@ -940,14 +978,22 @@ export default function ReviewsIndex() {
                   }}
                 >
                   <TextInput
-                    value={query}
+                    ref={(r) => {
+                      searchInputRef.current = r;
+                    }}
+                    value={queryInput}
                     onChangeText={onChangeSearch}
+                    onSubmitEditing={() => {
+                      searchInputRef.current?.blur();
+                      Keyboard.dismiss();
+                    }}
                     placeholder="Search by name or maker"
                     placeholderTextColor="rgba(255,255,255,0.40)"
                     style={{ color: theme.colors.textOnDark, fontSize: 15, fontWeight: "600" }}
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="search"
+                    blurOnSubmit
                   />
                 </View>
 
