@@ -2,13 +2,13 @@ import React from "react";
 import { Pressable, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { theme } from "../../../lib/theme";
 
 function PaddedBack() {
   const router = useRouter();
 
   const onPress = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/reviews");
+    router.replace("/(tabs)/reviews");
   };
 
   return (
@@ -36,7 +36,7 @@ export default function ReviewsLayout() {
 
         headerStyle: { backgroundColor: "transparent" },
         headerTransparent: true,
-        contentStyle: { backgroundColor: "rgba(10,11,15,0.35)" },
+        contentStyle: { backgroundColor: theme.colors.appBgSolid },
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />

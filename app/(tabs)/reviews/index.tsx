@@ -26,6 +26,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { theme } from "../../../lib/theme";
 import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
+import { buildCommunityNotesSummary, type CommunityNotesSummary } from "../../../lib/communityNotes";
 
 const budImg = require("../../../assets/icons/bud.png");
 const flowersBg = require("../../../assets/images/flowers-bg.png");
@@ -47,10 +48,52 @@ type Review = {
   productId: string;
   rating: number;
   score?: number | null;
+  text?: string | null;
   createdAtMs?: number | null;
+  moderationStatus?: "active" | "under_review" | "removed_auto" | "removed_admin" | null;
+  helpfulCount?: number | null;
+  sleepy?: number | null;
+  calm?: number | null;
+  daytime?: number | null;
+  clarity?: number | null;
+  backPain?: number | null;
+  jointPain?: number | null;
+  legPain?: number | null;
+  headacheRelief?: number | null;
+  racingThoughts?: number | null;
+  uplifting?: number | null;
+  painRelief?: number | null;
+  focusAdhd?: number | null;
+  anxiety?: number | null;
+  moodBalance?: number | null;
+  appetite?: number | null;
+  femaleHealth?: number | null;
+  muscleRelaxation?: number | null;
+  creativity?: number | null;
 };
 
-type Stat = { count: number; avg: number; latestReviewAtMs?: number };
+type EffectFilterKey =
+  | "sleepy"
+  | "calming"
+  | "uplifting"
+  | "painRelief"
+  | "focusAdhd"
+  | "anxiety"
+  | "moodBalance"
+  | "appetite"
+  | "femaleHealth"
+  | "muscleRelaxation"
+  | "creativity";
+
+type Stat = {
+  count: number;
+  avg: number;
+  weightedScore: number;
+  helpfulTotal: number;
+  latestReviewAtMs?: number;
+};
+
+type EffectAggregate = Record<EffectFilterKey, { count: number; sum: number; perfect: number }>;
 
 type FavoriteSlot = "general" | "daytime" | "afternoon" | "night";
 type FavoriteSlots = Record<FavoriteSlot, boolean>;
@@ -105,6 +148,174 @@ function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function toScore(v: unknown): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  const n = Math.round(v);
+  if (n < 1 || n > 5) return null;
+  return n;
+}
+
+function avgPresent(values: Array<number | null>) {
+  const xs = values.filter((v): v is number => typeof v === "number");
+  if (xs.length === 0) return null;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+const EFFECT_KEYS: EffectFilterKey[] = [
+  "sleepy",
+  "calming",
+  "uplifting",
+  "painRelief",
+  "focusAdhd",
+  "anxiety",
+  "moodBalance",
+  "appetite",
+  "femaleHealth",
+  "muscleRelaxation",
+  "creativity",
+];
+
+const EFFECT_META: Record<
+  EffectFilterKey,
+  { label: string; short: string; icon: string; color: string; aliases: string[] }
+> = {
+  sleepy: {
+    label: "Couch lock / sleepy",
+    short: "Couch lock",
+    icon: "🌙",
+    color: "rgba(147,172,255,0.96)",
+    aliases: ["sleepy", "sleep", "night", "insomnia", "couch lock", "couchlock", "sedating", "sedation"],
+  },
+  calming: {
+    label: "Calming",
+    short: "Calm",
+    icon: "🧘",
+    color: "rgba(146,220,174,0.96)",
+    aliases: ["calm", "calming", "chill", "relax"],
+  },
+  uplifting: {
+    label: "Uplifting",
+    short: "Uplift",
+    icon: "⚡",
+    color: "rgba(255,212,123,0.98)",
+    aliases: ["uplift", "uplifting", "daytime", "awake", "energy"],
+  },
+  painRelief: {
+    label: "Pain Relief",
+    short: "Pain",
+    icon: "💥",
+    color: "rgba(255,160,132,0.98)",
+    aliases: ["pain", "relief", "ache", "back pain", "joint pain"],
+  },
+  focusAdhd: {
+    label: "Focus / ADHD",
+    short: "Focus",
+    icon: "🧠",
+    color: "rgba(152,205,255,0.98)",
+    aliases: ["focus", "adhd", "clarity", "concentrate"],
+  },
+  anxiety: {
+    label: "Anxiety",
+    short: "Anxiety",
+    icon: "🛡️",
+    color: "rgba(189,216,255,0.98)",
+    aliases: ["anxiety", "stress", "panic"],
+  },
+  moodBalance: {
+    label: "Mood balance",
+    short: "Mood",
+    icon: "🙂",
+    color: "rgba(181,236,170,0.98)",
+    aliases: ["mood", "balance", "stable", "mood balance"],
+  },
+  appetite: {
+    label: "Munchies",
+    short: "Munchies",
+    icon: "🍽️",
+    color: "rgba(255,203,134,0.98)",
+    aliases: ["appetite", "munchies", "hunger"],
+  },
+  femaleHealth: {
+    label: "Female health",
+    short: "Female",
+    icon: "🌸",
+    color: "rgba(255,172,214,0.98)",
+    aliases: ["female", "women", "perimenopause", "menopause", "period"],
+  },
+  muscleRelaxation: {
+    label: "Muscle relaxation",
+    short: "Muscle",
+    icon: "💪",
+    color: "rgba(199,211,255,0.98)",
+    aliases: ["muscle", "body", "tension", "spasm"],
+  },
+  creativity: {
+    label: "Creativity",
+    short: "Creative",
+    icon: "🎨",
+    color: "rgba(223,196,255,0.98)",
+    aliases: ["creative", "creativity", "ideas", "flow"],
+  },
+};
+
+const EFFECT_THRESHOLD_MIN_COUNT = 2;
+const EFFECT_THRESHOLD_MIN_PERFECT = 2;
+const EFFECT_THRESHOLD_MIN_AVG = 3.5;
+
+function inferEffectIntent(query: string): EffectFilterKey[] {
+  const q = safeLower(query).trim();
+  if (!q) return [];
+  return EFFECT_KEYS.filter((k) => EFFECT_META[k].aliases.some((a) => q.includes(a)));
+}
+
+function deriveEffectScoresFromReview(review: Review): Partial<Record<EffectFilterKey, number>> {
+  const sleepy = toScore(review.sleepy);
+  const calming = toScore(review.calm);
+  const uplifting = toScore(review.uplifting) ?? toScore(review.daytime);
+
+  const painRelief = toScore(review.painRelief) ??
+    avgPresent([toScore(review.backPain), toScore(review.jointPain), toScore(review.legPain), toScore(review.headacheRelief)]);
+
+  const focusAdhd = toScore(review.focusAdhd) ?? avgPresent([toScore(review.clarity), toScore(review.racingThoughts)]);
+  const anxiety = toScore(review.anxiety) ?? avgPresent([toScore(review.calm), toScore(review.racingThoughts)]);
+  const moodBalance = toScore(review.moodBalance) ?? avgPresent([toScore(review.calm), toScore(review.uplifting), toScore(review.anxiety)]);
+  const appetite = toScore(review.appetite);
+  const femaleHealth = toScore(review.femaleHealth);
+  const muscleRelaxation = toScore(review.muscleRelaxation) ??
+    avgPresent([toScore(review.backPain), toScore(review.jointPain), toScore(review.legPain)]);
+  const creativity = toScore(review.creativity) ?? toScore(review.daytime);
+
+  const out: Partial<Record<EffectFilterKey, number>> = {};
+  const maybeAssign = (key: EffectFilterKey, val: number | null) => {
+    if (typeof val === "number") out[key] = val;
+  };
+
+  maybeAssign("sleepy", sleepy);
+  maybeAssign("calming", calming);
+  maybeAssign("uplifting", uplifting);
+  maybeAssign("painRelief", painRelief);
+  maybeAssign("focusAdhd", focusAdhd);
+  maybeAssign("anxiety", anxiety);
+  maybeAssign("moodBalance", moodBalance);
+  maybeAssign("appetite", appetite);
+  maybeAssign("femaleHealth", femaleHealth);
+  maybeAssign("muscleRelaxation", muscleRelaxation);
+  maybeAssign("creativity", creativity);
+
+  return out;
+}
+
+function makeEmptyEffectAggregate(): EffectAggregate {
+  return EFFECT_KEYS.reduce((acc, key) => {
+    acc[key] = { count: 0, sum: 0, perfect: 0 };
+    return acc;
+  }, {} as EffectAggregate);
+}
+
 function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
   if (v === null || v === undefined) return "unknown";
 
@@ -126,6 +337,12 @@ function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown"
   if (s.startsWith("hyb") || s === "h") return "hybrid";
 
   return "unknown";
+}
+
+function formatStrainType(v: string | null | undefined) {
+  const norm = normalizeStrainType(v);
+  if (norm === "unknown") return null;
+  return norm.charAt(0).toUpperCase() + norm.slice(1);
 }
 
 function sortLabel(k: SortKey) {
@@ -283,6 +500,8 @@ export default function ReviewsIndex() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [statsByProductId, setStatsByProductId] = useState<Record<string, Stat>>({});
+  const [effectBadgesByProductId, setEffectBadgesByProductId] = useState<Record<string, EffectFilterKey[]>>({});
+  const [communityNotesByProductId, setCommunityNotesByProductId] = useState<Record<string, CommunityNotesSummary>>({});
 
   // Auth + favourites
   const [currentUid, setCurrentUid] = useState<string>(() => {
@@ -299,11 +518,12 @@ export default function ReviewsIndex() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("atoz");
+  const [sortKey, setSortKey] = useState<SortKey>("recentReviews");
 
   const [strainFilter, setStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
   const [makerFilter, setMakerFilter] = useState<string | null>(null);
   const [terpeneFilter, setTerpeneFilter] = useState<string[]>([]);
+  const [effectFilter, setEffectFilter] = useState<EffectFilterKey[]>([]);
 
   // Saved favourites filters (applied)
   const [favoriteFilterAny, setFavoriteFilterAny] = useState(false);
@@ -313,10 +533,11 @@ export default function ReviewsIndex() {
   const [panelOpen, setPanelOpen] = useState(false);
 
   // Draft values inside modal
-  const [draftSortKey, setDraftSortKey] = useState<SortKey>("atoz");
+  const [draftSortKey, setDraftSortKey] = useState<SortKey>("recentReviews");
   const [draftStrainFilter, setDraftStrainFilter] = useState<"sativa" | "indica" | "hybrid" | null>(null);
   const [draftMakerFilter, setDraftMakerFilter] = useState<string | null>(null);
   const [draftTerpeneFilter, setDraftTerpeneFilter] = useState<string[]>([]);
+  const [draftEffectFilter, setDraftEffectFilter] = useState<EffectFilterKey[]>([]);
   const [draftFavoriteFilterAny, setDraftFavoriteFilterAny] = useState(false);
   const [draftFavoriteFilterSlots, setDraftFavoriteFilterSlots] = useState<FavoriteSlot[]>([]);
 
@@ -325,7 +546,7 @@ export default function ReviewsIndex() {
   const [terpeneOpen, setTerpeneOpen] = useState(false);
 
   const headerOpacity = useRef(new Animated.Value(1)).current;
-  const [headerH, setHeaderH] = useState(170);
+  const [headerH, setHeaderH] = useState(146);
 
   // Back-to-top button state
   const [showTop, setShowTop] = useState(false);
@@ -453,6 +674,8 @@ export default function ReviewsIndex() {
             (data as any)?.strain ??
             (data as any)?.dominance ??
             (data as any)?.genetics ??
+            (data as any)?.type ??
+            (data as any)?.productType ??
             null;
 
           const norm = normalizeStrainType(rawStrain);
@@ -494,6 +717,7 @@ export default function ReviewsIndex() {
           const data = d.data() as any;
           const rating = typeof data?.rating === "number" ? data.rating : 0;
           const score = typeof data?.score === "number" ? data.score : null;
+          const helpfulCount = typeof data?.helpfulCount === "number" ? data.helpfulCount : 0;
           const createdAtRaw = data?.createdAt ?? null;
           let createdAtMs: number | null = null;
           if (createdAtRaw?.toDate) createdAtMs = createdAtRaw.toDate().getTime();
@@ -504,37 +728,125 @@ export default function ReviewsIndex() {
             productId: typeof data?.productId === "string" ? data.productId : "",
             rating,
             score,
+            text: typeof data?.text === "string" ? data.text : null,
+            helpfulCount,
             createdAtMs,
+            moderationStatus: typeof data?.moderationStatus === "string" ? data.moderationStatus : "active",
+            sleepy: toScore(data?.sleepy),
+            calm: toScore(data?.calm),
+            daytime: toScore(data?.daytime),
+            clarity: toScore(data?.clarity),
+            backPain: toScore(data?.backPain),
+            jointPain: toScore(data?.jointPain),
+            legPain: toScore(data?.legPain),
+            headacheRelief: toScore(data?.headacheRelief),
+            racingThoughts: toScore(data?.racingThoughts),
+            uplifting: toScore(data?.uplifting),
+            painRelief: toScore(data?.painRelief),
+            focusAdhd: toScore(data?.focusAdhd),
+            anxiety: toScore(data?.anxiety),
+            moodBalance: toScore(data?.moodBalance),
+            appetite: toScore(data?.appetite),
+            femaleHealth: toScore(data?.femaleHealth),
+            muscleRelaxation: toScore(data?.muscleRelaxation),
+            creativity: toScore(data?.creativity),
           };
         });
 
-        const map: Record<string, Stat> = {};
+        const scoreBuckets: Record<string, { count: number; sum: number; latestReviewAtMs: number; helpfulTotal: number }> = {};
+        const effectBucketsByProductId: Record<string, EffectAggregate> = {};
+        const reviewTextsByProductId: Record<string, string[]> = {};
 
         for (const r of rows) {
           if (!r.productId) continue;
+          if (r.moderationStatus !== "active") continue;
+
+          if (typeof r.text === "string") {
+            const trimmed = r.text.trim();
+            if (trimmed.length >= 8) {
+              const bucket = reviewTextsByProductId[r.productId] ?? [];
+              bucket.push(trimmed);
+              reviewTextsByProductId[r.productId] = bucket;
+            }
+          }
 
           const val = typeof r.score === "number" && Number.isFinite(r.score) ? r.score : r.rating;
           if (val < 1 || val > 5) continue;
 
-          const existing = map[r.productId];
-          if (!existing) {
-            map[r.productId] = { count: 1, avg: val, latestReviewAtMs: r.createdAtMs ?? 0 };
-          } else {
-            const newCount = existing.count + 1;
-            const newAvg = (existing.avg * existing.count + val) / newCount;
-            map[r.productId] = {
-              count: newCount,
-              avg: newAvg,
-              latestReviewAtMs: Math.max(existing.latestReviewAtMs ?? 0, r.createdAtMs ?? 0),
-            };
-          }
+          const prev = scoreBuckets[r.productId] ?? { count: 0, sum: 0, latestReviewAtMs: 0, helpfulTotal: 0 };
+          prev.count += 1;
+          prev.sum += val;
+          prev.latestReviewAtMs = Math.max(prev.latestReviewAtMs ?? 0, r.createdAtMs ?? 0);
+          prev.helpfulTotal += typeof r.helpfulCount === "number" ? Math.max(0, r.helpfulCount) : 0;
+          scoreBuckets[r.productId] = prev;
+
+          const effectScores = deriveEffectScoresFromReview(r);
+          const effectAgg = effectBucketsByProductId[r.productId] ?? makeEmptyEffectAggregate();
+          EFFECT_KEYS.forEach((key) => {
+            const effect = effectScores[key];
+            if (typeof effect !== "number") return;
+            effectAgg[key].count += 1;
+            effectAgg[key].sum += effect;
+            if (effect >= 5) effectAgg[key].perfect += 1;
+          });
+          effectBucketsByProductId[r.productId] = effectAgg;
         }
 
-        setStatsByProductId(map);
+        const statsNext: Record<string, Stat> = {};
+        const badgesNext: Record<string, EffectFilterKey[]> = {};
+        const notesNext: Record<string, CommunityNotesSummary> = {};
+
+        Object.keys(scoreBuckets).forEach((productId) => {
+          const bucket = scoreBuckets[productId];
+          const avg = bucket.count > 0 ? bucket.sum / bucket.count : 0;
+          const effectAgg = effectBucketsByProductId[productId] ?? makeEmptyEffectAggregate();
+
+          const qualifiedEffects: EffectFilterKey[] = [];
+          let effectConsensus = 0;
+          let effectSignals = 0;
+
+          EFFECT_KEYS.forEach((key) => {
+            const e = effectAgg[key];
+            if (e.count <= 0) return;
+            const effectAvg = e.sum / e.count;
+            effectSignals += 1;
+            effectConsensus += ((effectAvg - 3) / 2) * Math.min(1, e.count / 4);
+            if (
+              e.count >= EFFECT_THRESHOLD_MIN_COUNT &&
+              (e.perfect >= EFFECT_THRESHOLD_MIN_PERFECT || effectAvg >= EFFECT_THRESHOLD_MIN_AVG)
+            ) {
+              qualifiedEffects.push(key);
+            }
+          });
+
+          const normalizedConsensus = effectSignals > 0 ? clamp(effectConsensus / effectSignals, -1, 1) : 0;
+          const confidenceBoost = clamp(Math.log2(bucket.count + 1) / 10 + Math.min(bucket.helpfulTotal, 60) / 600, 0, 0.2);
+          const weightedScore = clamp(avg + normalizedConsensus * 0.35 + confidenceBoost, 1, 5);
+
+          statsNext[productId] = {
+            count: bucket.count,
+            avg,
+            weightedScore,
+            helpfulTotal: bucket.helpfulTotal,
+            latestReviewAtMs: bucket.latestReviewAtMs,
+          };
+          badgesNext[productId] = qualifiedEffects;
+        });
+
+        Object.entries(reviewTextsByProductId).forEach(([productId, texts]) => {
+          const summary = buildCommunityNotesSummary(texts);
+          if (summary) notesNext[productId] = summary;
+        });
+
+        setStatsByProductId(statsNext);
+        setEffectBadgesByProductId(badgesNext);
+        setCommunityNotesByProductId(notesNext);
         setLoadingReviews(false);
       },
       (err) => {
         console.log("reviews snapshot error:", err);
+        setEffectBadgesByProductId({});
+        setCommunityNotesByProductId({});
         setLoadingReviews(false);
       }
     );
@@ -568,8 +880,9 @@ export default function ReviewsIndex() {
     if (strainFilter) n += 1;
     if (makerFilter) n += 1;
     if (terpeneFilter.length > 0) n += 1;
+    if (effectFilter.length > 0) n += 1;
     return n;
-  }, [strainFilter, makerFilter, terpeneFilter, favoriteFilterAny, favoriteFilterSlots]);
+  }, [strainFilter, makerFilter, terpeneFilter, effectFilter, favoriteFilterAny, favoriteFilterSlots]);
 
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
@@ -578,16 +891,24 @@ export default function ReviewsIndex() {
     if (strainFilter) labels.push(`Strain: ${strainFilter}`);
     if (makerFilter) labels.push(`Maker: ${makerFilter}`);
     if (terpeneFilter.length > 0) labels.push(`Terpenes: ${terpeneFilter.join(", ")}`);
+    if (effectFilter.length > 0) labels.push(`Effects: ${effectFilter.map((k) => EFFECT_META[k].short).join(", ")}`);
     return labels;
-  }, [strainFilter, makerFilter, terpeneFilter, favoriteFilterAny, favoriteFilterSlots]);
+  }, [strainFilter, makerFilter, terpeneFilter, effectFilter, favoriteFilterAny, favoriteFilterSlots]);
 
   const displayItems = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const queryEffectIntent = inferEffectIntent(q);
 
     const filtered = items.filter((it) => {
+      const itemEffectBadges = effectBadgesByProductId[it.id] ?? [];
+      const notesSummary = communityNotesByProductId[it.id];
+
       if (q) {
-        const hay = `${it.name} ${it.variant ?? ""} ${it.maker}`.toLowerCase();
-        if (!hay.includes(q)) return false;
+        const hay = `${it.name} ${it.variant ?? ""} ${it.maker} ${notesSummary?.searchText ?? ""}`.toLowerCase();
+        const matchesText = hay.includes(q);
+        const matchesEffectIntent =
+          queryEffectIntent.length > 0 && queryEffectIntent.every((intent) => itemEffectBadges.includes(intent));
+        if (!matchesText && !matchesEffectIntent) return false;
       }
 
       const slots = getSlotsForProduct(it.id);
@@ -629,6 +950,11 @@ export default function ReviewsIndex() {
         if (!hasAllSelected) return false;
       }
 
+      if (effectFilter.length > 0) {
+        const hasAllEffects = effectFilter.every((ef) => itemEffectBadges.includes(ef));
+        if (!hasAllEffects) return false;
+      }
+
       return true;
     });
 
@@ -642,6 +968,8 @@ export default function ReviewsIndex() {
       const countB = sb?.count ?? 0;
       const avgA = sa?.avg ?? 0;
       const avgB = sb?.avg ?? 0;
+      const weightedA = sa?.weightedScore ?? avgA;
+      const weightedB = sb?.weightedScore ?? avgB;
 
       if (sortKey === "mostReviewed") {
         if (countA !== countB) return countB - countA;
@@ -650,7 +978,7 @@ export default function ReviewsIndex() {
         const rb = sb?.latestReviewAtMs ?? 0;
         if (ra !== rb) return rb - ra;
       } else if (sortKey === "highestRated") {
-        if (avgA !== avgB) return avgB - avgA;
+        if (weightedA !== weightedB) return weightedB - weightedA;
         if (countA !== countB) return countB - countA;
       } else if (sortKey === "thcHighLow") {
         const ta = a.thcPct ?? -1;
@@ -686,8 +1014,11 @@ export default function ReviewsIndex() {
     strainFilter,
     makerFilter,
     terpeneFilter,
+    effectFilter,
     favoriteFilterAny,
     favoriteFilterSlots,
+    effectBadgesByProductId,
+    communityNotesByProductId,
     getSlotsForProduct,
   ]);
 
@@ -700,6 +1031,7 @@ export default function ReviewsIndex() {
     setDraftStrainFilter(strainFilter);
     setDraftMakerFilter(makerFilter);
     setDraftTerpeneFilter(terpeneFilter);
+    setDraftEffectFilter(effectFilter);
     setDraftFavoriteFilterAny(favoriteFilterAny);
     setDraftFavoriteFilterSlots(favoriteFilterSlots);
 
@@ -709,14 +1041,28 @@ export default function ReviewsIndex() {
     setPanelOpen(true);
   };
 
-  const closeAndSaveFilters = () => {
+  // Apply draft filter changes instantly while the filter sheet is open.
+  useEffect(() => {
+    if (!panelOpen) return;
     setSortKey(draftSortKey);
     setStrainFilter(draftStrainFilter);
     setMakerFilter(draftMakerFilter);
     setTerpeneFilter(draftTerpeneFilter);
+    setEffectFilter(draftEffectFilter);
     setFavoriteFilterAny(draftFavoriteFilterAny);
     setFavoriteFilterSlots(draftFavoriteFilterSlots);
+  }, [
+    panelOpen,
+    draftSortKey,
+    draftStrainFilter,
+    draftMakerFilter,
+    draftTerpeneFilter,
+    draftEffectFilter,
+    draftFavoriteFilterAny,
+    draftFavoriteFilterSlots,
+  ]);
 
+  const closeAndSaveFilters = () => {
     setSortOpen(false);
     setMakerOpen(false);
     setTerpeneOpen(false);
@@ -724,10 +1070,11 @@ export default function ReviewsIndex() {
   };
 
   const resetDraft = () => {
-    setDraftSortKey("atoz");
+    setDraftSortKey("recentReviews");
     setDraftStrainFilter(null);
     setDraftMakerFilter(null);
     setDraftTerpeneFilter([]);
+    setDraftEffectFilter([]);
     setDraftFavoriteFilterAny(false);
     setDraftFavoriteFilterSlots([]);
     setSortOpen(false);
@@ -738,8 +1085,6 @@ export default function ReviewsIndex() {
   const windowH = Dimensions.get("window").height;
   const bgShift = Math.round(windowH * 0.18);
   const bgScale = 1.12;
-  const floatingSize = 46;
-  const floatingTop = Math.max(insets.top + 68, Math.round(windowH * 0.2));
   const toTopBottom = Math.max(insets.bottom + 18, 24);
 
   return (
@@ -805,8 +1150,8 @@ export default function ReviewsIndex() {
               data={displayItems}
               keyExtractor={(item) => item.id}
               style={{ flex: 1, backgroundColor: "transparent" }}
-              contentContainerStyle={{ paddingBottom: theme.spacing.xxl + insets.bottom + 120 }}
-              ListHeaderComponent={<View style={{ height: headerH + 14 }} />}
+              contentContainerStyle={{ paddingBottom: theme.spacing.xxl + insets.bottom + 152 }}
+              ListHeaderComponent={<View style={{ height: Math.max(0, headerH - 2) }} />}
               ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
               ListEmptyComponent={
                 <View style={{ paddingTop: 26, paddingHorizontal: theme.spacing.xl }}>
@@ -825,10 +1170,13 @@ export default function ReviewsIndex() {
               renderItem={({ item }) => {
                 const stat = statsByProductId[item.id];
                 const hasRatings = !!stat && stat.count > 0;
-                const avg = hasRatings ? stat.avg : 0;
+                const weighted = hasRatings ? stat.weightedScore ?? stat.avg : 0;
+                const effectBadges = effectBadgesByProductId[item.id] ?? [];
+                const notesSummary = communityNotesByProductId[item.id];
 
                 const maker = item.maker?.trim() ? item.maker.trim() : "Unknown maker";
-                const parts = [`${maker}`, `THC ${formatPct(item.thcPct)}`, `CBD ${formatPct(item.cbdPct)}`].filter(Boolean);
+                const strainLabel = formatStrainType(item.strainType);
+                const parts = [maker, strainLabel, `THC ${formatPct(item.thcPct)}`, `CBD ${formatPct(item.cbdPct)}`].filter(Boolean);
                 const metaLine = parts.join(" · ");
 
                 const favSlots = getSlotsForProduct(item.id);
@@ -880,12 +1228,26 @@ export default function ReviewsIndex() {
                         {metaLine}
                       </Text>
 
+                      {effectBadges.length > 0 ? (
+                        <View style={styles.effectBadgeRow}>
+                          {effectBadges.slice(0, 3).map((key) => {
+                            const meta = EFFECT_META[key];
+                            return (
+                              <View key={`${item.id}-${key}`} style={[styles.effectBadge, { borderColor: meta.color }]}>
+                                <Text style={styles.effectBadgeIcon}>{meta.icon}</Text>
+                                <Text style={[styles.effectBadgeText, { color: meta.color }]}>{meta.short}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+
                       <View style={{ marginTop: 12 }}>
                         {hasRatings ? (
                           <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <BudRating value={avg} size={16} />
+                            <BudRating value={weighted} size={16} />
                             <Text style={{ fontWeight: "900", marginLeft: 10, color: theme.colors.textOnDark }}>
-                              {round1(avg).toFixed(1)} ({stat.count})
+                              {round1(weighted).toFixed(1)} ({stat.count})
                             </Text>
 
                             {loadingReviews ? (
@@ -905,6 +1267,12 @@ export default function ReviewsIndex() {
                             No ratings yet{loadingReviews ? " (loading...)" : ""}
                           </Text>
                         )}
+
+                        {notesSummary ? (
+                          <Text style={styles.communityNotesLine} numberOfLines={2}>
+                            {notesSummary.shortLine}
+                          </Text>
+                        ) : null}
                       </View>
                     </View>
                   </CinematicCard>
@@ -920,8 +1288,8 @@ export default function ReviewsIndex() {
 
             <LinearGradient
               pointerEvents="none"
-              colors={["rgba(10,11,15,0.92)", "rgba(10,11,15,0.72)", "rgba(10,11,15,0.00)"]}
-              locations={[0, 0.55, 1]}
+              colors={["rgba(10,11,15,0.90)", "rgba(10,11,15,0.72)", "rgba(10,11,15,0.26)", "rgba(10,11,15,0.00)"]}
+              locations={[0, 0.42, 0.8, 1]}
               style={styles.topUiMask}
             />
 
@@ -946,157 +1314,116 @@ export default function ReviewsIndex() {
               <View
                 style={{
                   paddingHorizontal: theme.spacing.xl,
-                  paddingTop: insets.top + theme.spacing.md,
-                  paddingBottom: theme.spacing.lg,
-                  backgroundColor: "rgba(10,11,15,0.82)",
+                  paddingTop: insets.top + 6,
+                  paddingBottom: 8,
+                  backgroundColor: "transparent",
                   borderBottomWidth: 0,
                   borderBottomColor: "rgba(255,255,255,0.10)",
+                  overflow: "hidden",
                 }}
               >
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={["rgba(10,11,15,0.92)", "rgba(10,11,15,0.78)", "rgba(10,11,15,0.34)", "rgba(10,11,15,0.00)"]}
+                  locations={[0, 0.48, 0.82, 1]}
+                  style={StyleSheet.absoluteFillObject}
+                />
+
                 <Text style={{ ...theme.typography.title, color: theme.colors.accent, marginBottom: theme.spacing.xs }}>
                   Reviews
                 </Text>
 
-                <Text
-                  style={{
-                    ...theme.typography.caption,
-                    color: theme.colors.textOnDarkSecondary,
-                    marginBottom: theme.spacing.md,
-                  }}
-                >
-                  Browse products and see community ratings.
-                </Text>
-
-                <View
-                  style={{
-                    borderRadius: 16,
-                    backgroundColor: "rgba(255,255,255,0.10)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.14)",
-                    paddingHorizontal: 14,
-                    paddingVertical: Platform.OS === "ios" ? 12 : 8,
-                  }}
-                >
-                  <TextInput
-                    ref={(r) => {
-                      searchInputRef.current = r;
-                    }}
-                    value={queryInput}
-                    onChangeText={onChangeSearch}
-                    onSubmitEditing={() => {
-                      searchInputRef.current?.blur();
-                      Keyboard.dismiss();
-                    }}
-                    placeholder="Search by name or maker"
-                    placeholderTextColor="rgba(255,255,255,0.40)"
-                    style={{ color: theme.colors.textOnDark, fontSize: 15, fontWeight: "600" }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                    blurOnSubmit
-                  />
-                </View>
-
-                <View style={{ marginTop: theme.spacing.sm }}>
-                  <Text style={{ color: "rgba(255,255,255,0.78)", fontWeight: "700", fontSize: 12 }}>
-                    Sorting by: {sortLabel(sortKey)}
-                    {activeFilterCount > 0 ? ` | Filters: ${activeFilterCount}` : ""}
-                  </Text>
-
-                  {activeFilterCount > 0 ? (
-                    <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontWeight: "700", fontSize: 12 }}>
-                      {activeFilterLabels.join(" | ")}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            </Animated.View>
-
-            {/* Floating filters button */}
-            <Animated.View
-              pointerEvents="box-none"
-              style={{
-                position: "absolute",
-                right: theme.spacing.xl,
-                top: floatingTop,
-                opacity: headerOpacity,
-                zIndex: 60,
-                elevation: 60,
-              }}
-            >
-              <Pressable
-                onPress={openFilters}
-                style={({ pressed }) => ({
-                  width: floatingSize,
-                  height: floatingSize,
-                  borderRadius: floatingSize / 2,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: pressed ? 0.88 : 1,
-                  backgroundColor: "rgba(235,237,240,0.96)",
-                  borderWidth: 1,
-                  borderColor: "rgba(0,0,0,0.08)",
-                  shadowColor: "rgba(0,0,0,0.35)",
-                  shadowOpacity: 0.45,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 10 },
-                  elevation: 12,
-                })}
-              >
-                <View
-                  pointerEvents="none"
-                  style={{
-                    position: "absolute",
-                    width: floatingSize + 10,
-                    height: floatingSize + 10,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.28)",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                  }}
-                />
-                <View
-                  pointerEvents="none"
-                  style={{
-                    position: "absolute",
-                    width: floatingSize - 6,
-                    height: floatingSize - 6,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: "rgba(0,0,0,0.10)",
-                  }}
-                />
-
-                <Feather name="sliders" size={22} color="rgba(12,12,12,0.95)" />
-
-                {activeFilterCount > 0 ? (
+                <View style={{ marginTop: 4 }}>
                   <View
                     style={{
-                      position: "absolute",
-                      top: -6,
-                      right: -6,
-                      minWidth: 18,
-                      height: 18,
-                      paddingHorizontal: 6,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(12,12,12,0.95)",
+                      borderRadius: 16,
+                      backgroundColor: "rgba(255,255,255,0.11)",
                       borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.22)",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      shadowColor: "rgba(0,0,0,0.35)",
-                      shadowOpacity: 0.35,
-                      shadowRadius: 8,
-                      shadowOffset: { width: 0, height: 6 },
-                      elevation: 10,
+                      borderColor: "rgba(255,255,255,0.18)",
+                      paddingHorizontal: 14,
+                      paddingVertical: Platform.OS === "ios" ? 10 : 7,
                     }}
                   >
-                    <Text style={{ fontSize: 11, fontWeight: "900", color: "rgba(235,237,240,0.98)" }}>
-                      {activeFilterCount}
-                    </Text>
+                    <TextInput
+                      ref={(r) => {
+                        searchInputRef.current = r;
+                      }}
+                      value={queryInput}
+                      onChangeText={onChangeSearch}
+                      onSubmitEditing={() => {
+                        searchInputRef.current?.blur();
+                        Keyboard.dismiss();
+                      }}
+                      placeholder="Search by name, maker, or effects (e.g. sleepy, pain, adhd)"
+                      placeholderTextColor="rgba(255,255,255,0.40)"
+                      style={{ color: theme.colors.textOnDark, fontSize: 15, fontWeight: "600" }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      blurOnSubmit
+                    />
                   </View>
-                ) : null}
-              </Pressable>
+                </View>
+
+                <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-start" }}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={{ color: "rgba(255,255,255,0.78)", fontWeight: "700", fontSize: 12 }}>
+                      Sorting by: {sortLabel(sortKey)}
+                      {activeFilterCount > 0 ? ` | Filters: ${activeFilterCount}` : ""}
+                    </Text>
+
+                    {activeFilterCount > 0 ? (
+                      <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.55)", fontWeight: "700", fontSize: 12 }}>
+                        {activeFilterLabels.join(" | ")}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Pressable
+                    onPress={openFilters}
+                    style={({ pressed }) => ({
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: pressed ? 0.88 : 1,
+                      backgroundColor: "rgba(235,237,240,0.96)",
+                      borderWidth: 1,
+                      borderColor: "rgba(0,0,0,0.08)",
+                      shadowColor: "rgba(0,0,0,0.35)",
+                      shadowOpacity: 0.25,
+                      shadowRadius: 8,
+                      shadowOffset: { width: 0, height: 4 },
+                      elevation: 6,
+                    })}
+                  >
+                    <Feather name="sliders" size={19} color="rgba(12,12,12,0.95)" />
+
+                    {activeFilterCount > 0 ? (
+                      <View
+                        style={{
+                          position: "absolute",
+                          top: -4,
+                          right: -4,
+                          minWidth: 17,
+                          height: 17,
+                          paddingHorizontal: 5,
+                          borderRadius: 999,
+                          backgroundColor: "rgba(12,12,12,0.95)",
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.22)",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: "900", color: "rgba(235,237,240,0.98)" }}>
+                          {activeFilterCount}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                </View>
+              </View>
             </Animated.View>
 
             {/* Filters modal */}
@@ -1123,30 +1450,47 @@ export default function ReviewsIndex() {
                   >
                     <ScrollView
                       style={{ maxHeight: Dimensions.get("window").height * 0.82 }}
-                      contentContainerStyle={{ padding: 18, paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+                      contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 18) + 18 }}
                       showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
+                      stickyHeaderIndices={[0]}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={{ fontSize: 28, fontWeight: "900", color: theme.colors.textOnDark, flex: 1 }}>
+                      <View
+                        style={{
+                          marginHorizontal: -18,
+                          marginTop: -14,
+                          marginBottom: 6,
+                          paddingHorizontal: 18,
+                          paddingTop: 8,
+                          paddingBottom: 8,
+                          backgroundColor: "rgba(20,22,28,0.98)",
+                          borderBottomWidth: 1,
+                          borderBottomColor: "rgba(255,255,255,0.10)",
+                          minHeight: 58,
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text style={{ fontSize: 25, fontWeight: "900", color: theme.colors.textOnDark, textAlign: "center", paddingHorizontal: 56 }}>
                           Filters
                         </Text>
-
                         <Pressable
-                          onPress={resetDraft}
+                          onPress={closeAndSaveFilters}
                           style={({ pressed }) => ({
-                            borderRadius: 999,
-                            paddingVertical: 10,
-                            paddingHorizontal: 14,
+                            position: "absolute",
+                            right: 18,
+                            top: 8,
+                            width: 40,
+                            height: 40,
+                            borderRadius: 20,
                             alignItems: "center",
                             justifyContent: "center",
-                            backgroundColor: "rgba(190,72,96,0.24)",
+                            backgroundColor: "rgba(255,255,255,0.10)",
                             borderWidth: 1,
-                            borderColor: "rgba(255,150,170,0.44)",
+                            borderColor: "rgba(255,255,255,0.16)",
                             opacity: pressed ? 0.9 : 1,
                           })}
                         >
-                          <Text style={{ color: "rgba(255,214,224,0.98)", fontWeight: "900", fontSize: 13 }}>Reset</Text>
+                          <Feather name="x" size={18} color={theme.colors.textOnDark} />
                         </Pressable>
                       </View>
 
@@ -1165,7 +1509,8 @@ export default function ReviewsIndex() {
                         draftFavoriteFilterSlots.length > 0 ||
                         draftStrainFilter ||
                         !!draftMakerFilter ||
-                        draftTerpeneFilter.length > 0) ? (
+                        draftTerpeneFilter.length > 0 ||
+                        draftEffectFilter.length > 0) ? (
                         <View
                           style={{
                             marginTop: 12,
@@ -1183,6 +1528,7 @@ export default function ReviewsIndex() {
                               draftFavoriteFilterSlots.length > 0 ? `Favourite tags: ${draftFavoriteFilterSlots.join(", ")}` : "",
                               draftStrainFilter ? `Strain: ${draftStrainFilter}` : "",
                               draftTerpeneFilter.length > 0 ? `Terpenes: ${draftTerpeneFilter.join(", ")}` : "",
+                              draftEffectFilter.length > 0 ? `Effects: ${draftEffectFilter.map((k) => EFFECT_META[k].short).join(", ")}` : "",
                               draftMakerFilter ? `Maker: ${draftMakerFilter}` : "",
                             ]
                               .filter(Boolean)
@@ -1341,6 +1687,52 @@ export default function ReviewsIndex() {
                           );
                         })}
                       </View>
+
+                      {/* Effects */}
+                      <Text
+                        style={{
+                          marginTop: 16,
+                          color: theme.colors.textOnDarkSecondary,
+                          ...theme.typography.caption,
+                          fontWeight: "800",
+                        }}
+                      >
+                        Effects (smart badges)
+                      </Text>
+
+                      <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                        {EFFECT_KEYS.map((key) => {
+                          const meta = EFFECT_META[key];
+                          const selected = draftEffectFilter.includes(key);
+                          return (
+                            <Pressable
+                              key={key}
+                              onPress={() =>
+                                setDraftEffectFilter((prev) => {
+                                  if (prev.includes(key)) return prev.filter((x) => x !== key);
+                                  if (prev.length >= 4) return prev;
+                                  return [...prev, key];
+                                })
+                              }
+                              style={({ pressed }) => ({
+                                ...chipOnDark(selected),
+                                opacity: pressed ? 0.85 : 1,
+                                flexDirection: "row",
+                                alignItems: "center",
+                              })}
+                            >
+                              <Text style={{ marginRight: 8 }}>{meta.icon}</Text>
+                              <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>{meta.short}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+
+                      {draftEffectFilter.length >= 4 ? (
+                        <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontWeight: "700", fontSize: 12 }}>
+                          Max 4 effects selected.
+                        </Text>
+                      ) : null}
 
                       {/* Terpenes */}
                       <Text
@@ -1516,37 +1908,22 @@ export default function ReviewsIndex() {
                         </View>
                       ) : null}
 
-                      <View style={{ marginTop: 22, flexDirection: "row", gap: 10 }}>
+                      <View style={{ marginTop: 22 }}>
                         <Pressable
-                          onPress={closeAndSaveFilters}
+                          onPress={resetDraft}
                           style={({ pressed }) => ({
-                            flex: 1,
                             borderRadius: 16,
                             paddingVertical: 14,
                             alignItems: "center",
-                            backgroundColor: "rgba(255,255,255,0.09)",
+                            backgroundColor: "rgba(190,72,96,0.24)",
                             borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.18)",
+                            borderColor: "rgba(255,150,170,0.44)",
                             opacity: pressed ? 0.9 : 1,
                           })}
                         >
-                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>Close</Text>
-                        </Pressable>
-
-                        <Pressable
-                          onPress={closeAndSaveFilters}
-                          style={({ pressed }) => ({
-                            flex: 1.15,
-                            borderRadius: 16,
-                            paddingVertical: 14,
-                            alignItems: "center",
-                            backgroundColor: "rgba(255,255,255,0.18)",
-                            borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.24)",
-                            opacity: pressed ? 0.9 : 1,
-                          })}
-                        >
-                          <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>Apply</Text>
+                          <Text style={{ color: "rgba(255,214,224,0.98)", fontWeight: "900", fontSize: 16 }}>
+                            Reset filters
+                          </Text>
                         </Pressable>
                       </View>
                     </ScrollView>
@@ -1559,8 +1936,15 @@ export default function ReviewsIndex() {
 
         <LinearGradient
           pointerEvents="none"
-          colors={["rgba(10,11,15,0.00)", "rgba(10,11,15,0.60)", "rgba(10,11,15,0.82)"]}
-          locations={[0, 0.55, 1]}
+          colors={[
+            "rgba(10,11,15,0.00)",
+            "rgba(10,11,15,0.01)",
+            "rgba(10,11,15,0.03)",
+            "rgba(10,11,15,0.07)",
+            "rgba(10,11,15,0.12)",
+            "rgba(10,11,15,0.20)",
+          ]}
+          locations={[0, 0.2, 0.4, 0.62, 0.82, 1]}
           style={styles.bottomUiMask}
         />
       </SafeAreaView>
@@ -1574,7 +1958,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 90,
+    height: 148,
   },
 
   topUiMask: {
@@ -1582,7 +1966,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 300,
+    height: 248,
   },
 
   bgWash: {
@@ -1618,6 +2002,43 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
+  },
+
+  effectBadgeRow: {
+    marginTop: 9,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  effectBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+  effectBadgeIcon: {
+    fontSize: 12,
+    marginRight: 6,
+  },
+
+  effectBadgeText: {
+    fontSize: 11,
+    fontWeight: "900",
+    includeFontPadding: false,
+  },
+
+  communityNotesLine: {
+    marginTop: 9,
+    color: "rgba(225,236,255,0.82)",
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+    minHeight: 34,
   },
 
   toTop: {

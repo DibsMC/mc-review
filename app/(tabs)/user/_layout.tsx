@@ -1,4 +1,5 @@
 import { Stack } from "expo-router";
+import { theme } from "../../../lib/theme";
 
 export default function UserLayout() {
     return (
@@ -10,7 +11,7 @@ export default function UserLayout() {
                 headerStyle: { backgroundColor: "transparent" },
                 headerTitle: "",
                 headerTintColor: "rgba(120,160,255,0.95)",
-                contentStyle: { backgroundColor: "rgba(10,11,15,0.35)" },
+                contentStyle: { backgroundColor: theme.colors.appBgSolid },
             }}
         >
 
@@ -21,6 +22,9 @@ export default function UserLayout() {
             <Stack.Screen name="edit-profile" options={{ headerShown: true }} />
             <Stack.Screen name="change-email" options={{ headerShown: true }} />
             <Stack.Screen name="feedback" options={{ headerShown: true }} />
+            <Stack.Screen name="admin-moderation" options={{ headerShown: true }} />
+            <Stack.Screen name="admin-member/[uid]" options={{ headerShown: true }} />
+            <Stack.Screen name="profile/[uid]" options={{ headerShown: false }} />
             <Stack.Screen name="delete-account" options={{ headerShown: true }} />
         </Stack>
     );

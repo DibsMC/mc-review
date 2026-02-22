@@ -1,8 +1,9 @@
 // app/(tabs)/user/profile/[uid].tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Image,
+    Modal,
     Pressable,
     ScrollView,
     Text,
@@ -11,6 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import type { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
 import { theme } from "../../../../lib/theme";
 import { getFirebaseAuth, getFirebaseFirestore } from "../../../../lib/nativeDeps";
 
@@ -19,7 +21,9 @@ const budImg = require("../../../../assets/icons/bud.png");
 type UserDoc = {
     displayName?: string | null;
     photoURL?: string | null;
+    avatarId?: string | null;
     bio?: string | null;
+    createdAt?: any;
 
     // favorites stored on the user doc (per your rules)
     favoriteProductIds?: string[] | null;
@@ -35,11 +39,76 @@ type RecentReview = {
     productName?: string | null;
 };
 
+type UserReviewRow = {
+    id: string;
+    productId: string;
+    rating?: number | null;
+    helpfulCount?: number | null;
+    text?: string | null;
+    createdAtMs: number;
+};
+
 type Badge = {
     id: string;
     title: string;
     subtitle: string;
     achieved: boolean;
+};
+
+const EMOJI_AVATARS: Record<string, string> = {
+    leaf: "🍃",
+    herb: "🌿",
+    cloud: "💨",
+    fire: "🔥",
+    moon: "🌙",
+    alien: "👽",
+    ufo: "🛸",
+    planet: "🪐",
+    glasses: "🕶️",
+    headphones: "🎧",
+    brain: "🧠",
+    zen: "🧘",
+    honey: "🍯",
+    beaker: "🧪",
+    melting: "🫠",
+    dizzy: "😵‍💫",
+    exhale: "😮‍💨",
+    sparkles: "✨",
+    donut: "🍩",
+    juice: "🧃",
+};
+
+const IMAGE_AVATARS: Record<string, any> = {
+    "baked-chilled-cheetah": require("../../../../assets/avatars/baked-animals/baked-chilled-cheeta.png"),
+    "baked-contemplative-frog": require("../../../../assets/avatars/baked-animals/baked-contemplative-frog.png"),
+    "baked-corporate-sloth": require("../../../../assets/avatars/baked-animals/baked-corporate-sloth.png"),
+    "baked-cunning-fox": require("../../../../assets/avatars/baked-animals/baked-cunning-fox.png"),
+    "baked-dino": require("../../../../assets/avatars/baked-animals/baked-dino.png"),
+    "baked-dj-meerkat": require("../../../../assets/avatars/baked-animals/baked-dj-meerkat.png"),
+    "baked-ginger-cat": require("../../../../assets/avatars/baked-animals/baked-ginger-cat.png"),
+    "baked-goat": require("../../../../assets/avatars/baked-animals/baked-goat.png"),
+    "baked-gorilla": require("../../../../assets/avatars/baked-animals/baked-gorrilla.png"),
+    "baked-grumpy-badger": require("../../../../assets/avatars/baked-animals/baked-grumpy-badger.png"),
+    "baked-kangaroo": require("../../../../assets/avatars/baked-animals/baked-kangaroo.png"),
+    "baked-lion": require("../../../../assets/avatars/baked-animals/baked-lion.png"),
+    "baked-lizard": require("../../../../assets/avatars/baked-animals/baked-lizard.png"),
+    "baked-octopus": require("../../../../assets/avatars/baked-animals/baked-octopus.png"),
+    "baked-overconfident-parrot": require("../../../../assets/avatars/baked-animals/baked-over-confident-parot.png"),
+    "baked-panda": require("../../../../assets/avatars/baked-animals/baked-panda.png"),
+    "baked-peppa": require("../../../../assets/avatars/baked-animals/baked-peppa.png"),
+    "baked-pixie": require("../../../../assets/avatars/baked-animals/baked-pixie.png"),
+    "baked-rabbit": require("../../../../assets/avatars/baked-animals/baked-rabbit.png"),
+    "baked-raccoon": require("../../../../assets/avatars/baked-animals/baked-racoon.png"),
+    "baked-rasta-dog": require("../../../../assets/avatars/baked-animals/baked-rasta-dog.png"),
+    "baked-rhino-soldier": require("../../../../assets/avatars/baked-animals/baked-rhino-soldier.png"),
+    "baked-robot": require("../../../../assets/avatars/baked-animals/baked-robot.png"),
+    "baked-scorpion": require("../../../../assets/avatars/baked-animals/baked-scorpion.png"),
+    "baked-sloth": require("../../../../assets/avatars/baked-animals/baked-sloth.png"),
+    "baked-sly-otter": require("../../../../assets/avatars/baked-animals/baked-sly-otter.png"),
+    "baked-smug-pug": require("../../../../assets/avatars/baked-animals/baked-smug-pug.png"),
+    "baked-zen-tortoise": require("../../../../assets/avatars/baked-animals/baked-zen-tortouise.png"),
+    "cheeky-monkey": require("../../../../assets/avatars/baked-animals/cheeky-monkey.png"),
+    "wise-old-owl": require("../../../../assets/avatars/baked-animals/wise-old-owl.png"),
 };
 
 function SectionLabel({ children }: { children: string }) {
@@ -105,16 +174,20 @@ function getDiceBearPngUrl(seed: string, size: number) {
 
 function AvatarCircle({
     size = 56,
+    avatarId,
     seed,
     photoURL,
 }: {
     size?: number;
+    avatarId?: string | null;
     seed: string;
     photoURL?: string | null;
 }) {
     const [dicebearFailed, setDicebearFailed] = useState(false);
     const dicebearUrl = useMemo(() => getDiceBearPngUrl(seed, size), [seed, size]);
-    const showDiceBear = !photoURL && !dicebearFailed;
+    const imageAvatar = avatarId ? IMAGE_AVATARS[avatarId] : null;
+    const emojiAvatar = avatarId ? EMOJI_AVATARS[avatarId] : null;
+    const showDiceBear = !photoURL && !imageAvatar && !emojiAvatar && !dicebearFailed;
 
     return (
         <View
@@ -144,6 +217,14 @@ function AvatarCircle({
 
             {photoURL ? (
                 <Image source={{ uri: photoURL }} style={{ width: size, height: size }} />
+            ) : imageAvatar ? (
+                <Image
+                    source={imageAvatar}
+                    resizeMode="cover"
+                    style={{ width: Math.round(size * 1.12), height: Math.round(size * 1.12) }}
+                />
+            ) : emojiAvatar ? (
+                <Text style={{ fontSize: Math.round(size * 0.52) }}>{emojiAvatar}</Text>
             ) : showDiceBear ? (
                 <Image
                     source={{ uri: dicebearUrl }}
@@ -212,15 +293,26 @@ export default function PublicProfileScreen() {
     const [reviewsWritten, setReviewsWritten] = useState(0);
     const [helpfulReceived, setHelpfulReceived] = useState(0);
     const [helpfulGiven, setHelpfulGiven] = useState<number | null>(null);
+    const [joinYear, setJoinYear] = useState<number | null>(null);
 
+    const [allReviews, setAllReviews] = useState<UserReviewRow[]>([]);
     const [recentReviews, setRecentReviews] = useState<RecentReview[]>([]);
+    const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
     const [productNameMap, setProductNameMap] = useState<Record<string, string>>({});
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [followBusy, setFollowBusy] = useState(false);
+
+    const goBackToUser = useCallback(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(tabs)/user");
+    }, [router]);
 
     useEffect(() => {
         if (!uid) return;
 
         setLoading(true);
         setUserDoc(null);
+        setJoinYear(null);
 
         // Your rules allow read on /users/{userId}
         const unsub = firestore()
@@ -239,7 +331,9 @@ export default function PublicProfileScreen() {
                     setUserDoc({
                         displayName: typeof data?.displayName === "string" ? data.displayName : "Anonymous",
                         photoURL: typeof data?.photoURL === "string" ? data.photoURL : null,
+                        avatarId: typeof data?.avatarId === "string" ? data.avatarId : null,
                         bio: typeof data?.bio === "string" ? data.bio : null,
+                        createdAt: data?.createdAt ?? data?.created_at ?? null,
                         favoriteProductIds: Array.isArray(data?.favoriteProductIds)
                             ? (data.favoriteProductIds as any[]).filter((x) => typeof x === "string")
                             : [],
@@ -247,11 +341,22 @@ export default function PublicProfileScreen() {
                         favorites: data?.favorites,
                     });
 
+                    const createdAt = data?.createdAt ?? data?.created_at ?? null;
+                    if (typeof createdAt?.toDate === "function") {
+                        setJoinYear(createdAt.toDate().getFullYear());
+                    } else if (typeof createdAt === "number") {
+                        setJoinYear(new Date(createdAt).getFullYear());
+                    } else if (typeof createdAt?.seconds === "number") {
+                        setJoinYear(new Date(createdAt.seconds * 1000).getFullYear());
+                    } else {
+                        setJoinYear(null);
+                    }
                     setLoading(false);
                 },
                 (err) => {
                     console.log("profile users/{uid} snapshot error:", err);
                     setUserDoc(null);
+                    setJoinYear(null);
                     setLoading(false);
                 }
             );
@@ -262,42 +367,104 @@ export default function PublicProfileScreen() {
     useEffect(() => {
         if (!uid) return;
 
-        // Reviews written + helpful received + recent reviews
+        const asString = (value: any): string =>
+            typeof value === "string" ? value.trim() : "";
+
+        const rowsFromDocs = (
+            docs: Array<FirebaseFirestoreTypes.QueryDocumentSnapshot<FirebaseFirestoreTypes.DocumentData>>
+        ): UserReviewRow[] => {
+            return docs.map((d) => {
+                const data = d.data() as any;
+                const createdAtMs = getCreatedAtMs(
+                    data?.createdAt ?? data?.created_at ?? data?.updatedAt ?? data?.updated_at ?? null
+                );
+                const productId =
+                    asString(data?.productId) ||
+                    asString(data?.product_id) ||
+                    asString(data?.flowerId) ||
+                    asString(data?.flower_id) ||
+                    asString(data?.strainId) ||
+                    asString(data?.strain_id);
+                const helpfulRaw =
+                    typeof data?.helpfulCount === "number"
+                        ? data.helpfulCount
+                        : typeof data?.helpful_count === "number"
+                          ? data.helpful_count
+                          : 0;
+                const helpfulCount = Number.isFinite(helpfulRaw) ? Math.max(0, helpfulRaw) : 0;
+
+                return {
+                    id: d.id,
+                    productId,
+                    rating: typeof data?.rating === "number" ? data.rating : null,
+                    helpfulCount,
+                    text: typeof data?.text === "string" ? data.text : null,
+                    createdAtMs,
+                };
+            });
+        };
+
+        const applyRows = (rows: UserReviewRow[]) => {
+            const sortedRows = rows
+                .slice()
+                .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+            // Keep all rows for counts; only product-linked rows are navigable in recent/activity lists.
+            const linkedRows = sortedRows.filter((r) => !!r.productId);
+            const sumHelpful = sortedRows.reduce((sum, r) => {
+                const hc = typeof r.helpfulCount === "number" ? r.helpfulCount : 0;
+                return sum + (Number.isFinite(hc) && hc > 0 ? hc : 0);
+            }, 0);
+
+            const recent = linkedRows.slice(0, 5).map((r) => ({
+                id: r.id,
+                productId: r.productId,
+                rating: r.rating,
+                createdAtMs: r.createdAtMs,
+                productName: null,
+            }));
+
+            setReviewsWritten(sortedRows.length);
+            setHelpfulReceived(sumHelpful);
+            setAllReviews(linkedRows);
+            setRecentReviews(recent);
+        };
+
+        // Reviews written + helpful received + recent reviews.
+        // Merge canonical and legacy owner keys each refresh so partial legacy data doesn't undercount stats.
         const unsub = firestore()
             .collection("reviews")
             .where("userId", "==", uid)
-            .orderBy("createdAt", "desc")
             .onSnapshot(
-                (snap) => {
-                    setReviewsWritten(snap.size);
+                async (snap) => {
+                    try {
+                        const [legacyUid, legacyAuthorUid, legacyAuthorId] = await Promise.all([
+                            firestore().collection("reviews").where("uid", "==", uid).get(),
+                            firestore().collection("reviews").where("authorUid", "==", uid).get(),
+                            firestore().collection("reviews").where("authorId", "==", uid).get(),
+                        ]);
 
-                    let sumHelpful = 0;
-                    const recent: RecentReview[] = [];
+                        const deduped = new Map<
+                            string,
+                            FirebaseFirestoreTypes.QueryDocumentSnapshot<FirebaseFirestoreTypes.DocumentData>
+                        >();
+                        [...snap.docs, ...legacyUid.docs, ...legacyAuthorUid.docs, ...legacyAuthorId.docs].forEach(
+                            (docSnap) => {
+                                deduped.set(docSnap.id, docSnap);
+                            }
+                        );
 
-                    snap.docs.forEach((d, idx) => {
-                        const data = d.data() as any;
-
-                        const hc = typeof data?.helpfulCount === "number" ? data.helpfulCount : 0;
-                        if (Number.isFinite(hc) && hc > 0) sumHelpful += hc;
-
-                        if (idx < 5) {
-                            recent.push({
-                                id: d.id,
-                                productId: typeof data?.productId === "string" ? data.productId : "",
-                                rating: typeof data?.rating === "number" ? data.rating : null,
-                                createdAtMs: getCreatedAtMs(data?.createdAt),
-                                productName: null,
-                            });
-                        }
-                    });
-
-                    setHelpfulReceived(sumHelpful);
-                    setRecentReviews(recent.filter((r) => !!r.productId));
+                        applyRows(rowsFromDocs(Array.from(deduped.values())));
+                    } catch (legacyErr) {
+                        console.log("profile reviews legacy fallback error:", legacyErr);
+                        applyRows(rowsFromDocs(snap.docs));
+                    }
                 },
                 (err) => {
                     console.log("profile reviews snapshot error:", err);
                     setReviewsWritten(0);
                     setHelpfulReceived(0);
+                    setAllReviews([]);
                     setRecentReviews([]);
                 }
             );
@@ -332,8 +499,8 @@ export default function PublicProfileScreen() {
     }, [uid, isSelf]);
 
     useEffect(() => {
-        // Resolve product names for the 5 recent reviews (batched with IN queries)
-        const ids = Array.from(new Set(recentReviews.map((r) => r.productId).filter(Boolean)));
+        // Resolve product names for this user's reviews (batched with IN queries)
+        const ids = Array.from(new Set(allReviews.map((r) => r.productId).filter(Boolean)));
         if (ids.length === 0) return;
 
         const chunks: string[][] = [];
@@ -367,11 +534,68 @@ export default function PublicProfileScreen() {
         return () => {
             unsubs.forEach((fn) => fn());
         };
-    }, [recentReviews]);
+    }, [allReviews]);
+
+    useEffect(() => {
+        if (!currentUid || !uid || isSelf) {
+            setIsFollowing(false);
+            return;
+        }
+
+        const unsub = firestore()
+            .collection("users")
+            .doc(currentUid)
+            .collection("following")
+            .doc(uid)
+            .onSnapshot(
+                (docSnap) => {
+                    setIsFollowing(docSnap.exists);
+                },
+                (err) => {
+                    console.log("following status snapshot error:", err);
+                    setIsFollowing(false);
+                }
+            );
+
+        return () => unsub();
+    }, [currentUid, uid, isSelf]);
 
     const displayName = userDoc?.displayName?.trim() ? userDoc.displayName : "Anonymous";
     const bio =
         userDoc?.bio?.trim() ? userDoc.bio : "Sharing honest experiences with the community";
+    const communityLine = joinYear ? `Part of the community since ${joinYear}` : null;
+
+    const toggleFollow = useCallback(async () => {
+        if (!currentUid || !uid || isSelf || followBusy) return;
+
+        const ref = firestore()
+            .collection("users")
+            .doc(currentUid)
+            .collection("following")
+            .doc(uid);
+
+        setFollowBusy(true);
+        try {
+            if (isFollowing) {
+                await ref.delete();
+                return;
+            }
+
+            await ref.set(
+                {
+                    followedUid: uid,
+                    followedAt: firestore.FieldValue.serverTimestamp(),
+                    displayNameSnapshot: displayName,
+                    avatarIdSnapshot: userDoc?.avatarId ?? null,
+                },
+                { merge: true }
+            );
+        } catch (err) {
+            console.log("toggle follow error:", err);
+        } finally {
+            setFollowBusy(false);
+        }
+    }, [currentUid, uid, isSelf, followBusy, isFollowing, displayName, userDoc?.avatarId]);
 
     const favouritesCount = useMemo(() => {
         const a = Array.isArray(userDoc?.favoriteProductIds) ? userDoc!.favoriteProductIds!.length : 0;
@@ -449,7 +673,7 @@ export default function PublicProfileScreen() {
                 {/* Top row (back) */}
                 <View style={{ marginBottom: 10, flexDirection: "row", alignItems: "center" }}>
                     <Pressable
-                        onPress={() => router.back()}
+                        onPress={goBackToUser}
                         style={({ pressed }) => ({
                             paddingVertical: 10,
                             paddingHorizontal: 12,
@@ -510,7 +734,12 @@ export default function PublicProfileScreen() {
                                 style={{ padding: 16, backgroundColor: headerBg }}
                             >
                                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                    <AvatarCircle size={62} seed={uid || displayName} photoURL={userDoc.photoURL ?? null} />
+                                    <AvatarCircle
+                                        size={62}
+                                        avatarId={userDoc.avatarId ?? null}
+                                        seed={uid || displayName}
+                                        photoURL={userDoc.photoURL ?? null}
+                                    />
 
                                     <View style={{ flex: 1, marginLeft: 14 }}>
                                         <Text
@@ -537,8 +766,53 @@ export default function PublicProfileScreen() {
                                         >
                                             {bio}
                                         </Text>
+
+                                        {communityLine ? (
+                                            <Text
+                                                style={{
+                                                    marginTop: 6,
+                                                    fontSize: 12,
+                                                    lineHeight: 17,
+                                                    color: "rgba(255,255,255,0.68)",
+                                                    fontWeight: "800",
+                                                }}
+                                                numberOfLines={1}
+                                            >
+                                                {communityLine}
+                                            </Text>
+                                        ) : null}
                                     </View>
                                 </View>
+
+                                {!isSelf ? (
+                                    <View style={{ marginTop: 14, alignItems: "flex-start" }}>
+                                        <Pressable
+                                            onPress={toggleFollow}
+                                            disabled={followBusy}
+                                            style={({ pressed }) => ({
+                                                paddingVertical: 8,
+                                                paddingHorizontal: 12,
+                                                borderRadius: 999,
+                                                borderWidth: 1,
+                                                borderColor: isFollowing
+                                                    ? "rgba(212,175,55,0.42)"
+                                                    : "rgba(255,255,255,0.22)",
+                                                backgroundColor: isFollowing
+                                                    ? "rgba(212,175,55,0.16)"
+                                                    : "rgba(255,255,255,0.10)",
+                                                opacity: followBusy ? 0.55 : pressed ? 0.84 : 1,
+                                            })}
+                                        >
+                                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                                                {followBusy
+                                                    ? "Saving..."
+                                                    : isFollowing
+                                                        ? "Following"
+                                                        : "Follow member"}
+                                            </Text>
+                                        </Pressable>
+                                    </View>
+                                ) : null}
                             </LinearGradient>
                         </View>
 
@@ -546,8 +820,39 @@ export default function PublicProfileScreen() {
                         <GlassCard style={{ marginBottom: 14 }}>
                             <SectionLabel>Stats</SectionLabel>
 
+                            <Pressable
+                                onPress={() => setReviewsModalOpen(true)}
+                                style={({ pressed }) => ({
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    paddingVertical: 10,
+                                    opacity: pressed ? 0.88 : 1,
+                                })}
+                            >
+                                <Text
+                                    style={{
+                                        flex: 1,
+                                        color: theme.colors.textOnDarkSecondary,
+                                        fontWeight: "800",
+                                        fontSize: 16,
+                                        textDecorationLine: "underline",
+                                    }}
+                                >
+                                    Reviews written
+                                </Text>
+                                <Text
+                                    style={{
+                                        color: theme.colors.textOnDark,
+                                        fontWeight: "900",
+                                        fontSize: 28,
+                                        letterSpacing: 0.2,
+                                    }}
+                                >
+                                    {toInt(reviewsWritten)}
+                                </Text>
+                            </Pressable>
+
                             {[
-                                { label: "Reviews written", value: toInt(reviewsWritten) },
                                 { label: "Helpful received", value: toInt(helpfulReceived) },
                                 { label: "Favourites", value: toInt(favouritesCount) },
                             ].map((row) => (
@@ -614,7 +919,7 @@ export default function PublicProfileScreen() {
                             </View>
 
                             <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                                Helpful received is the total helpful votes across all reviews by this user.
+                                Tap Reviews written to browse every review this member has posted.
                             </Text>
                         </GlassCard>
 
@@ -722,6 +1027,134 @@ export default function PublicProfileScreen() {
                     </>
                 ) : null}
             </ScrollView>
+
+            <Modal
+                visible={reviewsModalOpen}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setReviewsModalOpen(false)}
+            >
+                <View
+                    style={{
+                        flex: 1,
+                        backgroundColor: "rgba(0,0,0,0.52)",
+                        paddingHorizontal: 16,
+                        paddingTop: Math.max(20, insets.top + 10),
+                        paddingBottom: Math.max(20, insets.bottom + 8),
+                    }}
+                >
+                    <View
+                        style={{
+                            flex: 1,
+                            borderRadius: 22,
+                            overflow: "hidden",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.18)",
+                            backgroundColor: "rgba(16,18,26,0.96)",
+                        }}
+                    >
+                        <LinearGradient
+                            colors={["rgba(212,175,55,0.14)", "rgba(255,255,255,0.06)", "rgba(0,0,0,0.16)"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{ flex: 1, padding: 16 }}
+                        >
+                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+                                <View style={{ flex: 1, paddingRight: 10 }}>
+                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 24 }}>
+                                        {displayName}'s reviews
+                                    </Text>
+                                    <Text style={{ marginTop: 4, color: theme.colors.textOnDarkSecondary }}>
+                                        {toInt(reviewsWritten)} total reviews
+                                    </Text>
+                                </View>
+                                <Pressable
+                                    onPress={() => setReviewsModalOpen(false)}
+                                    style={({ pressed }) => ({
+                                        paddingVertical: 8,
+                                        paddingHorizontal: 12,
+                                        borderRadius: 999,
+                                        borderWidth: 1,
+                                        borderColor: "rgba(255,255,255,0.16)",
+                                        backgroundColor: "rgba(255,255,255,0.10)",
+                                        opacity: pressed ? 0.84 : 1,
+                                    })}
+                                >
+                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>Close</Text>
+                                </Pressable>
+                            </View>
+
+                            <ScrollView
+                                showsVerticalScrollIndicator={false}
+                                contentContainerStyle={{ paddingBottom: 14 }}
+                            >
+                                {allReviews.length === 0 ? (
+                                    <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                                        No reviews to show yet.
+                                    </Text>
+                                ) : (
+                                    allReviews.map((review) => {
+                                        const productName = productNameMap[review.productId] ?? "View product";
+                                        return (
+                                            <Pressable
+                                                key={review.id}
+                                                onPress={() => {
+                                                    setReviewsModalOpen(false);
+                                                    if (!review.productId) return;
+                                                    router.push(`/(tabs)/reviews/${review.productId}`);
+                                                }}
+                                                style={({ pressed }) => ({
+                                                    borderRadius: 18,
+                                                    padding: 14,
+                                                    marginBottom: 10,
+                                                    backgroundColor: "rgba(255,255,255,0.06)",
+                                                    borderWidth: 1,
+                                                    borderColor: "rgba(255,255,255,0.14)",
+                                                    opacity: pressed ? 0.84 : 1,
+                                                })}
+                                            >
+                                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
+                                                    {productName}
+                                                </Text>
+
+                                                <View
+                                                    style={{
+                                                        marginTop: 6,
+                                                        flexDirection: "row",
+                                                        alignItems: "center",
+                                                        justifyContent: "space-between",
+                                                    }}
+                                                >
+                                                    <Text style={{ color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
+                                                        {review.createdAtMs ? new Date(review.createdAtMs).toLocaleDateString() : ""}
+                                                    </Text>
+
+                                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                                                        {typeof review.rating === "number" ? review.rating.toFixed(1) : "-"}
+                                                    </Text>
+                                                </View>
+
+                                                {review.text ? (
+                                                    <Text
+                                                        style={{
+                                                            marginTop: 8,
+                                                            color: theme.colors.textOnDarkSecondary,
+                                                            lineHeight: 18,
+                                                        }}
+                                                        numberOfLines={2}
+                                                    >
+                                                        {review.text}
+                                                    </Text>
+                                                ) : null}
+                                            </Pressable>
+                                        );
+                                    })
+                                )}
+                            </ScrollView>
+                        </LinearGradient>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }

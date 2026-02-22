@@ -36,7 +36,7 @@ function safeStr(v: unknown) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function getFriendlyAuthError(error: any, mode: "signIn" | "create") {
+function getFriendlyAuthError(error: any, mode: "signIn" | "create" | "reset") {
   const code = typeof error?.code === "string" ? error.code : "";
 
   if (code.includes("network-request-failed")) {
@@ -69,8 +69,34 @@ function getFriendlyAuthError(error: any, mode: "signIn" | "create") {
       return "Please enter a valid email address.";
     }
   }
+  if (mode === "reset") {
+    if (code.includes("user-not-found")) {
+      return "No account was found with that email.";
+    }
+    if (code.includes("invalid-email")) {
+      return "Please enter a valid email address.";
+    }
+  }
 
   return safeStr(error?.message) || "Something went wrong. Please try again.";
+}
+
+function requiresEmailVerification(user: any) {
+  const providerIds = Array.isArray(user?.providerData)
+    ? user.providerData
+        .map((p: any) => (typeof p?.providerId === "string" ? p.providerId : ""))
+        .filter(Boolean)
+    : [];
+
+  const passwordOnly =
+    providerIds.length === 0 ||
+    (providerIds.length === 1 && providerIds[0] === "password");
+
+  return passwordOnly && !user?.emailVerified;
+}
+
+function normalizeEmailKey(email: string) {
+  return email.trim().toLowerCase().replace(/[.#$[\]/]/g, "_");
 }
 
 export default function AuthScreen() {
@@ -82,8 +108,12 @@ export default function AuthScreen() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"signIn" | "create">("signIn");
   const [loading, setLoading] = useState(false);
   const nativeDepsReady = !!firestore && !!auth && !!AsyncStorage;
+
+  const passwordsMatch = authMode !== "create" || password === confirmPassword;
 
   useEffect(() => {
     if (!AsyncStorage) return;
@@ -99,8 +129,11 @@ export default function AuthScreen() {
 
   const canSubmit = useMemo(() => {
     const e = email.trim();
+    if (authMode === "create") {
+      return e.length > 3 && password.length >= 6 && confirmPassword.length >= 6 && passwordsMatch && !loading;
+    }
     return e.length > 3 && password.length > 0 && !loading;
-  }, [email, password, loading]);
+  }, [authMode, email, password, confirmPassword, passwordsMatch, loading]);
 
   async function handleSignIn() {
     if (!auth || !AsyncStorage) {
@@ -112,13 +145,95 @@ export default function AuthScreen() {
       setLoading(true);
 
       const trimmedEmail = email.trim();
+      const normalizedEmail = trimmedEmail.toLowerCase();
       if (!trimmedEmail || !password) {
         Alert.alert("Missing details", "Enter email and password.");
         return;
       }
 
       await AsyncStorage.setItem(LAST_EMAIL_KEY, trimmedEmail);
-      await auth().signInWithEmailAndPassword(trimmedEmail, password);
+      const cred = await auth().signInWithEmailAndPassword(trimmedEmail, password);
+
+      const signedInUser = cred.user ?? auth().currentUser;
+      if (signedInUser) {
+        try {
+          await signedInUser.reload();
+        } catch {
+          // ignore reload races
+        }
+
+        const freshUser = auth().currentUser ?? signedInUser;
+        if (requiresEmailVerification(freshUser)) {
+          let sent = false;
+          try {
+            await freshUser.sendEmailVerification();
+            sent = true;
+          } catch {
+            // ignore; still enforce verification
+          }
+
+          await auth().signOut().catch(() => {
+            // ignore sign-out races
+          });
+
+          setPassword("");
+          Alert.alert(
+            "Verify your email",
+            sent
+              ? "Your email is not verified yet. We sent a verification link. Please verify, then sign in."
+              : "Your email is not verified yet. Please check your inbox for a verification link, then sign in."
+          );
+          return;
+        }
+
+        if (firestore) {
+          const userSnap = await firestore().collection("users").doc(freshUser.uid).get();
+          if (userSnap.exists() && userSnap.data()?.accountDisabled) {
+            await auth().signOut().catch(() => {
+              // ignore sign-out races
+            });
+            setPassword("");
+            Alert.alert(
+              "Account unavailable",
+              "This account is currently disabled. Contact support if you believe this is a mistake."
+            );
+            return;
+          }
+
+          const emailBanSnap = await firestore()
+            .collection("bannedEmails")
+            .doc(normalizeEmailKey(normalizedEmail))
+            .get();
+          if (emailBanSnap.exists() && emailBanSnap.data()?.active) {
+            await auth().signOut().catch(() => {
+              // ignore sign-out races
+            });
+            setPassword("");
+            Alert.alert(
+              "Account unavailable",
+              "This email is currently blocked from using the app. Contact support if you believe this is a mistake."
+            );
+            return;
+          }
+        }
+
+        if (firestore) {
+          firestore()
+            .collection("users")
+            .doc(freshUser.uid)
+            .set(
+              {
+                email: normalizedEmail,
+                emailVerified: true,
+                updatedAt: firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            )
+            .catch(() => {
+              // profile sync is best-effort
+            });
+        }
+      }
 
       setPassword("");
 
@@ -144,8 +259,13 @@ export default function AuthScreen() {
       setLoading(true);
 
       const trimmedEmail = email.trim();
+      const normalizedEmail = trimmedEmail.toLowerCase();
       if (!trimmedEmail || !password) {
         Alert.alert("Missing details", "Enter email and password.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        Alert.alert("Passwords do not match", "Please make sure both password fields are the same.");
         return;
       }
 
@@ -168,6 +288,33 @@ export default function AuthScreen() {
         // Firebase Auth displayName (some screens read from here)
         await createdUser.updateProfile({ displayName: defaultName });
 
+        const emailBanSnap = await firestore()
+          .collection("bannedEmails")
+          .doc(normalizeEmailKey(normalizedEmail))
+          .get();
+        if (emailBanSnap.exists() && emailBanSnap.data()?.active) {
+          await createdUser.delete().catch(() => {
+            // ignore cleanup races; sign-out gate still blocks access
+          });
+          await auth().signOut().catch(() => {
+            // ignore sign-out races
+          });
+          setPassword("");
+          Alert.alert(
+            "Account blocked",
+            "This email is currently blocked from creating an account. Contact support if you believe this is a mistake."
+          );
+          return;
+        }
+
+        let verificationSent = false;
+        try {
+          await createdUser.sendEmailVerification();
+          verificationSent = true;
+        } catch {
+          // ignore send failures and continue enforcing verification-only sign-in
+        }
+
         // Firestore profile (source of truth for public profile)
         await firestore()
           .collection("users")
@@ -175,27 +322,76 @@ export default function AuthScreen() {
           .set(
             {
               displayName: defaultName,
+              email: normalizedEmail,
+              emailVerified: false,
               isAdmin: false,
+              accountDisabled: false,
               favoriteProductIds: [],
+              reviewRestrictionLevel: 0,
+              reviewRestrictionUntilMs: null,
+              reviewRestrictionManual: false,
+              moderationStrikeCount: 0,
               createdAt: firestore.FieldValue.serverTimestamp(),
               updatedAt: firestore.FieldValue.serverTimestamp(),
             },
             { merge: true }
           );
-      }
 
-      setPassword("");
+        await auth().signOut().catch(() => {
+          // ignore sign-out races
+        });
 
-      if (returnTo) {
-        router.replace(String(returnTo));
-      } else {
-        router.replace("/(tabs)");
+        setAuthMode("signIn");
+        setPassword("");
+        setConfirmPassword("");
+
+        Alert.alert(
+          "Verify your email",
+          verificationSent
+            ? "Account created. We sent a verification email. Please verify your email, then sign in."
+            : "Account created. Please verify your email before signing in."
+        );
+        return;
       }
     } catch (e: any) {
       Alert.alert("Create account failed", getFriendlyAuthError(e, "create"));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleForgotPassword() {
+    if (!auth || !AsyncStorage) {
+      Alert.alert("Startup issue", "Authentication is not available yet. Please reopen the app.");
+      return;
+    }
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      Alert.alert("Forgot password", "Enter your email address first, then tap Forgot password.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await AsyncStorage.setItem(LAST_EMAIL_KEY, trimmedEmail);
+      await auth().sendPasswordResetEmail(trimmedEmail);
+      Alert.alert(
+        "Reset email sent",
+        "If the account exists, we sent a password reset email. Check your inbox and spam folder."
+      );
+    } catch (e: any) {
+      Alert.alert("Password reset failed", getFriendlyAuthError(e, "reset"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function switchAuthMode(nextMode: "signIn" | "create") {
+    if (loading) return;
+    setAuthMode(nextMode);
+    setPassword("");
+    setConfirmPassword("");
   }
 
   if (!nativeDepsReady) {
@@ -241,14 +437,56 @@ export default function AuthScreen() {
             ) : null}
 
             <Glass>
-              <Text style={styles.title}>Sign in</Text>
+              <Text style={styles.kicker}>Review Budz</Text>
+              <View style={styles.modeRow}>
+                <Pressable
+                  onPress={() => switchAuthMode("signIn")}
+                  disabled={loading}
+                  style={[
+                    styles.modePill,
+                    authMode === "signIn" ? styles.modePillOn : null,
+                    loading ? { opacity: 0.5 } : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.modePillText,
+                      authMode === "signIn" ? styles.modePillTextOn : null,
+                    ]}
+                  >
+                    Sign in
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => switchAuthMode("create")}
+                  disabled={loading}
+                  style={[
+                    styles.modePill,
+                    authMode === "create" ? styles.modePillOn : null,
+                    loading ? { opacity: 0.5 } : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.modePillText,
+                      authMode === "create" ? styles.modePillTextOn : null,
+                    ]}
+                  >
+                    Create account
+                  </Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.title}>{authMode === "create" ? "Create your account" : "Sign in"}</Text>
               <Text style={styles.subtitle}>
-                Sign in to write reviews and save favourites.
+                {authMode === "create"
+                  ? "Create your account. You will need to verify your email before your first sign-in."
+                  : "Sign in to write reviews and save favourites."}
               </Text>
 
               <View style={{ height: 16 }} />
 
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>Email address</Text>
               <TextInput
                 value={email}
                 onChangeText={setEmail}
@@ -265,7 +503,7 @@ export default function AuthScreen() {
 
               <View style={{ height: 12 }} />
 
-              <Text style={styles.label}>Password</Text>
+              <Text style={styles.label}>{authMode === "create" ? "Password (minimum 6 characters)" : "Password"}</Text>
               <TextInput
                 value={password}
                 onChangeText={setPassword}
@@ -279,14 +517,62 @@ export default function AuthScreen() {
                 editable={!loading}
                 returnKeyType="done"
                 onSubmitEditing={() => {
-                  if (canSubmit) handleSignIn();
+                  if (!canSubmit) return;
+                  if (authMode === "create") handleCreateAccount();
+                  else handleSignIn();
                 }}
               />
+
+              {authMode === "create" ? (
+                <>
+                  <View style={{ height: 12 }} />
+
+                  <Text style={styles.label}>Confirm password</Text>
+                  <TextInput
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Confirm password"
+                    placeholderTextColor={SUBTLE_2}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="password"
+                    style={styles.input}
+                    editable={!loading}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      if (canSubmit) handleCreateAccount();
+                    }}
+                  />
+                  {confirmPassword.length > 0 && !passwordsMatch ? (
+                    <Text style={styles.inlineError}>Passwords do not match yet.</Text>
+                  ) : (
+                    <Text style={styles.inlineHint}>Use an email you can access to verify your account.</Text>
+                  )}
+                </>
+              ) : null}
+
+              {authMode === "signIn" ? (
+                <>
+                  <View style={{ height: 8 }} />
+
+                  <Pressable
+                    onPress={handleForgotPassword}
+                    disabled={loading}
+                    style={({ pressed }) => [
+                      styles.forgotBtn,
+                      { opacity: loading ? 0.45 : pressed ? 0.75 : 1 },
+                    ]}
+                  >
+                    <Text style={styles.forgotBtnText}>Forgot password?</Text>
+                  </Pressable>
+                </>
+              ) : null}
 
               <View style={{ height: 16 }} />
 
               <Pressable
-                onPress={handleSignIn}
+                onPress={authMode === "create" ? handleCreateAccount : handleSignIn}
                 disabled={!canSubmit}
                 style={({ pressed }) => [
                   styles.primaryBtn,
@@ -294,26 +580,36 @@ export default function AuthScreen() {
                 ]}
               >
                 <Text style={styles.primaryBtnText}>
-                  {loading ? "Signing in..." : "Sign in"}
+                  {loading
+                    ? authMode === "create"
+                      ? "Creating account..."
+                      : "Signing in..."
+                    : authMode === "create"
+                    ? "Create account"
+                    : "Sign in"}
                 </Text>
               </Pressable>
 
               <View style={{ height: 12 }} />
 
               <Pressable
-                onPress={handleCreateAccount}
-                disabled={!canSubmit}
+                onPress={() => switchAuthMode(authMode === "create" ? "signIn" : "create")}
+                disabled={loading}
                 style={({ pressed }) => [
                   styles.secondaryBtn,
-                  { opacity: !canSubmit ? 0.45 : pressed ? 0.85 : 1 },
+                  { opacity: loading ? 0.45 : pressed ? 0.85 : 1 },
                 ]}
               >
-                <Text style={styles.secondaryBtnText}>Create account</Text>
+                <Text style={styles.secondaryBtnText}>
+                  {authMode === "create" ? "Already have an account? Sign in" : "New here? Create account"}
+                </Text>
               </Pressable>
 
               <View style={{ height: 10 }} />
               <Text style={styles.hint}>
-                Tip: we’ll remember your email next time.
+                {authMode === "create"
+                  ? "After creating your account, verify your email before you sign in."
+                  : "Tip: we’ll remember your email next time."}
               </Text>
             </Glass>
           </View>
@@ -382,12 +678,52 @@ const styles = StyleSheet.create({
     color: "white",
   },
 
+  kicker: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+
   subtitle: {
     marginTop: 6,
     color: SUBTLE,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "700",
+  },
+
+  modeRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+  },
+
+  modePill: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+
+  modePillOn: {
+    borderColor: "rgba(255,255,255,0.30)",
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+
+  modePillText: {
+    color: "rgba(255,255,255,0.80)",
+    fontWeight: "900",
+    fontSize: 13,
+  },
+
+  modePillTextOn: {
+    color: "white",
   },
 
   label: {
@@ -439,11 +775,40 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
+  forgotBtn: {
+    alignSelf: "flex-end",
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+
+  forgotBtnText: {
+    color: "rgba(255,255,255,0.86)",
+    fontSize: 13,
+    fontWeight: "800",
+    textDecorationLine: "underline",
+  },
+
   hint: {
     color: SUBTLE_2,
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 18,
+  },
+
+  inlineHint: {
+    marginTop: 8,
+    color: SUBTLE_2,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+  },
+
+  inlineError: {
+    marginTop: 8,
+    color: "rgba(255,120,120,0.98)",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
   },
 
   logoWrap: {

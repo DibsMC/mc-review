@@ -57,7 +57,7 @@ export default function AboutScreen() {
                         About
                     </Text>
                     <Text style={{ color: "rgba(255,255,255,0.7)", marginTop: 6 }}>
-                        What the app is trying to do, and what it is not.
+                        What the app is building toward, how the community fits in, and what it is not.
                     </Text>
 
                     <H>What this app is</H>
@@ -65,6 +65,20 @@ export default function AboutScreen() {
                         This app helps people share honest, practical reviews of prescribed
                         flower products. It is built to make it easier to choose what might
                         suit you, based on real experiences.
+                    </P>
+
+                    <H>Where we are heading</H>
+                    <P>
+                        The plan is to make Review Budz the go-to community place to check
+                        what tends to work best for what, using structured review data and
+                        lived experience from members.
+                    </P>
+
+                    <H>How the community grows this</H>
+                    <P>
+                        Every useful review, vote, and feedback note helps improve the signal.
+                        As the community grows, recommendations become clearer, comparisons
+                        become fairer, and new members can make better choices faster.
                     </P>
 
                     <H>What this app is not</H>
@@ -78,6 +92,13 @@ export default function AboutScreen() {
                         Names and percentages only tell part of the story. Reviews capture
                         things like clarity, mood, sleep, focus, and how manageable the side
                         effects were.
+                    </P>
+
+                    <H>What you can expect next</H>
+                    <P>
+                        We are building better profile depth, stronger moderation tools,
+                        smarter summaries, and clearer guidance so this stays useful, trusted,
+                        and practical for the whole community.
                     </P>
                 </Glass>
             </ScrollView>

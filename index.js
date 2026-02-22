@@ -6,10 +6,10 @@
   try {
     const screens = require("react-native-screens");
     if (screens && typeof screens.enableScreens === "function") {
-      screens.enableScreens(false);
+      screens.enableScreens(true);
     }
     if (screens && typeof screens.enableFreeze === "function") {
-      screens.enableFreeze(false);
+      screens.enableFreeze(true);
     }
   } catch {
     // Keep startup resilient even if screen config fails.
@@ -18,6 +18,8 @@
 
 const STARTUP_ERROR_KEY = "__MC_STARTUP_ERROR__";
 const STARTUP_GUARD_KEY = "__MC_ERROR_GUARD_INSTALLED__";
+const SPLASH_HIDDEN_KEY = "__MC_SPLASH_HIDDEN__";
+const BOOTSTRAP_TIMEOUT_MS = 12000;
 
 function formatStartupError(error) {
   if (!error) return "Unknown startup error";
@@ -36,13 +38,45 @@ function setStartupError(error) {
   global[STARTUP_ERROR_KEY] = formatStartupError(error);
 }
 
+function hideNativeSplashOnce() {
+  if (global[SPLASH_HIDDEN_KEY]) return;
+  global[SPLASH_HIDDEN_KEY] = true;
+
+  try {
+    const splashScreen = require("expo-splash-screen");
+    if (splashScreen && typeof splashScreen.hideAsync === "function") {
+      splashScreen.hideAsync().catch(() => {
+        // Ignore splash hide errors during startup hardening.
+      });
+    }
+  } catch {
+    // Splash module may not be ready in all startup modes.
+  }
+}
+
 function registerBootstrapShell() {
   try {
     const React = require("react");
     const { registerRootComponent } = require("expo");
-    const { ActivityIndicator, View } = require("react-native");
+    const { ActivityIndicator, Text, View } = require("react-native");
 
     function BootstrapShell() {
+      const [isTimedOut, setIsTimedOut] = React.useState(false);
+
+      React.useEffect(() => {
+        hideNativeSplashOnce();
+        const timer = setTimeout(() => {
+          setIsTimedOut(true);
+        }, BOOTSTRAP_TIMEOUT_MS);
+
+        return () => {
+          clearTimeout(timer);
+        };
+      }, []);
+
+      const startupMessage =
+        typeof global[STARTUP_ERROR_KEY] === "string" ? global[STARTUP_ERROR_KEY] : null;
+
       return React.createElement(
         View,
         {
@@ -51,9 +85,36 @@ function registerBootstrapShell() {
             backgroundColor: "#0A0B0F",
             justifyContent: "center",
             alignItems: "center",
+            paddingHorizontal: 24,
           },
         },
-        React.createElement(ActivityIndicator, { size: "small", color: "#FFFFFF" })
+        React.createElement(ActivityIndicator, { size: "small", color: "#FFFFFF" }),
+        React.createElement(
+          Text,
+          {
+            style: {
+              marginTop: 12,
+              color: "rgba(255,255,255,0.82)",
+              textAlign: "center",
+            },
+          },
+          isTimedOut ? "Still starting..." : "Starting app..."
+        ),
+        startupMessage
+          ? React.createElement(
+              Text,
+              {
+                style: {
+                  marginTop: 10,
+                  color: "rgba(255,170,170,0.95)",
+                  fontSize: 12,
+                  textAlign: "center",
+                },
+                numberOfLines: 5,
+              },
+              startupMessage
+            )
+          : null
       );
     }
 
@@ -117,6 +178,10 @@ function registerBootstrapFallback(error) {
   setStartupError(message);
 
   function BootstrapFallback() {
+    React.useEffect(() => {
+      hideNativeSplashOnce();
+    }, []);
+
     return React.createElement(
       View,
       {

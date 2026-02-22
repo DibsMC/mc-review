@@ -1,5 +1,5 @@
 // app/(tabs)/user/edit-profile.tsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -29,9 +29,16 @@ export default function EditProfileScreen() {
     const [displayName, setDisplayName] = useState<string>("");
     const [saving, setSaving] = useState(false);
 
+    const goBackToUser = useCallback(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(tabs)/user");
+    }, [router]);
+
     useEffect(() => {
         const u = auth().currentUser;
-        setDisplayName(u?.displayName ?? "");
+        const raw = u?.displayName?.trim() ?? "";
+        const generic = ["anonymous", "new member", "a member", "member", "someone", "user"].includes(raw.toLowerCase());
+        setDisplayName(generic ? "" : raw);
     }, []);
 
     const handleSave = async () => {
@@ -69,7 +76,7 @@ export default function EditProfileScreen() {
                 );
 
             Alert.alert("Saved", "Your display name was updated.");
-            router.back();
+            goBackToUser();
         } catch (e: any) {
             Alert.alert("Save failed", e?.message ?? "Unknown error");
         } finally {
@@ -92,13 +99,17 @@ export default function EditProfileScreen() {
                 </Text>
 
                 <Text style={{ color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
-                    Display name
+                    Username
+                </Text>
+
+                <Text style={{ color: "rgba(255,255,255,0.62)", marginTop: 6, lineHeight: 18 }}>
+                    This is visible to other members on your reviews.
                 </Text>
 
                 <TextInput
                     value={displayName}
                     onChangeText={setDisplayName}
-                    placeholder="Your name"
+                    placeholder="Choose your username"
                     placeholderTextColor="rgba(255,255,255,0.45)"
                     autoCapitalize="words"
                     autoCorrect={false}
@@ -137,7 +148,7 @@ export default function EditProfileScreen() {
                 </Pressable>
 
                 <Pressable
-                    onPress={() => router.back()}
+                    onPress={goBackToUser}
                     disabled={saving}
                     style={({ pressed }) => ({
                         marginTop: 10,

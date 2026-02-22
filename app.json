@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "mc-review",
+    "name": "Review Budz",
     "slug": "mc-review",
+    "scheme": "mcreview",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#050b14"
     },
     "ios": {
       "supportsTablet": true,

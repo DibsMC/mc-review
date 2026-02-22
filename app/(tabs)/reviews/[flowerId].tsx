@@ -26,6 +26,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { FirebaseFirestoreTypes } from "@react-native-firebase/firestore";
 import { theme } from "../../../lib/theme";
 import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
+import { buildCommunityNotesSummary } from "../../../lib/communityNotes";
 
 const budImg = require("../../../assets/icons/bud.png");
 const flowersBg = require("../../../assets/images/flowers-bg.png");
@@ -35,6 +36,7 @@ type Product = {
     name: string;
     maker: string;
     variant?: string | null;
+    strainType?: "sativa" | "indica" | "hybrid" | null;
     type: string;
     thcPct?: number | null;
     cbdPct?: number | null;
@@ -45,6 +47,7 @@ type Review = {
     id: string;
     productId: string;
     userId: string;
+    authorDeleted?: boolean | null;
 
     rating: number;
     score?: number | null;
@@ -54,11 +57,22 @@ type Review = {
     updatedAt?: FirebaseFirestoreTypes.Timestamp | number | null;
 
     helpfulCount?: number | null;
+    reportCount?: number | null;
+    moderationStatus?: "active" | "under_review" | "removed_auto" | "removed_admin" | null;
 
     sleepy?: number | null;
     calm?: number | null;
     daytime?: number | null;
     clarity?: number | null;
+    uplifting?: number | null;
+    focusAdhd?: number | null;
+    anxiety?: number | null;
+    moodBalance?: number | null;
+    appetite?: number | null;
+    femaleHealth?: number | null;
+    muscleRelaxation?: number | null;
+    creativity?: number | null;
+    painRelief?: number | null;
 
     backPain?: number | null;
     jointPain?: number | null;
@@ -71,6 +85,12 @@ type UserProfile = {
     displayName?: string | null;
     isAdmin?: boolean | null;
     favoriteProductIds?: string[] | null;
+    reviewRestrictionLevel?: number | null;
+    reviewRestrictionUntilMs?: number | null;
+    reviewRestrictionManual?: boolean | null;
+    lastEscalationRemovedTotal?: number | null;
+    reviewGuideAcceptedAtMs?: number | null;
+    reviewGuideAcceptedVersion?: number | null;
 };
 
 type FavoriteSlot = "general" | "daytime" | "afternoon" | "night";
@@ -111,6 +131,15 @@ type EffectKey =
     | "sleepy"
     | "calm"
     | "clarity"
+    | "uplifting"
+    | "focusAdhd"
+    | "anxiety"
+    | "moodBalance"
+    | "appetite"
+    | "femaleHealth"
+    | "muscleRelaxation"
+    | "creativity"
+    | "painRelief"
     | "backPain"
     | "jointPain"
     | "legPain"
@@ -124,11 +153,55 @@ type ReviewDraft = {
     sleepy: number | null;
     calm: number | null;
     clarity: number | null;
+    uplifting: number | null;
+    focusAdhd: number | null;
+    anxiety: number | null;
+    moodBalance: number | null;
+    appetite: number | null;
+    femaleHealth: number | null;
+    muscleRelaxation: number | null;
+    creativity: number | null;
+    painRelief: number | null;
     backPain: number | null;
     jointPain: number | null;
     legPain: number | null;
     headacheRelief: number | null;
     racingThoughts: number | null;
+};
+
+const EFFECT_FIELDS: Array<{ key: EffectKey; label: string; chipLabel?: string }> = [
+    { key: "daytime", label: "Daytime suitability", chipLabel: "Daytime" },
+    { key: "sleepy", label: "Couch lock / sleepiness", chipLabel: "Couch lock" },
+    { key: "calm", label: "Calm", chipLabel: "Calm" },
+    { key: "uplifting", label: "Uplifting", chipLabel: "Uplifting" },
+    { key: "focusAdhd", label: "Focus / ADHD", chipLabel: "Focus" },
+    { key: "anxiety", label: "Anxiety relief", chipLabel: "Anxiety" },
+    { key: "moodBalance", label: "Mood balance", chipLabel: "Mood" },
+    { key: "appetite", label: "Munchies", chipLabel: "Munchies" },
+    { key: "femaleHealth", label: "Female health support", chipLabel: "Female health" },
+    { key: "muscleRelaxation", label: "Muscle relaxation", chipLabel: "Muscle relief" },
+    { key: "creativity", label: "Creativity", chipLabel: "Creative" },
+    { key: "painRelief", label: "Pain relief", chipLabel: "Pain relief" },
+    { key: "clarity", label: "Mental clarity", chipLabel: "Clarity" },
+    { key: "backPain", label: "Back pain relief", chipLabel: "Back pain" },
+    { key: "jointPain", label: "Joint pain relief", chipLabel: "Joint pain" },
+    { key: "legPain", label: "Leg pain relief", chipLabel: "Leg pain" },
+    { key: "headacheRelief", label: "Headache relief", chipLabel: "Headache" },
+    { key: "racingThoughts", label: "Racing thoughts relief", chipLabel: "Racing thoughts" },
+];
+
+const EFFECT_HINTS: Partial<Record<EffectKey, string>> = {
+    daytime: "Use this for daytime function, focus, and social usability.",
+    sleepy: "High score = heavy sedation / couch lock.",
+    calm: "Rate higher when it clearly settles body/mind tension.",
+    uplifting: "Rate for positive lift, energy, and motivation.",
+    focusAdhd: "Rate for task follow-through, less distraction, better concentration.",
+    anxiety: "Rate for reduced anxious spikes, overthinking, or paranoia.",
+    appetite: "Rate for stronger munchies/appetite after use.",
+    muscleRelaxation: "Rate for body release and physical unwinding.",
+    creativity: "Rate for idea flow, expression, and productive creativity.",
+    painRelief: "Rate only if this reliably softens pain intensity.",
+    clarity: "Rate for clear-headed function without heavy cognitive fog.",
 };
 
 function safeName(v: unknown) {
@@ -138,6 +211,28 @@ function safeName(v: unknown) {
 function formatPct(n: number | null | undefined) {
     if (n === null || n === undefined) return "-";
     return `${n}%`;
+}
+
+function normalizeStrainType(v: any): "sativa" | "indica" | "hybrid" | "unknown" {
+    if (v === null || v === undefined) return "unknown";
+
+    const s = String(v).toLowerCase().trim();
+    if (!s) return "unknown";
+    if (s.includes("sativa")) return "sativa";
+    if (s.includes("indica")) return "indica";
+    if (s.includes("hybrid")) return "hybrid";
+    if (s.includes("dominant") && (s.includes("sat") || s.includes("sativa"))) return "sativa";
+    if (s.includes("dominant") && (s.includes("ind") || s.includes("indica"))) return "indica";
+    if (s.startsWith("sat") || s === "s") return "sativa";
+    if (s.startsWith("ind") || s === "i") return "indica";
+    if (s.startsWith("hyb") || s === "h") return "hybrid";
+    return "unknown";
+}
+
+function formatStrainType(v: any): string | null {
+    const norm = normalizeStrainType(v);
+    if (norm === "unknown") return null;
+    return norm.charAt(0).toUpperCase() + norm.slice(1);
 }
 
 function round1(n: number) {
@@ -168,6 +263,29 @@ function getCreatedAtMs(r: Review) {
     if (typeof (c as any)?.toMillis === "function") return (c as any).toMillis();
     if (typeof (c as any)?.seconds === "number") return (c as any).seconds * 1000;
     return 0;
+}
+
+function getStructuredEffectValues(r: Partial<Review>) {
+    return [
+        r.daytime,
+        r.sleepy,
+        r.calm,
+        r.clarity,
+        r.uplifting,
+        r.focusAdhd,
+        r.anxiety,
+        r.moodBalance,
+        r.appetite,
+        r.femaleHealth,
+        r.muscleRelaxation,
+        r.creativity,
+        r.painRelief,
+        r.backPain,
+        r.jointPain,
+        r.legPain,
+        r.headacheRelief,
+        r.racingThoughts,
+    ];
 }
 
 function getFriendlyReviewError(error: any, action: "save" | "delete" | "helpful" | "report" | "favourite") {
@@ -360,6 +478,79 @@ const styles = StyleSheet.create({
         borderColor: "rgba(255,255,255,0.24)",
         backgroundColor: "rgba(255,255,255,0.16)",
     },
+    reviewsHeadingRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 8,
+        marginTop: 2,
+    },
+    reviewsTitleCard: {
+        borderRadius: 18,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.15)",
+        backgroundColor: "rgba(255,255,255,0.10)",
+    },
+    reviewsTitleInner: {
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+    },
+    reviewsEyebrow: {
+        color: "rgba(255,255,255,0.64)",
+        fontWeight: "900",
+        fontSize: 11,
+        letterSpacing: 1.1,
+        textTransform: "uppercase",
+        marginBottom: 2,
+    },
+    reviewsTitle: {
+        fontSize: 34,
+        fontWeight: "900",
+        color: "rgba(255,255,255,0.94)",
+        letterSpacing: -0.5,
+        includeFontPadding: false,
+    },
+    reviewSearchWrap: {
+        marginTop: 10,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(255,255,255,0.10)",
+        overflow: "hidden",
+    },
+    reviewSearchInput: {
+        minHeight: 46,
+        paddingHorizontal: 14,
+        color: theme.colors.textOnDark,
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    reviewSearchFooter: {
+        paddingHorizontal: 12,
+        paddingBottom: 10,
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    reviewSearchMeta: {
+        flex: 1,
+        color: "rgba(255,255,255,0.70)",
+        fontSize: 12,
+        fontWeight: "700",
+    },
+    reviewSearchClearBtn: {
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.20)",
+        backgroundColor: "rgba(255,255,255,0.12)",
+    },
+    reviewSearchClearText: {
+        color: theme.colors.textOnDark,
+        fontWeight: "900",
+        fontSize: 12,
+    },
 
     favPill: {
         flexDirection: "row",
@@ -390,27 +581,27 @@ const styles = StyleSheet.create({
         overflow: "hidden",
     },
 
-    actionsRow: { marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" },
+    actionsRow: { marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" },
 
     actionPill: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        paddingVertical: 7,
+        paddingHorizontal: 10,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.22)",
-        backgroundColor: "rgba(255,255,255,0.12)",
+        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(255,255,255,0.10)",
     },
-    actionPillActive: { borderColor: "rgba(212,175,55,0.55)", backgroundColor: "rgba(212, 175, 55, 0.22)" },
+    actionPillActive: { borderColor: "rgba(212,175,55,0.42)", backgroundColor: "rgba(212, 175, 55, 0.18)" },
     actionPillDisabled: { opacity: 0.55 },
-    actionPillText: { fontWeight: "900", color: theme.colors.textOnDark },
+    actionPillText: { fontWeight: "900", fontSize: 13, color: theme.colors.textOnDark, includeFontPadding: false },
 
     countPill: {
-        marginLeft: 10,
-        minWidth: 28,
-        height: 22,
-        paddingHorizontal: 8,
+        marginLeft: 8,
+        minWidth: 24,
+        height: 19,
+        paddingHorizontal: 6,
         borderRadius: 999,
         alignItems: "center",
         justifyContent: "center",
@@ -418,37 +609,37 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "rgba(255,255,255,0.12)",
     },
-    countPillText: { color: "rgba(255,255,255,0.90)", fontWeight: "900", fontSize: 12 },
+    countPillText: { color: "rgba(255,255,255,0.90)", fontWeight: "900", fontSize: 11, includeFontPadding: false },
 
     dangerPill: {
-        paddingVertical: 10,
-        paddingHorizontal: 18,
+        paddingVertical: 7,
+        paddingHorizontal: 14,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,120,120,0.45)",
-        backgroundColor: "rgba(255,120,120,0.18)",
+        borderColor: "rgba(255,120,120,0.42)",
+        backgroundColor: "rgba(255,120,120,0.16)",
     },
-    dangerPillText: { fontWeight: "900", color: "rgba(255,160,160,1)", includeFontPadding: false },
+    dangerPillText: { fontWeight: "900", fontSize: 13, color: "rgba(255,160,160,1)", includeFontPadding: false },
 
     adminPill: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        paddingVertical: 7,
+        paddingHorizontal: 10,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.22)",
+        borderColor: "rgba(255,255,255,0.18)",
         backgroundColor: "rgba(255,255,255,0.10)",
     },
-    adminPillText: { fontWeight: "900", color: "rgba(255,255,255,0.78)" },
+    adminPillText: { fontWeight: "900", fontSize: 13, color: "rgba(255,255,255,0.78)", includeFontPadding: false },
 
     reportPill: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        paddingVertical: 7,
+        paddingHorizontal: 10,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.22)",
-        backgroundColor: "rgba(255,255,255,0.10)",
+        borderColor: "rgba(237,171,87,0.34)",
+        backgroundColor: "rgba(237,171,87,0.15)",
     },
-    reportPillText: { fontWeight: "900", color: "rgba(255,255,255,0.78)" },
+    reportPillText: { fontWeight: "900", fontSize: 13, color: "rgba(255,226,189,0.96)", includeFontPadding: false },
 
     reviewCard: {
         marginTop: 18,
@@ -461,24 +652,33 @@ const styles = StyleSheet.create({
     },
 
     formBtn: {
-        paddingVertical: 14,
+        paddingVertical: 12,
         borderRadius: 16,
-        backgroundColor: "rgba(0,0,0,0.78)",
+        backgroundColor: "rgba(52,156,88,0.95)",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.12)",
+        borderColor: "rgba(138,231,168,0.42)",
         alignItems: "center",
         justifyContent: "center",
     },
     formBtnAlt: {
-        paddingVertical: 14,
+        paddingVertical: 12,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.22)",
-        backgroundColor: "rgba(255,255,255,0.14)",
+        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(255,255,255,0.12)",
         alignItems: "center",
         justifyContent: "center",
     },
-    formBtnText: { fontWeight: "900", fontSize: 16, letterSpacing: 0.2, textAlign: "center", color: "#fff", includeFontPadding: false },
+    formBtnWarn: {
+        paddingVertical: 12,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(237,171,87,0.40)",
+        backgroundColor: "rgba(237,171,87,0.22)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    formBtnText: { fontWeight: "900", fontSize: 15, letterSpacing: 0.2, textAlign: "center", color: "#fff", includeFontPadding: false },
 
     modalCard: {
         width: "100%",
@@ -637,6 +837,11 @@ export default function FlowerDetail() {
     const bgScale = 1.12;
 
     const COOLDOWN_MS = 10_000;
+    const REPORT_AUTO_REMOVE_THRESHOLD = 5;
+    const RESTRICTION_WINDOW_MS = 28 * 24 * 60 * 60 * 1000;
+    const FIRST_RESTRICTION_MS = 7 * 24 * 60 * 60 * 1000;
+    const SECOND_RESTRICTION_MS = 14 * 24 * 60 * 60 * 1000;
+    const REVIEW_GUIDE_VERSION = 1;
     const [cooldownUntil, setCooldownUntil] = useState<number>(0);
     const [nowTick, setNowTick] = useState(Date.now());
     const isCooldown = nowTick < cooldownUntil;
@@ -655,12 +860,20 @@ export default function FlowerDetail() {
 
     const [sortMode, setSortMode] = useState<SortMode>("recent");
     const [sortOpen, setSortOpen] = useState(false);
+    const [reviewSearchQuery, setReviewSearchQuery] = useState("");
     const sortBtnRef = useRef<View | null>(null);
     const [sortAnchor, setSortAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
     const [submitting, setSubmitting] = useState(false);
 
     const [isAdmin, setIsAdmin] = useState(false);
+    const [reviewRestrictionLevel, setReviewRestrictionLevel] = useState(0);
+    const [reviewRestrictionUntilMs, setReviewRestrictionUntilMs] = useState<number | null>(null);
+    const [reviewRestrictionManual, setReviewRestrictionManual] = useState(false);
+    const [reviewGuideAccepted, setReviewGuideAccepted] = useState(false);
+    const [guideGateOpen, setGuideGateOpen] = useState(false);
+    const [guideAcknowledgeChecked, setGuideAcknowledgeChecked] = useState(false);
+    const [guideSaving, setGuideSaving] = useState(false);
     const [legacyFavoriteProductIds, setLegacyFavoriteProductIds] = useState<string[]>([]);
     const [favoriteSlots, setFavoriteSlots] = useState<FavoriteSlots>({ ...EMPTY_SLOTS });
     const [myHelpfulIds, setMyHelpfulIds] = useState<Set<string>>(new Set());
@@ -684,6 +897,15 @@ export default function FlowerDetail() {
             sleepy: null,
             calm: null,
             clarity: null,
+            uplifting: null,
+            focusAdhd: null,
+            anxiety: null,
+            moodBalance: null,
+            appetite: null,
+            femaleHealth: null,
+            muscleRelaxation: null,
+            creativity: null,
+            painRelief: null,
             backPain: null,
             jointPain: null,
             legPain: null,
@@ -693,6 +915,12 @@ export default function FlowerDetail() {
         []
     );
     const [draft, setDraft] = useState<ReviewDraft>(emptyDraft);
+
+    useEffect(() => {
+        // Always default each product screen to Most recent.
+        setSortMode("recent");
+        setSortOpen(false);
+    }, [productId]);
 
     const sanitizeEffectScore = useCallback((v: unknown): number | null => {
         if (typeof v !== "number" || !Number.isFinite(v)) return null;
@@ -717,21 +945,105 @@ export default function FlowerDetail() {
         setNowTick(Date.now());
     }, []);
 
+    const getRestrictionMessage = useCallback((level: number, untilMs: number | null, manual: boolean) => {
+        if (manual || level >= 3) {
+            return "Posting is locked. Please contact support to restore review posting access.";
+        }
+        if (typeof untilMs === "number" && untilMs > Date.now()) {
+            const hours = Math.max(1, Math.ceil((untilMs - Date.now()) / (60 * 60 * 1000)));
+            return `Posting is temporarily restricted. Try again in about ${hours} hour${hours === 1 ? "" : "s"}.`;
+        }
+        return null;
+    }, []);
+
+    const enforceRestrictionForUser = useCallback(
+        async (uid: string) => {
+            const now = Date.now();
+            const userRef = firestore().collection("users").doc(uid);
+            const reviewsSnap = await firestore().collection("reviews").where("userId", "==", uid).get();
+
+            const removed = reviewsSnap.docs
+                .map((d) => d.data() as any)
+                .filter((r) => {
+                    const status = typeof r?.moderationStatus === "string" ? r.moderationStatus : "active";
+                    return status === "removed_auto" || status === "removed_admin";
+                })
+                .map((r) => (typeof r?.removedAtMs === "number" ? r.removedAtMs : 0))
+                .filter((ms) => ms > 0);
+
+            const totalRemoved = removed.length;
+            const recentRemoved = removed.filter((ms) => ms >= now - RESTRICTION_WINDOW_MS).length;
+
+            if (recentRemoved < 3) {
+                return {
+                    level: reviewRestrictionLevel,
+                    untilMs: reviewRestrictionUntilMs,
+                    manual: reviewRestrictionManual,
+                };
+            }
+
+            const userDoc = await userRef.get();
+            const userData = (userDoc.data() as UserProfile | undefined) ?? {};
+            const currentLevel = typeof userData.reviewRestrictionLevel === "number" ? userData.reviewRestrictionLevel : 0;
+            const currentUntil = typeof userData.reviewRestrictionUntilMs === "number" ? userData.reviewRestrictionUntilMs : null;
+            const currentManual = !!userData.reviewRestrictionManual;
+            const lastEscTotal = typeof userData.lastEscalationRemovedTotal === "number" ? userData.lastEscalationRemovedTotal : 0;
+
+            if (totalRemoved <= lastEscTotal) {
+                return { level: currentLevel, untilMs: currentUntil, manual: currentManual };
+            }
+
+            const nextLevel = currentLevel <= 0 ? 1 : currentLevel === 1 ? 2 : 3;
+            const nextUntil = nextLevel === 1 ? now + FIRST_RESTRICTION_MS : nextLevel === 2 ? now + SECOND_RESTRICTION_MS : null;
+            const nextManual = nextLevel >= 3;
+
+            await userRef.set(
+                {
+                    reviewRestrictionLevel: nextLevel,
+                    reviewRestrictionUntilMs: nextUntil,
+                    reviewRestrictionManual: nextManual,
+                    lastEscalationRemovedTotal: totalRemoved,
+                    updatedAt: firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            setReviewRestrictionLevel(nextLevel);
+            setReviewRestrictionUntilMs(nextUntil);
+            setReviewRestrictionManual(nextManual);
+
+            return { level: nextLevel, untilMs: nextUntil, manual: nextManual };
+        },
+        [
+            firestore,
+            reviewRestrictionLevel,
+            reviewRestrictionManual,
+            reviewRestrictionUntilMs,
+            FIRST_RESTRICTION_MS,
+            SECOND_RESTRICTION_MS,
+            RESTRICTION_WINDOW_MS,
+        ]
+    );
+
     // Back button
     const handleBack = useCallback(() => {
         Keyboard.dismiss();
         setSortOpen(false);
-        try {
-            router.back();
-        } catch {
-            router.replace("/(tabs)/reviews");
-        }
+        setReportOpen(false);
+        setReportingReview(null);
+        router.replace("/(tabs)/reviews");
     }, [router]);
 
     // User profile listener (admin + favourites)
     useEffect(() => {
         if (!currentUid) {
             setIsAdmin(false);
+            setReviewRestrictionLevel(0);
+            setReviewRestrictionUntilMs(null);
+            setReviewRestrictionManual(false);
+            setReviewGuideAccepted(false);
+            setGuideGateOpen(false);
+            setGuideAcknowledgeChecked(false);
             setLegacyFavoriteProductIds([]);
             setFavoriteSlots({ ...EMPTY_SLOTS });
             return;
@@ -744,6 +1056,13 @@ export default function FlowerDetail() {
                 (doc) => {
                     const data = (doc.data() as UserProfile) ?? {};
                     setIsAdmin(!!data?.isAdmin);
+                    setReviewRestrictionLevel(typeof data?.reviewRestrictionLevel === "number" ? data.reviewRestrictionLevel : 0);
+                    setReviewRestrictionUntilMs(typeof data?.reviewRestrictionUntilMs === "number" ? data.reviewRestrictionUntilMs : null);
+                    setReviewRestrictionManual(!!data?.reviewRestrictionManual);
+                    setReviewGuideAccepted(
+                        !!data?.reviewGuideAcceptedAtMs ||
+                        (typeof data?.reviewGuideAcceptedVersion === "number" && data.reviewGuideAcceptedVersion >= REVIEW_GUIDE_VERSION)
+                    );
 
                     const favs = Array.isArray(data?.favoriteProductIds)
                         ? (data.favoriteProductIds as any[]).filter((x) => typeof x === "string")
@@ -752,6 +1071,10 @@ export default function FlowerDetail() {
                 },
                 () => {
                     setIsAdmin(false);
+                    setReviewRestrictionLevel(0);
+                    setReviewRestrictionUntilMs(null);
+                    setReviewRestrictionManual(false);
+                    setReviewGuideAccepted(false);
                     setLegacyFavoriteProductIds([]);
                 }
             );
@@ -773,7 +1096,7 @@ export default function FlowerDetail() {
             unsubUser();
             unsubFavoriteDoc();
         };
-    }, [currentUid, productId]);
+    }, [REVIEW_GUIDE_VERSION, currentUid, productId]);
 
     useEffect(() => {
         if (!productId) return;
@@ -883,11 +1206,21 @@ export default function FlowerDetail() {
                     }
 
                     const data = doc.data() as any;
+                    const rawStrain =
+                        data?.strainType ??
+                        data?.strain ??
+                        data?.dominance ??
+                        data?.genetics ??
+                        data?.type ??
+                        data?.productType ??
+                        null;
+                    const normStrain = normalizeStrainType(rawStrain);
                     setProduct({
                         id: doc.id,
                         name: typeof data?.name === "string" ? data.name : "",
                         maker: typeof data?.maker === "string" ? data.maker : "",
                         variant: data?.variant ?? null,
+                        strainType: normStrain === "unknown" ? null : normStrain,
                         type: typeof data?.type === "string" ? data.type : "flower",
                         thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
                         cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
@@ -927,6 +1260,7 @@ export default function FlowerDetail() {
                             id: d.id,
                             productId: typeof data.productId === "string" ? data.productId : "",
                             userId: typeof data.userId === "string" ? data.userId : "",
+                            authorDeleted: !!data.authorDeleted,
                             rating: ratingFromDb,
                             score: typeof data.score === "number" ? data.score : null,
                             text: typeof data.text === "string" ? data.text : null,
@@ -934,11 +1268,22 @@ export default function FlowerDetail() {
                             updatedAt: (data.updatedAt ?? null) as any,
 
                             helpfulCount,
+                            reportCount: typeof data.reportCount === "number" ? data.reportCount : 0,
+                            moderationStatus: typeof data.moderationStatus === "string" ? data.moderationStatus : "active",
 
                             sleepy: typeof data.sleepy === "number" ? data.sleepy : null,
                             calm: typeof data.calm === "number" ? data.calm : null,
                             daytime: typeof data.daytime === "number" ? data.daytime : null,
                             clarity: typeof data.clarity === "number" ? data.clarity : null,
+                            uplifting: typeof data.uplifting === "number" ? data.uplifting : null,
+                            focusAdhd: typeof data.focusAdhd === "number" ? data.focusAdhd : null,
+                            anxiety: typeof data.anxiety === "number" ? data.anxiety : null,
+                            moodBalance: typeof data.moodBalance === "number" ? data.moodBalance : null,
+                            appetite: typeof data.appetite === "number" ? data.appetite : null,
+                            femaleHealth: typeof data.femaleHealth === "number" ? data.femaleHealth : null,
+                            muscleRelaxation: typeof data.muscleRelaxation === "number" ? data.muscleRelaxation : null,
+                            creativity: typeof data.creativity === "number" ? data.creativity : null,
+                            painRelief: typeof data.painRelief === "number" ? data.painRelief : null,
 
                             backPain: typeof data.backPain === "number" ? data.backPain : null,
                             jointPain: typeof data.jointPain === "number" ? data.jointPain : null,
@@ -1014,9 +1359,7 @@ export default function FlowerDetail() {
     }, [reviews]);
 
     const perReviewEffectsMean = useMemo(() => {
-        return reviews.map((r) =>
-            avgEffects([r.daytime, r.sleepy, r.calm, r.clarity, r.backPain, r.jointPain, r.legPain, r.headacheRelief, r.racingThoughts])
-        );
+        return reviews.map((r) => avgEffects(getStructuredEffectValues(r)));
     }, [reviews]);
 
     const effectsMeansForProduct = useMemo(() => {
@@ -1037,6 +1380,15 @@ export default function FlowerDetail() {
         const calmAvg = avgNumbers(reviews.map((r) => r.calm));
         const daytimeAvg = avgNumbers(reviews.map((r) => r.daytime));
         const clarityAvg = avgNumbers(reviews.map((r) => r.clarity));
+        const upliftingAvg = avgNumbers(reviews.map((r) => r.uplifting));
+        const focusAdhdAvg = avgNumbers(reviews.map((r) => r.focusAdhd));
+        const anxietyAvg = avgNumbers(reviews.map((r) => r.anxiety));
+        const moodBalanceAvg = avgNumbers(reviews.map((r) => r.moodBalance));
+        const appetiteAvg = avgNumbers(reviews.map((r) => r.appetite));
+        const femaleHealthAvg = avgNumbers(reviews.map((r) => r.femaleHealth));
+        const muscleRelaxationAvg = avgNumbers(reviews.map((r) => r.muscleRelaxation));
+        const creativityAvg = avgNumbers(reviews.map((r) => r.creativity));
+        const painReliefAvg = avgNumbers(reviews.map((r) => r.painRelief));
 
         const backPainAvg = avgNumbers(reviews.map((r) => r.backPain));
         const jointPainAvg = avgNumbers(reviews.map((r) => r.jointPain));
@@ -1044,16 +1396,24 @@ export default function FlowerDetail() {
         const headacheReliefAvg = avgNumbers(reviews.map((r) => r.headacheRelief));
         const racingThoughtsAvg = avgNumbers(reviews.map((r) => r.racingThoughts));
 
-        const withAnySub = reviews.filter((r) => {
-            const vals = [r.sleepy, r.calm, r.daytime, r.clarity, r.backPain, r.jointPain, r.legPain, r.headacheRelief, r.racingThoughts];
-            return vals.some((v) => typeof v === "number" && v >= 1 && v <= 5);
-        }).length;
+        const withAnySub = reviews.filter((r) =>
+            getStructuredEffectValues(r).some((v) => typeof v === "number" && v >= 1 && v <= 5)
+        ).length;
 
         return {
             sleepyAvg,
             calmAvg,
             daytimeAvg,
             clarityAvg,
+            upliftingAvg,
+            focusAdhdAvg,
+            anxietyAvg,
+            moodBalanceAvg,
+            appetiteAvg,
+            femaleHealthAvg,
+            muscleRelaxationAvg,
+            creativityAvg,
+            painReliefAvg,
             backPainAvg,
             jointPainAvg,
             legPainAvg,
@@ -1066,9 +1426,9 @@ export default function FlowerDetail() {
     const getReviewScore = useCallback((r: Review) => {
         if (typeof r.score === "number" && Number.isFinite(r.score)) return r.score;
 
-        const effectsMean = avgEffects([r.daytime, r.sleepy, r.calm, r.clarity, r.backPain, r.jointPain, r.legPain, r.headacheRelief, r.racingThoughts]);
+        const effectsMean = avgEffects(getStructuredEffectValues(r));
 
-        const effectVals = [r.daytime, r.sleepy, r.calm, r.clarity, r.backPain, r.jointPain, r.legPain, r.headacheRelief, r.racingThoughts].filter(
+        const effectVals = getStructuredEffectValues(r).filter(
             (v): v is number => typeof v === "number" && v >= 1 && v <= 5
         );
 
@@ -1082,7 +1442,12 @@ export default function FlowerDetail() {
     }, []);
 
     const sortedReviews = useMemo(() => {
-        const visible = myReportedIds.size ? reviews.filter((r) => !myReportedIds.has(r.id)) : reviews;
+        const visible = reviews.filter((r) => {
+            if (myReportedIds.has(r.id)) return false;
+            if (isAdmin) return true;
+            const status = typeof r.moderationStatus === "string" ? r.moderationStatus : "active";
+            return status === "active";
+        });
         const list = [...visible];
 
         if (sortMode === "recent") return list.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a));
@@ -1100,7 +1465,31 @@ export default function FlowerDetail() {
             if (d !== 0) return d;
             return getCreatedAtMs(b) - getCreatedAtMs(a);
         });
-    }, [reviews, sortMode, myReportedIds, getReviewScore]);
+    }, [reviews, sortMode, myReportedIds, isAdmin, getReviewScore]);
+
+    const reviewSearchTokens = useMemo(() => {
+        const raw = reviewSearchQuery.trim().toLowerCase();
+        if (!raw) return [];
+        return raw.split(/\s+/).map((t) => t.trim()).filter(Boolean);
+    }, [reviewSearchQuery]);
+
+    const filteredSortedReviews = useMemo(() => {
+        if (reviewSearchTokens.length === 0) return sortedReviews;
+
+        return sortedReviews.filter((r) => {
+            const author = displayNameForUid(r.userId).replace(/\(you\)/gi, "").trim().toLowerCase();
+            const text = (typeof r.text === "string" ? r.text : "").toLowerCase();
+            const searchable = `${author} ${text}`;
+            return reviewSearchTokens.every((token) => searchable.includes(token));
+        });
+    }, [displayNameForUid, reviewSearchTokens, sortedReviews]);
+
+    const communityNotes = useMemo(() => {
+        const texts = sortedReviews
+            .map((r) => (typeof r.text === "string" ? r.text.trim() : ""))
+            .filter((value) => value.length >= 8);
+        return buildCommunityNotesSummary(texts);
+    }, [sortedReviews]);
 
     const sortLabel = sortMode === "recent" ? "Most recent" : sortMode === "high" ? "Highest" : "Lowest";
 
@@ -1117,7 +1506,50 @@ export default function FlowerDetail() {
 
     /* -------------------- Write/Edit helpers -------------------- */
 
-    const openWriteNewReview = useCallback(() => {
+    const beginWriteNewReview = useCallback(() => {
+        setEditingReviewId(null);
+        setDraft(emptyDraft);
+        setEditorOpen(true);
+    }, [emptyDraft]);
+
+    const acceptGuideAndContinue = useCallback(async () => {
+        const user = auth().currentUser;
+        if (!user) {
+            Alert.alert("Sign in required", "Please sign in to continue.");
+            return;
+        }
+        if (guideSaving) return;
+        if (!guideAcknowledgeChecked) {
+            Alert.alert("Confirmation needed", "Please confirm that you have read the review guide.");
+            return;
+        }
+
+        setGuideSaving(true);
+        try {
+            await firestore()
+                .collection("users")
+                .doc(user.uid)
+                .set(
+                    {
+                        reviewGuideAcceptedAtMs: Date.now(),
+                        reviewGuideAcceptedVersion: REVIEW_GUIDE_VERSION,
+                        updatedAt: firestore.FieldValue.serverTimestamp(),
+                    },
+                    { merge: true }
+                );
+            setReviewGuideAccepted(true);
+            setGuideGateOpen(false);
+            setGuideAcknowledgeChecked(false);
+            beginWriteNewReview();
+        } catch (e: any) {
+            console.log("accept guide failed:", e);
+            Alert.alert("Could not continue", "We couldn't save your confirmation. Please try again.");
+        } finally {
+            setGuideSaving(false);
+        }
+    }, [REVIEW_GUIDE_VERSION, beginWriteNewReview, firestore, guideAcknowledgeChecked, guideSaving]);
+
+    const openWriteNewReview = useCallback(async () => {
         const user = auth().currentUser;
         if (!user) {
             Alert.alert("Sign in required", "Please sign in to write a review.");
@@ -1125,10 +1557,32 @@ export default function FlowerDetail() {
         }
         if (!productId) return;
 
-        setEditingReviewId(null);
-        setDraft(emptyDraft);
-        setEditorOpen(true);
-    }, [emptyDraft, productId]);
+        try {
+            const next = await enforceRestrictionForUser(user.uid);
+            const msg = getRestrictionMessage(next.level, next.untilMs, next.manual);
+            if (msg) {
+                Alert.alert("Posting restricted", msg);
+                return;
+            }
+        } catch (e) {
+            console.log("restriction check failed:", e);
+        }
+
+        if (!reviewGuideAccepted) {
+            Keyboard.dismiss();
+            setGuideAcknowledgeChecked(false);
+            setGuideGateOpen(true);
+            return;
+        }
+
+        beginWriteNewReview();
+    }, [
+        beginWriteNewReview,
+        enforceRestrictionForUser,
+        getRestrictionMessage,
+        productId,
+        reviewGuideAccepted,
+    ]);
 
     const openEditReview = useCallback(
         (reviewToEdit: Review) => {
@@ -1151,6 +1605,15 @@ export default function FlowerDetail() {
                 sleepy: sanitizeEffectScore(reviewToEdit.sleepy),
                 calm: sanitizeEffectScore(reviewToEdit.calm),
                 clarity: sanitizeEffectScore(reviewToEdit.clarity),
+                uplifting: sanitizeEffectScore(reviewToEdit.uplifting),
+                focusAdhd: sanitizeEffectScore(reviewToEdit.focusAdhd),
+                anxiety: sanitizeEffectScore(reviewToEdit.anxiety),
+                moodBalance: sanitizeEffectScore(reviewToEdit.moodBalance),
+                appetite: sanitizeEffectScore(reviewToEdit.appetite),
+                femaleHealth: sanitizeEffectScore(reviewToEdit.femaleHealth),
+                muscleRelaxation: sanitizeEffectScore(reviewToEdit.muscleRelaxation),
+                creativity: sanitizeEffectScore(reviewToEdit.creativity),
+                painRelief: sanitizeEffectScore(reviewToEdit.painRelief),
 
                 backPain: sanitizeEffectScore(reviewToEdit.backPain),
                 jointPain: sanitizeEffectScore(reviewToEdit.jointPain),
@@ -1166,6 +1629,7 @@ export default function FlowerDetail() {
 
     const closeEditor = useCallback(() => {
         if (submitting) return;
+        Keyboard.dismiss();
         setEditorOpen(false);
         setEditingReviewId(null);
     }, [submitting]);
@@ -1178,6 +1642,23 @@ export default function FlowerDetail() {
         }
         if (!productId) return;
         if (isCooldown) return;
+        if (!reviewGuideAccepted && !editingReviewId) {
+            setEditorOpen(false);
+            setGuideAcknowledgeChecked(false);
+            setGuideGateOpen(true);
+            return;
+        }
+
+        try {
+            const next = await enforceRestrictionForUser(user.uid);
+            const msg = getRestrictionMessage(next.level, next.untilMs, next.manual);
+            if (msg) {
+                Alert.alert("Posting restricted", msg);
+                return;
+            }
+        } catch (e) {
+            console.log("restriction check failed:", e);
+        }
 
         setSubmitting(true);
 
@@ -1195,6 +1676,15 @@ export default function FlowerDetail() {
                 ["sleepy", sanitizeEffectScore(draft.sleepy)],
                 ["calm", sanitizeEffectScore(draft.calm)],
                 ["clarity", sanitizeEffectScore(draft.clarity)],
+                ["uplifting", sanitizeEffectScore(draft.uplifting)],
+                ["focusAdhd", sanitizeEffectScore(draft.focusAdhd)],
+                ["anxiety", sanitizeEffectScore(draft.anxiety)],
+                ["moodBalance", sanitizeEffectScore(draft.moodBalance)],
+                ["appetite", sanitizeEffectScore(draft.appetite)],
+                ["femaleHealth", sanitizeEffectScore(draft.femaleHealth)],
+                ["muscleRelaxation", sanitizeEffectScore(draft.muscleRelaxation)],
+                ["creativity", sanitizeEffectScore(draft.creativity)],
+                ["painRelief", sanitizeEffectScore(draft.painRelief)],
                 ["backPain", sanitizeEffectScore(draft.backPain)],
                 ["jointPain", sanitizeEffectScore(draft.jointPain)],
                 ["legPain", sanitizeEffectScore(draft.legPain)],
@@ -1213,10 +1703,17 @@ export default function FlowerDetail() {
                     .add({
                         ...payload,
                         helpfulCount: 0,
+                        reportCount: 0,
+                        moderationStatus: "active",
+                        authorDeleted: false,
                         createdAt: firestore.FieldValue.serverTimestamp(),
                     });
             }
 
+            Keyboard.dismiss();
+            setSortOpen(false);
+            setReportOpen(false);
+            setReportingReview(null);
             setEditorOpen(false);
             setEditingReviewId(null);
             startCooldown();
@@ -1226,11 +1723,21 @@ export default function FlowerDetail() {
         } finally {
             setSubmitting(false);
         }
-    }, [draft, editingReviewId, isCooldown, productId, sanitizeEffectScore, startCooldown]);
+    }, [
+        draft,
+        editingReviewId,
+        enforceRestrictionForUser,
+        getRestrictionMessage,
+        isCooldown,
+        productId,
+        reviewGuideAccepted,
+        sanitizeEffectScore,
+        startCooldown,
+    ]);
 
     /* -------------------- Delete -------------------- */
 
-    const deleteReview = useCallback(async (reviewId: string) => {
+    const deleteReview = useCallback(async (reviewId: string, mode: "owner" | "admin" = "owner") => {
         const user = auth().currentUser;
         if (!user) {
             Alert.alert("Sign in required", "Please sign in.");
@@ -1238,6 +1745,21 @@ export default function FlowerDetail() {
         }
 
         try {
+            if (mode === "admin") {
+                await firestore()
+                    .collection("reviews")
+                    .doc(reviewId)
+                    .set(
+                        {
+                            moderationStatus: "removed_admin",
+                            removedAtMs: Date.now(),
+                            updatedAt: firestore.FieldValue.serverTimestamp(),
+                        },
+                        { merge: true }
+                    );
+                return;
+            }
+
             await firestore().collection("reviews").doc(reviewId).delete();
         } catch (e: any) {
             console.log("deleteReview error:", e);
@@ -1252,7 +1774,7 @@ export default function FlowerDetail() {
 
             Alert.alert(title, msg, [
                 { text: "Cancel", style: "cancel" },
-                { text: "Delete", style: "destructive", onPress: () => deleteReview(reviewId) },
+                { text: "Delete", style: "destructive", onPress: () => deleteReview(reviewId, mode) },
             ]);
         },
         [deleteReview]
@@ -1270,10 +1792,14 @@ export default function FlowerDetail() {
         try {
             const reviewRef = firestore().collection("reviews").doc(reviewId);
             const myVoteRef = firestore().collection("users").doc(user.uid).collection("helpful").doc(reviewId);
+            const myUserRef = firestore().collection("users").doc(user.uid);
 
             await firestore().runTransaction(async (tx) => {
-                const reviewSnap = await tx.get(reviewRef);
-                const myVoteSnap = await tx.get(myVoteRef);
+                const [reviewSnap, myVoteSnap, myUserSnap] = await Promise.all([
+                    tx.get(reviewRef),
+                    tx.get(myVoteRef),
+                    tx.get(myUserRef),
+                ]);
 
                 if (!reviewSnap.exists) return;
 
@@ -1285,6 +1811,10 @@ export default function FlowerDetail() {
 
                 const currentCountRaw = typeof data?.helpfulCount === "number" ? data.helpfulCount : 0;
                 const currentCount = Number.isFinite(currentCountRaw) ? currentCountRaw : 0;
+                const myProfileData = (myUserSnap.data() as any) ?? {};
+                const myGivenRaw =
+                    typeof myProfileData?.helpfulGiven === "number" ? myProfileData.helpfulGiven : 0;
+                const myGiven = Number.isFinite(myGivenRaw) ? Math.max(0, myGivenRaw) : 0;
 
                 const alreadyVoted = myVoteSnap.exists();
 
@@ -1294,12 +1824,32 @@ export default function FlowerDetail() {
                         helpfulCount: Math.max(0, currentCount - 1),
                         updatedAt: firestore.FieldValue.serverTimestamp(),
                     });
+                    if (myUserSnap.exists()) {
+                        tx.set(
+                            myUserRef,
+                            {
+                                helpfulGiven: Math.max(0, myGiven - 1),
+                                updatedAt: firestore.FieldValue.serverTimestamp(),
+                            },
+                            { merge: true }
+                        );
+                    }
                 } else {
                     tx.set(myVoteRef, { reviewId, createdAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
                     tx.update(reviewRef, {
                         helpfulCount: currentCount + 1,
                         updatedAt: firestore.FieldValue.serverTimestamp(),
                     });
+                    if (myUserSnap.exists()) {
+                        tx.set(
+                            myUserRef,
+                            {
+                                helpfulGiven: myGiven + 1,
+                                updatedAt: firestore.FieldValue.serverTimestamp(),
+                            },
+                            { merge: true }
+                        );
+                    }
                 }
             });
         } catch (e: any) {
@@ -1314,6 +1864,10 @@ export default function FlowerDetail() {
         const user = auth().currentUser;
         if (!user) {
             Alert.alert("Sign in required", "Please sign in to report a review.");
+            return;
+        }
+        if (review.authorDeleted) {
+            Alert.alert("Not allowed", "This review author is already anonymised.");
             return;
         }
         if (review.userId && review.userId === user.uid) {
@@ -1340,51 +1894,117 @@ export default function FlowerDetail() {
             return;
         }
         if (!productId) return;
+        if (myReportedIds.has(reportingReview.id)) {
+            Alert.alert("Already reported", "You have already reported this review.");
+            return;
+        }
 
         setReportSubmitting(true);
 
         try {
             const reviewId = reportingReview.id;
+            const reportId = `${reviewId}_${user.uid}`;
+            const nowMs = Date.now();
 
-            await firestore().collection("reviewReports").add({
-                reviewId,
-                productId,
-                reportedUserId: reportingReview.userId,
-                reporterUserId: user.uid,
-                reason: reportReason,
-                note: reportNote.trim() ? reportNote.trim() : null,
-                createdAt: firestore.FieldValue.serverTimestamp(),
-                createdAtMs: Date.now(),
-            });
+            const reviewRef = firestore().collection("reviews").doc(reviewId);
+            const reportRef = firestore().collection("reviewReports").doc(reportId);
+            const myReportedRef = firestore().collection("users").doc(user.uid).collection("reportedReviews").doc(reviewId);
 
-            await firestore()
-                .collection("users")
-                .doc(user.uid)
-                .collection("reportedReviews")
-                .doc(reviewId)
-                .set(
+            const result = await firestore().runTransaction(async (tx) => {
+                const [reviewSnap, reportSnap] = await Promise.all([tx.get(reviewRef), tx.get(reportRef)]);
+                if (!reviewSnap.exists) {
+                    throw new Error("Review no longer exists.");
+                }
+
+                const reviewData = (reviewSnap.data() as any) ?? {};
+                const currentCount = typeof reviewData.reportCount === "number" ? reviewData.reportCount : 0;
+                const currentStatus = typeof reviewData.moderationStatus === "string" ? reviewData.moderationStatus : "active";
+
+                if (reportSnap.exists()) {
+                    return {
+                        alreadyReported: true,
+                        nextCount: currentCount,
+                        nextStatus: currentStatus,
+                    };
+                }
+
+                const nextCount = currentCount + 1;
+                let nextStatus = currentStatus;
+                const reviewPatch: any = {
+                    reportCount: nextCount,
+                    updatedAt: firestore.FieldValue.serverTimestamp(),
+                };
+
+                if (currentStatus !== "removed_auto" && currentStatus !== "removed_admin") {
+                    if (nextCount >= REPORT_AUTO_REMOVE_THRESHOLD) {
+                        nextStatus = "removed_auto";
+                        reviewPatch.moderationStatus = "removed_auto";
+                        reviewPatch.removedAtMs = nowMs;
+                    } else {
+                        nextStatus = "under_review";
+                        reviewPatch.moderationStatus = "under_review";
+                    }
+                }
+
+                tx.set(
+                    reportRef,
+                    {
+                        reviewId,
+                        productId,
+                        reportedUserId: reportingReview.userId,
+                        reporterUserId: user.uid,
+                        reason: reportReason,
+                        note: reportNote.trim() ? reportNote.trim() : null,
+                        createdAt: firestore.FieldValue.serverTimestamp(),
+                        createdAtMs: nowMs,
+                    },
+                    { merge: true }
+                );
+
+                tx.set(
+                    myReportedRef,
                     {
                         reviewId,
                         productId,
                         reason: reportReason,
                         note: reportNote.trim() ? reportNote.trim() : null,
                         createdAt: firestore.FieldValue.serverTimestamp(),
-                        createdAtMs: Date.now(),
+                        createdAtMs: nowMs,
                     },
                     { merge: true }
                 );
 
+                tx.set(reviewRef, reviewPatch, { merge: true });
+
+                return {
+                    alreadyReported: false,
+                    nextCount,
+                    nextStatus,
+                };
+            });
+
+            if (result.alreadyReported) {
+                Alert.alert("Already reported", "You have already reported this review.");
+                return;
+            }
+
             setReportOpen(false);
             setReportingReview(null);
 
-            Alert.alert("Reported", "Thanks. That review will be hidden for you.");
+            if (result.nextStatus === "removed_auto") {
+                Alert.alert("Reported", "Thanks. This review reached the report threshold and was automatically removed.");
+            } else if (result.nextStatus === "under_review") {
+                Alert.alert("Reported", "Thanks. This review is now under moderation review.");
+            } else {
+                Alert.alert("Reported", "Thanks. That review will be hidden for you.");
+            }
         } catch (e: any) {
             console.log("submitReport error:", e);
             Alert.alert("Could not report", getFriendlyReviewError(e, "report"));
         } finally {
             setReportSubmitting(false);
         }
-    }, [productId, reportNote, reportReason, reportingReview]);
+    }, [REPORT_AUTO_REMOVE_THRESHOLD, productId, reportNote, reportReason, reportingReview, myReportedIds]);
 
     /* -------------------- Header / Empty -------------------- */
 
@@ -1406,10 +2026,14 @@ export default function FlowerDetail() {
                     <Text style={{ fontSize: 44, fontWeight: "900", color: theme.colors.textOnDark, lineHeight: 46 }}>{product?.name ?? ""}</Text>
 
                     <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
-                        {safeName(product?.maker) ? `${product?.maker} · ` : ""}
-                        {product?.type ?? "flower"}
-                        {typeof product?.thcPct === "number" ? ` · THC ${formatPct(product?.thcPct)}` : ""}
-                        {typeof product?.cbdPct === "number" ? ` · CBD ${formatPct(product?.cbdPct)}` : ""}
+                        {[
+                            safeName(product?.maker) || null,
+                            formatStrainType(product?.strainType),
+                            typeof product?.thcPct === "number" ? `THC ${formatPct(product?.thcPct)}` : null,
+                            typeof product?.cbdPct === "number" ? `CBD ${formatPct(product?.cbdPct)}` : null,
+                        ]
+                            .filter(Boolean)
+                            .join(" · ")}
                     </Text>
 
                     <View style={{ marginTop: 14 }}>
@@ -1454,6 +2078,41 @@ export default function FlowerDetail() {
                         </View>
                     )}
 
+                    {communityNotes ? (
+                        <View style={{ marginTop: 16 }}>
+                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 18 }}>
+                                Community notes
+                            </Text>
+                            <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 20 }}>
+                                {communityNotes.detailLine}
+                            </Text>
+                            {communityNotes.chips.length > 0 ? (
+                                <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                                    {communityNotes.chips.slice(0, 6).map((chip) => (
+                                        <View
+                                            key={chip}
+                                            style={{
+                                                paddingVertical: 6,
+                                                paddingHorizontal: 10,
+                                                borderRadius: 999,
+                                                borderWidth: 1,
+                                                borderColor: "rgba(138,231,168,0.46)",
+                                                backgroundColor: "rgba(52,156,88,0.16)",
+                                            }}
+                                        >
+                                            <Text style={{ fontWeight: "800", color: "rgba(213,251,222,0.96)", fontSize: 12 }}>
+                                                {chip}
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            ) : null}
+                            <Text style={{ marginTop: 8, color: "rgba(206,232,219,0.78)", fontSize: 12, fontWeight: "700" }}>
+                                Based on {communityNotes.mentionsCount} review note{communityNotes.mentionsCount === 1 ? "" : "s"}.
+                            </Text>
+                        </View>
+                    ) : null}
+
                     <View style={{ marginTop: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                         <Text style={{ color: theme.colors.textOnDarkSecondary, fontWeight: "900" }}>
                             {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
@@ -1465,28 +2124,41 @@ export default function FlowerDetail() {
                     <Text style={{ marginTop: 18, fontSize: 28, fontWeight: "900", color: theme.colors.textOnDark }}>Summary of effects</Text>
 
                     <View style={{ marginTop: 10 }}>
-                        {[
-                            { label: "Daytime suitability", value: effectsSummary.daytimeAvg },
-                            { label: "Sleepiness", value: effectsSummary.sleepyAvg },
-                            { label: "Calm", value: effectsSummary.calmAvg },
-                            { label: "Mental clarity", value: effectsSummary.clarityAvg },
-                            { label: "Back pain relief", value: effectsSummary.backPainAvg },
-                            { label: "Joint pain relief", value: effectsSummary.jointPainAvg },
-                            { label: "Leg pain relief", value: effectsSummary.legPainAvg },
-                            { label: "Headache relief", value: effectsSummary.headacheReliefAvg },
-                            { label: "Racing thoughts relief", value: effectsSummary.racingThoughtsAvg },
-                        ].map((row) => (
+                        {(() => {
+                            const summaryByKey: Record<EffectKey, number> = {
+                                daytime: effectsSummary.daytimeAvg,
+                                sleepy: effectsSummary.sleepyAvg,
+                                calm: effectsSummary.calmAvg,
+                                clarity: effectsSummary.clarityAvg,
+                                uplifting: effectsSummary.upliftingAvg,
+                                focusAdhd: effectsSummary.focusAdhdAvg,
+                                anxiety: effectsSummary.anxietyAvg,
+                                moodBalance: effectsSummary.moodBalanceAvg,
+                                appetite: effectsSummary.appetiteAvg,
+                                femaleHealth: effectsSummary.femaleHealthAvg,
+                                muscleRelaxation: effectsSummary.muscleRelaxationAvg,
+                                creativity: effectsSummary.creativityAvg,
+                                painRelief: effectsSummary.painReliefAvg,
+                                backPain: effectsSummary.backPainAvg,
+                                jointPain: effectsSummary.jointPainAvg,
+                                legPain: effectsSummary.legPainAvg,
+                                headacheRelief: effectsSummary.headacheReliefAvg,
+                                racingThoughts: effectsSummary.racingThoughtsAvg,
+                            };
+
+                            return EFFECT_FIELDS.map((row) => (
                             <View key={row.label} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10 }}>
                                 <Text style={{ flex: 1, color: theme.colors.textOnDark, fontWeight: "900", fontSize: 18 }}>{row.label}</Text>
 
                                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                                    <BudRating value={row.value ? row.value : 0} size={16} />
+                                    <BudRating value={summaryByKey[row.key] ? summaryByKey[row.key] : 0} size={16} />
                                     <Text style={{ width: 44, textAlign: "right", color: theme.colors.textOnDark, fontWeight: "900", fontSize: 18 }}>
-                                        {round1(row.value)}
+                                        {round1(summaryByKey[row.key])}
                                     </Text>
                                 </View>
                             </View>
-                        ))}
+                            ));
+                        })()}
 
                         {effectsSummary.withAnySub > 0 ? (
                             <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary, fontWeight: "800" }}>
@@ -1498,8 +2170,13 @@ export default function FlowerDetail() {
 
                 <View style={{ height: 14 }} />
 
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 8, marginTop: 2 }}>
-                    <Text style={{ fontSize: 42, fontWeight: "800", color: "rgba(255,255,255,0.90)", letterSpacing: -0.4 }}>Reviews</Text>
+                <View style={styles.reviewsHeadingRow}>
+                    <View style={styles.reviewsTitleCard}>
+                        <View style={styles.reviewsTitleInner}>
+                            <Text style={styles.reviewsEyebrow}>Community</Text>
+                            <Text style={styles.reviewsTitle}>Reviews</Text>
+                        </View>
+                    </View>
 
                     <View ref={sortBtnRef as any}>
                         <Pressable
@@ -1511,27 +2188,56 @@ export default function FlowerDetail() {
                     </View>
                 </View>
 
+                <View style={styles.reviewSearchWrap}>
+                    <TextInput
+                        value={reviewSearchQuery}
+                        onChangeText={setReviewSearchQuery}
+                        placeholder="Search review notes and member names..."
+                        placeholderTextColor="rgba(255,255,255,0.45)"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        returnKeyType="search"
+                        style={styles.reviewSearchInput}
+                    />
+                    <View style={styles.reviewSearchFooter}>
+                        <Text style={styles.reviewSearchMeta}>
+                            {reviewSearchTokens.length === 0
+                                ? `Search across ${sortedReviews.length} review${sortedReviews.length === 1 ? "" : "s"}.`
+                                : `${filteredSortedReviews.length} match${filteredSortedReviews.length === 1 ? "" : "es"} found.`}
+                        </Text>
+                        {reviewSearchTokens.length > 0 ? (
+                            <Pressable
+                                onPress={() => setReviewSearchQuery("")}
+                                style={({ pressed }) => [styles.reviewSearchClearBtn, { opacity: pressed ? 0.9 : 1 }]}
+                            >
+                                <Text style={styles.reviewSearchClearText}>Clear</Text>
+                            </Pressable>
+                        ) : null}
+                    </View>
+                </View>
+
                 <View style={{ height: 12 }} />
 
                 <Pressable
                     onPress={openWriteNewReview}
                     disabled={isCooldown}
                     style={({ pressed }) => [
-                        styles.formBtnAlt,
+                        styles.formBtn,
                         {
-                            borderRadius: 26,
+                            borderRadius: 22,
                             opacity: isCooldown ? 0.45 : pressed ? 0.9 : 1,
                             transform: [{ scale: pressed ? 0.985 : 1 }],
                         },
                     ]}
                 >
-                    <Text style={[styles.formBtnText, { color: theme.colors.textOnDark, fontSize: 22 }]}>{isCooldown ? `Wait ${secondsLeft}s` : "Write a new review"}</Text>
+                    <Text style={[styles.formBtnText, { fontSize: 18 }]}>{isCooldown ? `Wait ${secondsLeft}s` : "Write a new review"}</Text>
                 </Pressable>
 
                 <View style={{ height: 14 }} />
             </View>
         );
     }, [
+        communityNotes,
         effectsSummary,
         isCooldown,
         favoriteSlots,
@@ -1545,10 +2251,14 @@ export default function FlowerDetail() {
         product?.type,
         reviews.length,
         robustProductScore,
+        reviewSearchQuery,
+        reviewSearchTokens.length,
         secondsLeft,
+        sortedReviews.length,
         sortLabel,
         terps,
         toggleFavoriteSlot,
+        filteredSortedReviews.length,
     ]);
 
     const EmptyState = useMemo(() => {
@@ -1579,6 +2289,34 @@ export default function FlowerDetail() {
             </View>
         );
     }, [isCooldown, openWriteNewReview, secondsLeft]);
+
+    const SearchEmptyState = useMemo(() => {
+        return (
+            <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+                <View style={styles.reviewCard}>
+                    <Text style={{ fontSize: 18, fontWeight: "900", color: theme.colors.textOnDark }}>No matches found</Text>
+                    <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, lineHeight: 20 }}>
+                        Try a different keyword from review notes, or search by member name.
+                    </Text>
+
+                    <View style={{ marginTop: 14 }}>
+                        <Pressable
+                            onPress={() => setReviewSearchQuery("")}
+                            style={({ pressed }) => [
+                                styles.formBtnAlt,
+                                {
+                                    opacity: pressed ? 0.9 : 1,
+                                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                                },
+                            ]}
+                        >
+                            <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Clear search</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </View>
+        );
+    }, []);
 
     /* -------------------- Loading / Not found -------------------- */
 
@@ -1717,19 +2455,7 @@ export default function FlowerDetail() {
 
                                     <Text style={[styles.editorSectionTitle, { marginTop: 16 }]}>Effects</Text>
 
-                                    {(
-                                        [
-                                            { label: "Daytime suitability", key: "daytime" as const },
-                                            { label: "Sleepiness", key: "sleepy" as const },
-                                            { label: "Calm", key: "calm" as const },
-                                            { label: "Mental clarity", key: "clarity" as const },
-                                            { label: "Back pain relief", key: "backPain" as const },
-                                            { label: "Joint pain relief", key: "jointPain" as const },
-                                            { label: "Leg pain relief", key: "legPain" as const },
-                                            { label: "Headache relief", key: "headacheRelief" as const },
-                                            { label: "Racing thoughts relief", key: "racingThoughts" as const },
-                                        ] as Array<{ label: string; key: EffectKey }>
-                                    ).map((row) => {
+                                    {EFFECT_FIELDS.map((row) => {
                                         const v = ((draft as any)[row.key] ?? null) as number | null;
 
                                         return (
@@ -1740,6 +2466,12 @@ export default function FlowerDetail() {
                                                         {v === null ? "—" : v}
                                                     </Text>
                                                 </View>
+
+                                                {EFFECT_HINTS[row.key] ? (
+                                                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 17 }}>
+                                                        {EFFECT_HINTS[row.key]}
+                                                    </Text>
+                                                ) : null}
 
                                                 <View style={{ marginTop: 10 }}>
                                                     <BudSelectRow value={v} onChange={(n) => setDraft((p) => ({ ...p, [row.key]: n } as any))} />
@@ -1785,6 +2517,171 @@ export default function FlowerDetail() {
                                 </View>
                             </KeyboardAvoidingView>
                         </SafeAreaView>
+                    </View>
+                </Modal>
+
+                {/* Review guide gate (required once before posting) */}
+                <Modal
+                    visible={guideGateOpen}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => {
+                        if (guideSaving) return;
+                        setGuideGateOpen(false);
+                    }}
+                >
+                    <View style={{ flex: 1, justifyContent: "flex-end" }}>
+                        <Pressable
+                            onPress={() => {
+                                if (guideSaving) return;
+                                setGuideGateOpen(false);
+                            }}
+                            style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.45)" }]}
+                        />
+                        <View style={styles.reportSheetOuter}>
+                            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={24}>
+                                <ScrollView
+                                    style={{ maxHeight: Dimensions.get("window").height * 0.82 }}
+                                    contentContainerStyle={styles.reportSheetInner}
+                                    showsVerticalScrollIndicator={false}
+                                    keyboardShouldPersistTaps="handled"
+                                >
+                                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                        <Text style={{ fontSize: 24, fontWeight: "900", color: theme.colors.textOnDark, flex: 1 }}>
+                                            Before you write a review
+                                        </Text>
+                                        <Pressable
+                                            onPress={() => {
+                                                if (guideSaving) return;
+                                                setGuideGateOpen(false);
+                                            }}
+                                            style={({ pressed }) => ({
+                                                width: 44,
+                                                height: 44,
+                                                borderRadius: 22,
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                backgroundColor: "rgba(255,255,255,0.10)",
+                                                borderWidth: 1,
+                                                borderColor: "rgba(255,255,255,0.14)",
+                                                opacity: pressed ? 0.9 : 1,
+                                            })}
+                                        >
+                                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>✕</Text>
+                                        </Pressable>
+                                    </View>
+
+                                    <Text style={{ marginTop: 10, color: theme.colors.textOnDarkSecondary, lineHeight: 20 }}>
+                                        Score only what this flower actually helped. Leave other effects blank.
+                                    </Text>
+
+                                    <View style={{ marginTop: 12, gap: 10 }}>
+                                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                                            1. Overall rating (required)
+                                        </Text>
+                                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 19 }}>
+                                            Rate quality and real-world value: bud quality, moisture, flavour, effect consistency, and whether you'd use it again.
+                                        </Text>
+
+                                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", marginTop: 4 }}>
+                                            2. Use effects carefully
+                                        </Text>
+                                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 19 }}>
+                                            Avoid contradictory scoring. Example: very high couch lock should not also be high daytime suitability.
+                                        </Text>
+
+                                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", marginTop: 4 }}>
+                                            3. Helpful examples
+                                        </Text>
+                                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 19 }}>
+                                            Daytime: focus, function, getting tasks done.{"\n"}
+                                            Couch lock / sleepiness: heavy sedation, unwind, evening use.{"\n"}
+                                            Calm / anxiety relief: less racing thoughts, less paranoia.{"\n"}
+                                            Appetite (munchies): stronger hunger drive after use.
+                                        </Text>
+
+                                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", marginTop: 4 }}>
+                                            4. Your notes help everyone
+                                        </Text>
+                                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 19 }}>
+                                            Mention timing, dose context, and what stood out. We use review text trends to improve cards and discovery.
+                                        </Text>
+                                    </View>
+
+                                    <Pressable
+                                        onPress={() => setGuideAcknowledgeChecked((v) => !v)}
+                                        style={({ pressed }) => ({
+                                            marginTop: 16,
+                                            padding: 12,
+                                            borderRadius: 14,
+                                            borderWidth: 1,
+                                            borderColor: guideAcknowledgeChecked ? "rgba(138,231,168,0.55)" : "rgba(255,255,255,0.18)",
+                                            backgroundColor: guideAcknowledgeChecked ? "rgba(52,156,88,0.22)" : "rgba(255,255,255,0.08)",
+                                            opacity: pressed ? 0.9 : 1,
+                                            flexDirection: "row",
+                                            alignItems: "center",
+                                        })}
+                                    >
+                                        <View
+                                            style={{
+                                                width: 20,
+                                                height: 20,
+                                                borderRadius: 5,
+                                                borderWidth: 1,
+                                                borderColor: "rgba(255,255,255,0.35)",
+                                                backgroundColor: guideAcknowledgeChecked ? "rgba(138,231,168,0.95)" : "transparent",
+                                                marginRight: 10,
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                            }}
+                                        >
+                                            {guideAcknowledgeChecked ? (
+                                                <Text style={{ color: "rgba(19,33,17,0.95)", fontWeight: "900" }}>✓</Text>
+                                            ) : null}
+                                        </View>
+                                        <Text style={{ flex: 1, color: theme.colors.textOnDark, fontWeight: "800", lineHeight: 19 }}>
+                                            I have read and understood how to score reviews properly.
+                                        </Text>
+                                    </Pressable>
+
+                                    <View style={{ flexDirection: "row", marginTop: 14 }}>
+                                        <Pressable
+                                            onPress={() => {
+                                                setGuideGateOpen(false);
+                                                router.push("/(tabs)/user/reviews-info");
+                                            }}
+                                            disabled={guideSaving}
+                                            style={({ pressed }) => [
+                                                styles.formBtnAlt,
+                                                {
+                                                    marginRight: 10,
+                                                    flex: 1,
+                                                    opacity: guideSaving ? 0.45 : pressed ? 0.9 : 1,
+                                                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                                                },
+                                            ]}
+                                        >
+                                            <Text style={[styles.formBtnText, { color: theme.colors.textOnDark }]}>Open full guide</Text>
+                                        </Pressable>
+
+                                        <Pressable
+                                            onPress={acceptGuideAndContinue}
+                                            disabled={guideSaving || !guideAcknowledgeChecked}
+                                            style={({ pressed }) => [
+                                                styles.formBtn,
+                                                {
+                                                    flex: 1,
+                                                    opacity: guideSaving || !guideAcknowledgeChecked ? 0.45 : pressed ? 0.9 : 1,
+                                                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                                                },
+                                            ]}
+                                        >
+                                            <Text style={styles.formBtnText}>{guideSaving ? "Saving..." : "Continue"}</Text>
+                                        </Pressable>
+                                    </View>
+                                </ScrollView>
+                            </KeyboardAvoidingView>
+                        </View>
                     </View>
                 </Modal>
 
@@ -1877,7 +2774,7 @@ export default function FlowerDetail() {
                                         <Pressable
                                             onPress={submitReport}
                                             style={({ pressed }) => [
-                                                styles.formBtn,
+                                                styles.formBtnWarn,
                                                 {
                                                     flex: 1,
                                                     opacity: reportSubmitting ? 0.45 : pressed ? 0.9 : 1,
@@ -1886,7 +2783,7 @@ export default function FlowerDetail() {
                                             ]}
                                             disabled={reportSubmitting}
                                         >
-                                            <Text style={styles.formBtnText}>{reportSubmitting ? "Submitting..." : "Submit report"}</Text>
+                                            <Text style={[styles.formBtnText, { color: "rgba(34,24,8,0.98)" }]}>{reportSubmitting ? "Submitting..." : "Submit report"}</Text>
                                         </Pressable>
                                     </View>
                                 </View>
@@ -1898,7 +2795,7 @@ export default function FlowerDetail() {
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}>
                     <FlatList
                         removeClippedSubviews={false}
-                        data={sortedReviews}
+                        data={filteredSortedReviews}
                         keyExtractor={(r) => r.id}
                         keyboardShouldPersistTaps="handled"
                         onScrollBeginDrag={() => {
@@ -1907,30 +2804,49 @@ export default function FlowerDetail() {
                         }}
                         contentContainerStyle={{ paddingTop: TOP_PAD, paddingBottom: bottomSpace }}
                         ListHeaderComponent={Header}
-                        ListEmptyComponent={loadingReviews ? null : EmptyState}
+                        ListEmptyComponent={loadingReviews ? null : reviewSearchTokens.length > 0 ? SearchEmptyState : EmptyState}
                         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
                         renderItem={({ item: review }) => {
                             const isMine = !!currentUid && review.userId === currentUid;
                             const hasVoted = !!currentUid && myHelpfulIds.has(review.id);
                             const canVote = !!currentUid && !isMine;
+                            const authorName = review.authorDeleted ? "Deleted user" : displayNameForUid(review.userId);
 
-                            const chips = [
-                                { label: "Daytime", value: review.daytime },
-                                { label: "Sleepy", value: review.sleepy },
-                                { label: "Calm", value: review.calm },
-                                { label: "Clarity", value: review.clarity },
-                                { label: "Back pain", value: review.backPain },
-                                { label: "Joint pain", value: review.jointPain },
-                                { label: "Leg pain", value: review.legPain },
-                                { label: "Headache", value: review.headacheRelief },
-                                { label: "Racing thoughts", value: review.racingThoughts },
-                            ].filter((e) => typeof e.value === "number" && (e.value as number) >= 1 && (e.value as number) <= 5);
+                            const chips = EFFECT_FIELDS
+                                .map((field) => ({
+                                    label: field.chipLabel ?? field.label,
+                                    value: (review as any)[field.key] as number | null | undefined,
+                                }))
+                                .filter((e) => typeof e.value === "number" && (e.value as number) >= 1 && (e.value as number) <= 5)
+                                .sort((a, b) => (b.value as number) - (a.value as number))
+                                .slice(0, 8);
 
                             return (
                                 <View style={styles.reviewItem}>
                                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
                                         <View style={{ flex: 1 }}>
-                                            <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, fontSize: 16 }}>{displayNameForUid(review.userId)}</Text>
+                                            {review.authorDeleted || !review.userId ? (
+                                                <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, fontSize: 16 }}>{authorName}</Text>
+                                            ) : (
+                                                <Pressable
+                                                    onPress={() => router.push(`/(tabs)/user/profile/${encodeURIComponent(review.userId)}`)}
+                                                    style={({ pressed }) => ({
+                                                        alignSelf: "flex-start",
+                                                        opacity: pressed ? 0.82 : 1,
+                                                    })}
+                                                >
+                                                    <Text
+                                                        style={{
+                                                            fontWeight: "900",
+                                                            color: theme.colors.textOnDark,
+                                                            fontSize: 16,
+                                                            textDecorationLine: "underline",
+                                                        }}
+                                                    >
+                                                        {authorName}
+                                                    </Text>
+                                                </Pressable>
+                                            )}
                                             <Text style={{ marginTop: 4, color: theme.colors.textOnDarkSecondary, fontSize: 13 }}>{new Date(getCreatedAtMs(review)).toLocaleDateString()}</Text>
                                         </View>
 
@@ -1980,7 +2896,7 @@ export default function FlowerDetail() {
                                             ) : null}
                                         </Pressable>
 
-                                        {!isMine ? (
+                                        {!isMine && !review.authorDeleted ? (
                                             <Pressable
                                                 onPress={() => openReport(review)}
                                                 style={({ pressed }) => [styles.reportPill, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }]}

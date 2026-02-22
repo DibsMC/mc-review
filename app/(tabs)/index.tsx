@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Alert, ImageBackground, Linking, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
 import { HomeCard } from "../../components/home/HomeCard";
 import { buildHomeCards } from "../../components/home/homeFeed";
-import { AmbientBackground } from "../../components/home/AmbientBackground";
 import { SkeletonCard } from "../../components/home/SkeletonCard";
 import { getFirebaseFirestore } from "../../lib/nativeDeps";
 
@@ -40,15 +39,23 @@ function clampSnippet(s: string, maxLen = 110) {
   return t.length > maxLen ? t.slice(0, maxLen - 1) + "…" : t;
 }
 
+const homeBackground = require("../../assets/images/home-bg.png");
+
 export default function HomeScreen() {
   const router = useRouter();
-  const { height: windowH } = useWindowDimensions();
+  const { height: windowH, width: windowW } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const firestore = getFirebaseFirestore();
 
   if (!firestore) {
     return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <AmbientBackground />
+      <SafeAreaView style={styles.screen}>
+        <ImageBackground
+          source={homeBackground}
+          resizeMode="cover"
+          style={StyleSheet.absoluteFill}
+        />
+        <View pointerEvents="none" style={styles.backgroundScrim} />
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
           <Text style={{ color: "white", fontSize: 18, fontWeight: "700", textAlign: "center" }}>
             Unable to start Home
@@ -329,17 +336,17 @@ export default function HomeScreen() {
 
   const handlers = useMemo(
     () => ({
-      goToNewReviews: () => router.push("/(tabs)/reviews"),
-      goToNewFlowers: () => router.push("/(tabs)/reviews"),
+      goToNewReviews: () => router.navigate("/(tabs)/reviews"),
+      goToNewFlowers: () => router.navigate("/(tabs)/reviews"),
       goToUpdatedReviews: () =>
         input.updatedProductId
-          ? router.push(`/(tabs)/reviews/${encodeURIComponent(input.updatedProductId)}`)
-          : router.push("/(tabs)/reviews"),
+          ? router.navigate(`/(tabs)/reviews/${encodeURIComponent(input.updatedProductId)}`)
+          : router.navigate("/(tabs)/reviews"),
       goToFlower: (productId: string) =>
-        router.push(`/(tabs)/reviews/${encodeURIComponent(productId)}`),
+        router.navigate(`/(tabs)/reviews/${encodeURIComponent(productId)}`),
       goToBadgeOwner: (uid?: string) => {
         if (!uid) return;
-        router.push(`/(tabs)/user/profile/${uid}`);
+        router.navigate(`/(tabs)/user/profile/${uid}`);
       },
       openMcStock: async () => {
         const url = "https://medbud.wiki/";
@@ -359,25 +366,50 @@ export default function HomeScreen() {
   const reviewCountDisplay = reviewCountLoading
     ? "------"
     : String(Math.max(0, reviewCount)).padStart(6, "0");
+  const tabletLayout = windowW >= 768;
+  const widePhoneLayout = windowW >= 430 && windowW < 768;
   const compactLayout = windowH < 830;
+  const horizontalPadding = tabletLayout ? 28 : widePhoneLayout ? 22 : 18;
+  const contentMaxWidth = tabletLayout ? 860 : widePhoneLayout ? 560 : 520;
+  const bottomPad = Math.max(insets.bottom + (tabletLayout ? 84 : compactLayout ? 120 : 110), 108);
 
   return (
     <View style={styles.screen}>
-      <AmbientBackground />
+      <ImageBackground
+        source={homeBackground}
+        resizeMode="cover"
+        style={StyleSheet.absoluteFill}
+      />
+      <View pointerEvents="none" style={styles.backgroundScrim} />
       <View pointerEvents="none" style={styles.topGloss} />
 
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={[styles.content, { paddingBottom: compactLayout ? 10 : 14 }]}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            {
+              width: "100%",
+              alignSelf: "center",
+              maxWidth: contentMaxWidth,
+              paddingHorizontal: horizontalPadding,
+              paddingBottom: bottomPad,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces
+        >
 
-          <View style={[styles.header, compactLayout ? styles.headerCompact : null]}>
-            <Text style={[styles.titleCompact, compactLayout ? styles.titleCompactSmall : null]}>Community updates ✨</Text>
-            <Text style={[styles.headerSub, compactLayout ? styles.headerSubCompact : null]}>
+          <View style={[styles.header, compactLayout ? styles.headerCompact : null, tabletLayout ? styles.headerTablet : null]}>
+            <Text style={[styles.titleCompact, compactLayout ? styles.titleCompactSmall : null, tabletLayout ? styles.titleCompactTablet : null]}>
+              Community updates ✨
+            </Text>
+            <Text style={[styles.headerSub, compactLayout ? styles.headerSubCompact : null, tabletLayout ? styles.headerSubTablet : null]}>
               Fresh reviews, trends and stock at a glance.
             </Text>
           </View>
 
-          <View style={[styles.cardsFrame, compactLayout ? styles.cardsFrameCompact : null]}>
-            <View style={[styles.stack, compactLayout ? styles.stackCompact : null]}>
+          <View style={[styles.cardsFrame, compactLayout ? styles.cardsFrameCompact : null, tabletLayout ? styles.cardsFrameTablet : null]}>
+            <View style={[styles.stack, compactLayout ? styles.stackCompact : null, tabletLayout ? styles.stackTablet : null]}>
               {loading ? (
                 <>
                   <SkeletonCard />
@@ -392,22 +424,26 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <View style={[styles.counterWrap, compactLayout ? styles.counterWrapCompact : null]}>
-            <Text style={styles.counterLabel}>Community reviews</Text>
-            <View style={styles.counterShell}>
-              <Text style={styles.counterDigits}>{reviewCountDisplay}</Text>
+          <View style={[styles.counterWrap, compactLayout ? styles.counterWrapCompact : null, tabletLayout ? styles.counterWrapTablet : null]}>
+            <Text style={[styles.counterLabel, tabletLayout ? styles.counterLabelTablet : null]}>Community reviews</Text>
+            <View style={[styles.counterShell, tabletLayout ? styles.counterShellTablet : null]}>
+              <Text style={[styles.counterDigits, tabletLayout ? styles.counterDigitsTablet : null]}>{reviewCountDisplay}</Text>
             </View>
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "transparent" },
+  screen: { flex: 1, backgroundColor: "#0A0B0F" },
+  backgroundScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(4, 8, 16, 0.60)",
+  },
   safe: { flex: 1 },
-  content: { flex: 1, paddingTop: 10, paddingHorizontal: 18, paddingBottom: 12 },
+  content: { paddingTop: 10, paddingHorizontal: 18 },
   topGloss: {
     position: "absolute",
     top: -120,
@@ -422,6 +458,9 @@ const styles = StyleSheet.create({
     minHeight: 0,
     marginBottom: 6,
   },
+  headerTablet: {
+    marginBottom: 16,
+  },
   titleCompact: {
     fontSize: 34,
     fontWeight: "900",
@@ -435,6 +474,10 @@ const styles = StyleSheet.create({
     fontSize: 30,
     lineHeight: 36,
   },
+  titleCompactTablet: {
+    fontSize: 44,
+    lineHeight: 50,
+  },
   headerSub: {
     marginTop: 6,
     color: "rgba(255,255,255,0.72)",
@@ -445,6 +488,11 @@ const styles = StyleSheet.create({
   headerSubCompact: {
     marginTop: 4,
     fontSize: 12,
+  },
+  headerSubTablet: {
+    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 21,
   },
   title: {
     fontSize: 44,
@@ -476,6 +524,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 4,
   },
+  cardsFrameTablet: {
+    borderRadius: 28,
+    padding: 7,
+  },
   section: {
     marginTop: 16,
     marginBottom: 10,
@@ -487,6 +539,7 @@ const styles = StyleSheet.create({
   },
   stack: { gap: 12 },
   stackCompact: { gap: 10 },
+  stackTablet: { gap: 14 },
   counterWrap: {
     marginTop: 8,
     alignItems: "center",
@@ -496,6 +549,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingHorizontal: 44,
   },
+  counterWrapTablet: {
+    marginTop: 14,
+    paddingHorizontal: 0,
+  },
   counterLabel: {
     color: "rgba(255,204,120,0.94)",
     fontSize: 10,
@@ -503,6 +560,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
     textTransform: "uppercase",
     marginBottom: 6,
+  },
+  counterLabelTablet: {
+    fontSize: 11,
+    letterSpacing: 1.3,
   },
   counterShell: {
     alignSelf: "center",
@@ -520,6 +581,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
+  counterShellTablet: {
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
   counterDigits: {
     color: "rgba(255,192,84,0.99)",
     fontSize: 24,
@@ -528,5 +594,9 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     textShadowColor: "rgba(255,180,70,0.42)",
     textShadowRadius: 2,
+  },
+  counterDigitsTablet: {
+    fontSize: 28,
+    letterSpacing: 4.8,
   },
 });

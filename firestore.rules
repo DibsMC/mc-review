@@ -15,6 +15,65 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
+    function userRoleFieldsUnchanged() {
+      return request.resource.data.isAdmin == resource.data.isAdmin
+        && request.resource.data.accountDisabled == resource.data.accountDisabled
+        && request.resource.data.reviewRestrictionLevel == resource.data.reviewRestrictionLevel
+        && request.resource.data.reviewRestrictionUntilMs == resource.data.reviewRestrictionUntilMs
+        && request.resource.data.reviewRestrictionManual == resource.data.reviewRestrictionManual
+        && request.resource.data.lastEscalationRemovedTotal == resource.data.lastEscalationRemovedTotal;
+    }
+
+    function reviewIdentityUnchanged() {
+      return request.resource.data.userId == resource.data.userId
+        && request.resource.data.productId == resource.data.productId
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function ownerReviewModerationFieldsUnchanged() {
+      return request.resource.data.helpfulCount == resource.data.helpfulCount
+        && request.resource.data.reportCount == resource.data.reportCount
+        && request.resource.data.moderationStatus == resource.data.moderationStatus
+        && request.resource.data.authorDeleted == resource.data.authorDeleted
+        && request.resource.data.removedAtMs == resource.data.removedAtMs;
+    }
+
+    function nonOwnerReviewUpdateIsSafe() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "helpfulCount",
+          "reportCount",
+          "moderationStatus",
+          "removedAtMs",
+          "updatedAt"
+        ])
+        && (
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(["helpfulCount"])
+          || (
+            request.resource.data.helpfulCount is number
+            && request.resource.data.helpfulCount >= 0
+          )
+        )
+        && (
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(["reportCount"])
+          || (
+            request.resource.data.reportCount is number
+            && request.resource.data.reportCount >= 0
+          )
+        )
+        && (
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(["moderationStatus"])
+          || (
+            request.resource.data.moderationStatus in ["active", "under_review", "removed_auto", "removed_admin"]
+            && request.resource.data.moderationStatus != "removed_admin"
+            && (
+              request.resource.data.moderationStatus == resource.data.moderationStatus
+              || (request.resource.data.moderationStatus == "under_review" && request.resource.data.reportCount >= 1)
+              || (request.resource.data.moderationStatus == "removed_auto" && request.resource.data.reportCount >= 5)
+            )
+          )
+        );
+    }
+
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -24,23 +83,46 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       allow create: if isSelf(uid)
-        && request.resource.data.isAdmin == false;
+        && request.resource.data.isAdmin == false
+        && request.resource.data.accountDisabled != true;
 
-      allow update: if isSelf(uid)
-        && request.resource.data.isAdmin == resource.data.isAdmin;
+      allow update: if isAdmin()
+        || (
+          isSelf(uid)
+          && userRoleFieldsUnchanged()
+        );
 
       allow delete: if isSelf(uid) || isAdmin();
 
       match /helpful/{reviewId} {
-        allow read, write: if isSelf(uid);
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isSelf(uid) || isAdmin();
       }
 
       match /reportedReviews/{reviewId} {
-        allow read, write: if isSelf(uid);
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isSelf(uid) || isAdmin();
       }
 
       match /favorites/{productId} {
-        allow read, write: if isSelf(uid);
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isSelf(uid) || isAdmin();
+      }
+
+      // Legacy typo support for older data paths.
+      match /favourites/{productId} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isSelf(uid) || isAdmin();
+      }
+
+      match /following/{targetUid} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isSelf(uid) || isAdmin();
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isSelf(uid) || isAdmin();
       }
     }
 
@@ -54,15 +136,41 @@ service cloud.firestore {
         && request.resource.data.rating >= 1
         && request.resource.data.rating <= 5;
 
-      allow update: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+          && reviewIdentityUnchanged()
+          && ownerReviewModerationFieldsUnchanged()
+        )
+        || (
+          isSignedIn()
+          && resource.data.userId != request.auth.uid
+          && reviewIdentityUnchanged()
+          && nonOwnerReviewUpdateIsSafe()
+        );
 
       allow delete: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
     }
 
     match /reviewReports/{reportId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && (resource == null || resource.data.reporterUserId == request.auth.uid));
       allow create: if isSignedIn()
         && request.resource.data.reporterUserId == request.auth.uid;
-      allow read, update, delete: if isAdmin();
+      allow update: if isSignedIn()
+        && resource.data.reporterUserId == request.auth.uid
+        && request.resource.data.reporterUserId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /adminBanLog/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /bannedEmails/{emailKey} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }

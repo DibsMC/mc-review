@@ -8,8 +8,13 @@ export default function TabsLayout() {
   return (
     <AppBackground>
       <Tabs
+        detachInactiveScreens
         screenOptions={{
           headerShown: false,
+          sceneStyle: {
+            backgroundColor: theme.colors.appBgSolid,
+          },
+          freezeOnBlur: true,
           tabBarStyle: {
             backgroundColor: theme.colors.appBgSolid,
             borderTopColor: theme.colors.dividerOnDark,
@@ -32,6 +37,7 @@ export default function TabsLayout() {
           name="reviews"
           options={{
             title: "Reviews",
+            popToTopOnBlur: true,
             tabBarIcon: ({ size }) => (
               <Image
                 source={require("../../assets/icons/bud.png")}

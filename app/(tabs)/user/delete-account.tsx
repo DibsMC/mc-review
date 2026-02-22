@@ -63,6 +63,26 @@ export default function DeleteAccountScreen() {
         }
     };
 
+    const anonymiseReviewsByUser = async (uid: string) => {
+        const deletedUserId = `deleted:${uid}`;
+        while (true) {
+            const snap = await firestore().collection("reviews").where("userId", "==", uid).limit(200).get();
+            if (snap.empty) break;
+
+            const batch = firestore().batch();
+            snap.docs.forEach((d) => {
+                batch.update(d.ref, {
+                    userId: deletedUserId,
+                    authorDeleted: true,
+                    updatedAt: firestore.FieldValue.serverTimestamp(),
+                    anonymisedAtMs: Date.now(),
+                });
+            });
+            await batch.commit();
+            if (snap.size < 200) break;
+        }
+    };
+
     const purgeUserDataBestEffort = async (uid: string) => {
         // Keep this tolerant: auth delete should still succeed even if a collection is blocked by rules.
         const runSafely = async (fn: () => Promise<void>) => {
@@ -73,14 +93,16 @@ export default function DeleteAccountScreen() {
             }
         };
 
-        setStatusText("Removing your reviews...");
+        setStatusText("Anonymising your reviews...");
         await runSafely(async () => {
-            await deleteDocsByQuery(firestore().collection("reviews").where("userId", "==", uid));
+            await anonymiseReviewsByUser(uid);
         });
 
         setStatusText("Removing votes and reports...");
         await runSafely(async () => deleteDocsInSubcollection(uid, "helpful"));
         await runSafely(async () => deleteDocsInSubcollection(uid, "reportedReviews"));
+        await runSafely(async () => deleteDocsInSubcollection(uid, "notifications"));
+        await runSafely(async () => deleteDocsInSubcollection(uid, "following"));
 
         setStatusText("Removing favourites...");
         await runSafely(async () => deleteDocsInSubcollection(uid, "favorites"));
@@ -150,6 +172,10 @@ export default function DeleteAccountScreen() {
 
                     <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 10, lineHeight: 22 }}>
                         If prompted, you may need to sign in again before deletion can complete.
+                    </Text>
+
+                    <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: 10, lineHeight: 22 }}>
+                        Self-delete does not add your email to the app's banned list.
                     </Text>
 
                     {deleting && statusText ? (

@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "backfill:emails": "node scripts/backfill-user-emails.mjs",
+    "backfill:stats": "node scripts/backfill-user-stats.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

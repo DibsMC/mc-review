@@ -1,9 +1,11 @@
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
     Image,
+    ImageSourcePropType,
+    ImageBackground,
     Linking,
     Modal,
     Pressable,
@@ -18,14 +20,16 @@ import { theme } from "../../../lib/theme";
 import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 
 const budImg = require("../../../assets/icons/bud.png");
+const userBackground = require("../../../assets/images/user-bg.png");
 
 type AvatarOption = {
     id: string;
-    emoji: string;
     label: string;
+    emoji?: string;
+    image?: ImageSourcePropType;
 };
 
-const AVATARS: AvatarOption[] = [
+const EMOJI_AVATARS: AvatarOption[] = [
     { id: "leaf", emoji: "🍃", label: "Leaf" },
     { id: "herb", emoji: "🌿", label: "Herb" },
     { id: "cloud", emoji: "💨", label: "Cloud" },
@@ -48,6 +52,161 @@ const AVATARS: AvatarOption[] = [
     { id: "juice", emoji: "🧃", label: "Juice" },
 ];
 
+const BAKED_AVATARS: AvatarOption[] = [
+    {
+        id: "baked-chilled-cheetah",
+        label: "Baked Chilled Cheetah",
+        image: require("../../../assets/avatars/baked-animals/baked-chilled-cheeta.png"),
+    },
+    {
+        id: "baked-contemplative-frog",
+        label: "Baked Contemplative Frog",
+        image: require("../../../assets/avatars/baked-animals/baked-contemplative-frog.png"),
+    },
+    {
+        id: "baked-corporate-sloth",
+        label: "Baked Corporate Sloth",
+        image: require("../../../assets/avatars/baked-animals/baked-corporate-sloth.png"),
+    },
+    {
+        id: "baked-cunning-fox",
+        label: "Baked Cunning Fox",
+        image: require("../../../assets/avatars/baked-animals/baked-cunning-fox.png"),
+    },
+    {
+        id: "baked-dino",
+        label: "Baked Dino",
+        image: require("../../../assets/avatars/baked-animals/baked-dino.png"),
+    },
+    {
+        id: "baked-dj-meerkat",
+        label: "Baked DJ Meerkat",
+        image: require("../../../assets/avatars/baked-animals/baked-dj-meerkat.png"),
+    },
+    {
+        id: "baked-ginger-cat",
+        label: "Baked Ginger Cat",
+        image: require("../../../assets/avatars/baked-animals/baked-ginger-cat.png"),
+    },
+    {
+        id: "baked-goat",
+        label: "Baked Goat",
+        image: require("../../../assets/avatars/baked-animals/baked-goat.png"),
+    },
+    {
+        id: "baked-gorilla",
+        label: "Baked Gorilla",
+        image: require("../../../assets/avatars/baked-animals/baked-gorrilla.png"),
+    },
+    {
+        id: "baked-grumpy-badger",
+        label: "Baked Grumpy Badger",
+        image: require("../../../assets/avatars/baked-animals/baked-grumpy-badger.png"),
+    },
+    {
+        id: "baked-kangaroo",
+        label: "Baked Kangaroo",
+        image: require("../../../assets/avatars/baked-animals/baked-kangaroo.png"),
+    },
+    {
+        id: "baked-lion",
+        label: "Baked Lion",
+        image: require("../../../assets/avatars/baked-animals/baked-lion.png"),
+    },
+    {
+        id: "baked-lizard",
+        label: "Baked Lizard",
+        image: require("../../../assets/avatars/baked-animals/baked-lizard.png"),
+    },
+    {
+        id: "baked-octopus",
+        label: "Baked Octopus",
+        image: require("../../../assets/avatars/baked-animals/baked-octopus.png"),
+    },
+    {
+        id: "baked-overconfident-parrot",
+        label: "Baked Overconfident Parrot",
+        image: require("../../../assets/avatars/baked-animals/baked-over-confident-parot.png"),
+    },
+    {
+        id: "baked-panda",
+        label: "Baked Panda",
+        image: require("../../../assets/avatars/baked-animals/baked-panda.png"),
+    },
+    {
+        id: "baked-peppa",
+        label: "Baked Peppa",
+        image: require("../../../assets/avatars/baked-animals/baked-peppa.png"),
+    },
+    {
+        id: "baked-pixie",
+        label: "Baked Pixie",
+        image: require("../../../assets/avatars/baked-animals/baked-pixie.png"),
+    },
+    {
+        id: "baked-rabbit",
+        label: "Baked Rabbit",
+        image: require("../../../assets/avatars/baked-animals/baked-rabbit.png"),
+    },
+    {
+        id: "baked-raccoon",
+        label: "Baked Raccoon",
+        image: require("../../../assets/avatars/baked-animals/baked-racoon.png"),
+    },
+    {
+        id: "baked-rasta-dog",
+        label: "Baked Rasta Dog",
+        image: require("../../../assets/avatars/baked-animals/baked-rasta-dog.png"),
+    },
+    {
+        id: "baked-rhino-soldier",
+        label: "Baked Rhino Soldier",
+        image: require("../../../assets/avatars/baked-animals/baked-rhino-soldier.png"),
+    },
+    {
+        id: "baked-robot",
+        label: "Baked Robot",
+        image: require("../../../assets/avatars/baked-animals/baked-robot.png"),
+    },
+    {
+        id: "baked-scorpion",
+        label: "Baked Scorpion",
+        image: require("../../../assets/avatars/baked-animals/baked-scorpion.png"),
+    },
+    {
+        id: "baked-sloth",
+        label: "Baked Sloth",
+        image: require("../../../assets/avatars/baked-animals/baked-sloth.png"),
+    },
+    {
+        id: "baked-sly-otter",
+        label: "Baked Sly Otter",
+        image: require("../../../assets/avatars/baked-animals/baked-sly-otter.png"),
+    },
+    {
+        id: "baked-smug-pug",
+        label: "Baked Smug Pug",
+        image: require("../../../assets/avatars/baked-animals/baked-smug-pug.png"),
+    },
+    {
+        id: "baked-zen-tortoise",
+        label: "Baked Zen Tortoise",
+        image: require("../../../assets/avatars/baked-animals/baked-zen-tortouise.png"),
+    },
+    {
+        id: "cheeky-monkey",
+        label: "Cheeky Monkey",
+        image: require("../../../assets/avatars/baked-animals/cheeky-monkey.png"),
+    },
+    {
+        id: "wise-old-owl",
+        label: "Wise Old Owl",
+        image: require("../../../assets/avatars/baked-animals/wise-old-owl.png"),
+    },
+];
+
+const AVATARS: AvatarOption[] = [...BAKED_AVATARS, ...EMOJI_AVATARS];
+
 type RecentReviewRow = {
     id: string;
     productId: string;
@@ -61,6 +220,30 @@ type ProductMini = {
     id: string;
     name: string;
     maker?: string | null;
+};
+
+type FollowedUser = {
+    uid: string;
+    displayName: string;
+    avatarId: string | null;
+    photoURL: string | null;
+    followedAtMs: number;
+};
+
+type NotificationItem = {
+    id: string;
+    type: "followed_review" | "system";
+    actorUid: string | null;
+    actorDisplayNameSnapshot: string;
+    actorAvatarIdSnapshot: string | null;
+    actorPhotoURLSnapshot: string | null;
+    reviewId: string | null;
+    productId: string | null;
+    reviewRating: number | null;
+    textPreview: string;
+    createdAtMs: number;
+    eventAtMs: number;
+    isRead: boolean;
 };
 
 function getFriendlyAccountError(error: any) {
@@ -263,6 +446,29 @@ function maskEmail(email: string) {
     return `${first}***@${domain}`;
 }
 
+function toMs(value: any) {
+    if (!value) return 0;
+    if (typeof value === "number") return value;
+    if (typeof value?.toMillis === "function") return value.toMillis();
+    if (typeof value?.seconds === "number") return value.seconds * 1000;
+    if (typeof value?.toDate === "function") return value.toDate().getTime();
+    return 0;
+}
+
+function formatRelativeTime(ms: number | null | undefined) {
+    if (!ms) return "just now";
+    const deltaMs = Date.now() - ms;
+    if (!Number.isFinite(deltaMs) || deltaMs < 0) return "just now";
+    const minutes = Math.floor(deltaMs / 60000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return formatDate(ms) || "recently";
+}
+
 function getLegacyFileSystemModule() {
     try {
         return require("expo-file-system/legacy");
@@ -322,7 +528,13 @@ function AvatarCircle({
 
             {photoURL ? (
                 <Image source={{ uri: photoURL }} style={{ width: size, height: size }} />
-            ) : picked ? (
+            ) : picked?.image ? (
+                <Image
+                    source={picked.image}
+                    resizeMode="cover"
+                    style={{ width: Math.round(size * 1.12), height: Math.round(size * 1.12) }}
+                />
+            ) : picked?.emoji ? (
                 <Text style={{ fontSize: Math.round(size * 0.52) }}>{picked.emoji}</Text>
             ) : showDiceBear ? (
                 <Image
@@ -609,13 +821,23 @@ function formatDate(ms: number | null | undefined) {
     }
 }
 
+const GENERIC_PROFILE_NAMES = new Set(["anonymous", "new member", "a member", "member", "someone", "user"]);
+
+function isGenericProfileName(value: string | null | undefined) {
+    const norm = (value ?? "").trim().toLowerCase();
+    if (!norm) return true;
+    return GENERIC_PROFILE_NAMES.has(norm);
+}
+
 export default function UserMenuScreen() {
     const auth = getFirebaseAuth();
     const firestore = getFirebaseFirestore();
 
     if (!auth || !firestore) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+            <SafeAreaView style={styles.screen}>
+                <ImageBackground source={userBackground} resizeMode="cover" style={StyleSheet.absoluteFill} />
+                <View pointerEvents="none" style={styles.backgroundScrim} />
                 <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
                     <Text style={{ color: "white", fontSize: 20, fontWeight: "900", textAlign: "center" }}>
                         User screen unavailable
@@ -633,27 +855,46 @@ export default function UserMenuScreen() {
 
     const user = auth().currentUser;
     const uid = user?.uid ?? "";
-
-    const displayName = user?.displayName?.trim() ? user.displayName : "Anonymous";
     const photoURL = user?.photoURL ?? null;
     const emailMasked = user?.email ? maskEmail(user.email) : "";
 
+    const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
     const [avatarId, setAvatarId] = useState<string | null>(null);
     const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [reviewGuideAccepted, setReviewGuideAccepted] = useState(false);
 
     const [joinYear, setJoinYear] = useState<number | null>(null);
 
     // Stats
     const [reviewsWritten, setReviewsWritten] = useState<number>(0);
     const [helpfulReceived, setHelpfulReceived] = useState<number>(0);
-    const [helpfulGiven, setHelpfulGiven] = useState<number>(0);
+    const [helpfulGivenVotes, setHelpfulGivenVotes] = useState<number>(0);
+    const [helpfulGivenProfile, setHelpfulGivenProfile] = useState<number>(0);
     const [favouritesCount, setFavouritesCount] = useState<number>(0);
     const [loadingStats, setLoadingStats] = useState<boolean>(true);
 
     const [recentReviews, setRecentReviews] = useState<RecentReviewRow[]>([]);
     const [loadingRecent, setLoadingRecent] = useState<boolean>(true);
+    const [followedUsers, setFollowedUsers] = useState<FollowedUser[]>([]);
+    const [loadingFollowing, setLoadingFollowing] = useState<boolean>(true);
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    const [loadingNotifications, setLoadingNotifications] = useState<boolean>(true);
+    const [markingAllNotificationsRead, setMarkingAllNotificationsRead] = useState<boolean>(false);
+    const [notificationsReady, setNotificationsReady] = useState<boolean>(false);
 
     const [productMap, setProductMap] = useState<Record<string, ProductMini>>({});
+    const knownNotificationIdsRef = useRef<Set<string>>(new Set());
+    const displayName = useMemo(() => {
+        const fromProfile = (profileDisplayName ?? "").trim();
+        if (fromProfile) return fromProfile;
+
+        const fromAuth = user?.displayName?.trim();
+        if (fromAuth) return fromAuth;
+
+        return "Anonymous";
+    }, [profileDisplayName, user?.displayName]);
+    const needsUsernameSetup = isGenericProfileName(displayName);
 
     // Products map (for recent review cards)
     useEffect(() => {
@@ -689,7 +930,16 @@ export default function UserMenuScreen() {
                 const data = (doc.data() as any) ?? {};
 
                 const v = typeof data?.avatarId === "string" ? data.avatarId : null;
+                const profileName = typeof data?.displayName === "string" ? data.displayName.trim() : "";
+                setProfileDisplayName(profileName || null);
                 setAvatarId(v);
+                setIsAdmin(!!data?.isAdmin);
+                setReviewGuideAccepted(!!data?.reviewGuideAcceptedAtMs || !!data?.reviewGuideAcceptedVersion);
+                setHelpfulGivenProfile(
+                    typeof data?.helpfulGiven === "number" && Number.isFinite(data.helpfulGiven)
+                        ? Math.max(0, data.helpfulGiven)
+                        : 0
+                );
 
                 const createdAt: any = data?.createdAt ?? data?.created_at ?? null;
                 if (createdAt?.toDate) setJoinYear(createdAt.toDate().getFullYear());
@@ -697,7 +947,9 @@ export default function UserMenuScreen() {
                 else setJoinYear(null);
             },
             () => {
-                // ignore
+                setProfileDisplayName(null);
+                setIsAdmin(false);
+                setReviewGuideAccepted(false);
             }
         );
 
@@ -732,11 +984,13 @@ export default function UserMenuScreen() {
                 () => setLoadingStats(false)
             );
 
+        // Source of truth for "helpful given" is users/{uid}/helpful.
         const unsubHelpfulVotes = firestore()
-            .collection("reviewHelpfulVotes")
-            .where("userId", "==", uid)
+            .collection("users")
+            .doc(uid)
+            .collection("helpful")
             .onSnapshot(
-                (snap) => setHelpfulGiven(snap.size),
+                (snap) => setHelpfulGivenVotes(snap.size),
                 () => {
                     // ignore
                 }
@@ -747,6 +1001,15 @@ export default function UserMenuScreen() {
             unsubHelpfulVotes();
         };
     }, [uid]);
+
+    const helpfulGiven = useMemo(
+        () => Math.max(helpfulGivenVotes, helpfulGivenProfile),
+        [helpfulGivenProfile, helpfulGivenVotes]
+    );
+    const unreadNotificationsCount = useMemo(
+        () => notifications.reduce((sum, n) => sum + (n.isRead ? 0 : 1), 0),
+        [notifications]
+    );
 
     // Favourites count
     useEffect(() => {
@@ -823,6 +1086,335 @@ export default function UserMenuScreen() {
 
         return () => unsubRecent();
     }, [uid]);
+
+    useEffect(() => {
+        if (!uid) {
+            setFollowedUsers([]);
+            setLoadingFollowing(false);
+            return;
+        }
+
+        setLoadingFollowing(true);
+        let isMounted = true;
+
+        const unsubFollowing = firestore()
+            .collection("users")
+            .doc(uid)
+            .collection("following")
+            .onSnapshot(
+                async (snap) => {
+                    const baseRows = snap.docs.map((docSnap) => {
+                        const data = (docSnap.data() as any) ?? {};
+                        const targetUid =
+                            typeof data?.followedUid === "string" && data.followedUid.trim()
+                                ? data.followedUid.trim()
+                                : docSnap.id;
+
+                        return {
+                            uid: targetUid,
+                            displayName:
+                                typeof data?.displayNameSnapshot === "string" && data.displayNameSnapshot.trim()
+                                    ? data.displayNameSnapshot.trim()
+                                    : "Member",
+                            avatarId:
+                                typeof data?.avatarIdSnapshot === "string" ? data.avatarIdSnapshot : null,
+                            photoURL: null as string | null,
+                            followedAtMs: toMs(data?.followedAt),
+                        };
+                    });
+
+                    if (baseRows.length === 0) {
+                        if (!isMounted) return;
+                        setFollowedUsers([]);
+                        setLoadingFollowing(false);
+                        return;
+                    }
+
+                    const ids = Array.from(new Set(baseRows.map((r) => r.uid).filter(Boolean)));
+                    const chunks: string[][] = [];
+                    for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+
+                    const profileMap: Record<string, { displayName?: string; avatarId?: string | null; photoURL?: string | null }> = {};
+
+                    try {
+                        await Promise.all(
+                            chunks.map(async (chunk) => {
+                                const q = firestore()
+                                    .collection("users")
+                                    .where(firestore.FieldPath.documentId(), "in", chunk);
+                                const usersSnap = await q.get();
+                                usersSnap.docs.forEach((userDoc) => {
+                                    const data = (userDoc.data() as any) ?? {};
+                                    profileMap[userDoc.id] = {
+                                        displayName:
+                                            typeof data?.displayName === "string" && data.displayName.trim()
+                                                ? data.displayName.trim()
+                                                : "Member",
+                                        avatarId: typeof data?.avatarId === "string" ? data.avatarId : null,
+                                        photoURL: typeof data?.photoURL === "string" ? data.photoURL : null,
+                                    };
+                                });
+                            })
+                        );
+                    } catch (err) {
+                        console.log("followed users profile fetch error:", err);
+                    }
+
+                    if (!isMounted) return;
+                    const merged = baseRows
+                        .map((row) => {
+                            const profile = profileMap[row.uid];
+                            if (!profile) return row;
+                            return {
+                                ...row,
+                                displayName: profile.displayName ?? row.displayName,
+                                avatarId: profile.avatarId ?? row.avatarId ?? null,
+                                photoURL: profile.photoURL ?? null,
+                            };
+                        })
+                        .sort((a, b) => b.followedAtMs - a.followedAtMs);
+
+                    setFollowedUsers(merged);
+                    setLoadingFollowing(false);
+                },
+                (err) => {
+                    console.log("following snapshot error:", err);
+                    if (!isMounted) return;
+                    setFollowedUsers([]);
+                    setLoadingFollowing(false);
+                }
+            );
+
+        return () => {
+            isMounted = false;
+            unsubFollowing();
+        };
+    }, [uid]);
+
+    useEffect(() => {
+        if (!uid) {
+            knownNotificationIdsRef.current = new Set();
+            setNotifications([]);
+            setLoadingNotifications(false);
+            setNotificationsReady(false);
+            return;
+        }
+
+        setLoadingNotifications(true);
+        setNotificationsReady(false);
+
+        const unsubNotifications = firestore()
+            .collection("users")
+            .doc(uid)
+            .collection("notifications")
+            .orderBy("createdAt", "desc")
+            .limit(80)
+            .onSnapshot(
+                (snap) => {
+                    const rows: NotificationItem[] = snap.docs.map((docSnap) => {
+                        const data = (docSnap.data() as any) ?? {};
+                        const createdAtMs = toMs(data?.createdAt ?? data?.created_at ?? null);
+                        const eventAtMs = toMs(data?.eventAtMs ?? data?.eventAt ?? null);
+                        return {
+                            id: docSnap.id,
+                            type: data?.type === "followed_review" ? "followed_review" : "system",
+                            actorUid: typeof data?.actorUid === "string" ? data.actorUid : null,
+                            actorDisplayNameSnapshot:
+                                typeof data?.actorDisplayNameSnapshot === "string" && data.actorDisplayNameSnapshot.trim()
+                                    ? data.actorDisplayNameSnapshot.trim()
+                                    : "Member",
+                            actorAvatarIdSnapshot:
+                                typeof data?.actorAvatarIdSnapshot === "string" ? data.actorAvatarIdSnapshot : null,
+                            actorPhotoURLSnapshot:
+                                typeof data?.actorPhotoURLSnapshot === "string" ? data.actorPhotoURLSnapshot : null,
+                            reviewId: typeof data?.reviewId === "string" ? data.reviewId : null,
+                            productId: typeof data?.productId === "string" ? data.productId : null,
+                            reviewRating: typeof data?.reviewRating === "number" ? data.reviewRating : null,
+                            textPreview: typeof data?.textPreview === "string" ? data.textPreview : "",
+                            createdAtMs,
+                            eventAtMs,
+                            isRead: !!data?.isRead,
+                        };
+                    });
+
+                    setNotifications(rows);
+                    knownNotificationIdsRef.current = new Set(rows.map((r) => r.id));
+                    setLoadingNotifications(false);
+                    setNotificationsReady(true);
+                },
+                (err) => {
+                    console.log("notifications snapshot error:", err);
+                    knownNotificationIdsRef.current = new Set();
+                    setNotifications([]);
+                    setLoadingNotifications(false);
+                    setNotificationsReady(true);
+                }
+            );
+
+        return () => unsubNotifications();
+    }, [uid]);
+
+    useEffect(() => {
+        if (!uid || !notificationsReady || followedUsers.length === 0) return;
+
+        const followedByUid = new Map<string, FollowedUser>();
+        followedUsers.forEach((member) => {
+            if (member.uid) followedByUid.set(member.uid, member);
+        });
+        if (followedByUid.size === 0) return;
+
+        const lookbackMs = 45 * 24 * 60 * 60 * 1000;
+        const oldestAllowedMs = Date.now() - lookbackMs;
+
+        let cancelled = false;
+        let running = false;
+
+        const unsubReviews = firestore().collection("reviews").onSnapshot(
+            async (snap) => {
+                if (cancelled || running) return;
+                running = true;
+
+                try {
+                    const candidates = snap.docs
+                        .map((docSnap) => {
+                            const data = (docSnap.data() as any) ?? {};
+                            const actorUid = typeof data?.userId === "string" ? data.userId : "";
+                            if (!actorUid || actorUid === uid) return null;
+
+                            const followed = followedByUid.get(actorUid);
+                            if (!followed) return null;
+
+                            const productId = typeof data?.productId === "string" ? data.productId : "";
+                            if (!productId) return null;
+
+                            const createdAtMs = toMs(
+                                data?.createdAt ?? data?.created_at ?? data?.updatedAt ?? data?.updated_at ?? null
+                            );
+                            if (!createdAtMs) return null;
+
+                            const followedAtMs = Number.isFinite(followed.followedAtMs)
+                                ? Math.max(0, followed.followedAtMs)
+                                : 0;
+                            const thresholdMs = Math.max(oldestAllowedMs, followedAtMs);
+                            if (createdAtMs < thresholdMs) return null;
+
+                            const textPreview =
+                                typeof data?.text === "string"
+                                    ? data.text.replace(/\s+/g, " ").trim().slice(0, 140)
+                                    : "";
+                            const reviewRating =
+                                typeof data?.rating === "number" && Number.isFinite(data.rating) ? data.rating : null;
+
+                            return {
+                                notificationId: `followed_review_${docSnap.id}`,
+                                reviewId: docSnap.id,
+                                actorUid,
+                                productId,
+                                createdAtMs,
+                                textPreview,
+                                reviewRating,
+                                actorDisplayNameSnapshot: followed.displayName || "Member",
+                                actorAvatarIdSnapshot: followed.avatarId ?? null,
+                                actorPhotoURLSnapshot: followed.photoURL ?? null,
+                            };
+                        })
+                        .filter((x): x is NonNullable<typeof x> => !!x)
+                        .sort((a, b) => b.createdAtMs - a.createdAtMs)
+                        .slice(0, 60);
+
+                    for (const candidate of candidates) {
+                        if (cancelled) break;
+                        if (knownNotificationIdsRef.current.has(candidate.notificationId)) continue;
+
+                        knownNotificationIdsRef.current.add(candidate.notificationId);
+
+                        await firestore()
+                            .collection("users")
+                            .doc(uid)
+                            .collection("notifications")
+                            .doc(candidate.notificationId)
+                            .set({
+                                type: "followed_review",
+                                actorUid: candidate.actorUid,
+                                actorDisplayNameSnapshot: candidate.actorDisplayNameSnapshot,
+                                actorAvatarIdSnapshot: candidate.actorAvatarIdSnapshot,
+                                actorPhotoURLSnapshot: candidate.actorPhotoURLSnapshot,
+                                reviewId: candidate.reviewId,
+                                productId: candidate.productId,
+                                reviewRating: candidate.reviewRating,
+                                textPreview: candidate.textPreview,
+                                eventAtMs: candidate.createdAtMs,
+                                isRead: false,
+                                createdAt: firestore.FieldValue.serverTimestamp(),
+                            });
+                    }
+                } catch (err) {
+                    console.log("notification generation error:", err);
+                } finally {
+                    running = false;
+                }
+            },
+            (err) => {
+                console.log("reviews snapshot for notifications error:", err);
+            }
+        );
+
+        return () => {
+            cancelled = true;
+            unsubReviews();
+        };
+    }, [uid, followedUsers, notificationsReady]);
+
+    const markNotificationRead = async (notificationId: string) => {
+        if (!uid || !notificationId) return;
+        try {
+            await firestore()
+                .collection("users")
+                .doc(uid)
+                .collection("notifications")
+                .doc(notificationId)
+                .set(
+                    {
+                        isRead: true,
+                        readAt: firestore.FieldValue.serverTimestamp(),
+                    },
+                    { merge: true }
+                );
+        } catch (err) {
+            console.log("mark notification read error:", err);
+        }
+    };
+
+    const markAllNotificationsRead = async () => {
+        if (!uid || markingAllNotificationsRead) return;
+        const unread = notifications.filter((n) => !n.isRead);
+        if (unread.length === 0) return;
+
+        setMarkingAllNotificationsRead(true);
+        try {
+            const batch = firestore().batch();
+            unread.forEach((n) => {
+                const ref = firestore()
+                    .collection("users")
+                    .doc(uid)
+                    .collection("notifications")
+                    .doc(n.id);
+                batch.set(
+                    ref,
+                    {
+                        isRead: true,
+                        readAt: firestore.FieldValue.serverTimestamp(),
+                    },
+                    { merge: true }
+                );
+            });
+            await batch.commit();
+        } catch (err) {
+            console.log("mark all notifications read error:", err);
+        } finally {
+            setMarkingAllNotificationsRead(false);
+        }
+    };
 
     const saveAvatar = async (next: string | null) => {
         if (!uid) return;
@@ -937,6 +1529,7 @@ export default function UserMenuScreen() {
     const headerBorder = theme.colors.goldGlassBorder;
     const headerBg = theme.colors.goldGlass;
     const editRightLabel = photoURL ? "Photo" : avatarId ? "Avatar" : "Set up";
+    const guideRightLabel = reviewGuideAccepted ? "Read" : "Required";
 
     const headerOneLiner = joinYear ? `Part of the community since ${joinYear}` : "Sharing honest experiences with the community";
 
@@ -953,7 +1546,9 @@ export default function UserMenuScreen() {
     }, [reviewsWritten, helpfulReceived]);
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }}>
+        <SafeAreaView style={styles.screen}>
+            <ImageBackground source={userBackground} resizeMode="cover" style={StyleSheet.absoluteFill} />
+            <View pointerEvents="none" style={styles.backgroundScrim} />
             <View
                 pointerEvents="none"
                 style={{
@@ -1033,6 +1628,32 @@ export default function UserMenuScreen() {
                         </View>
                     </LinearGradient>
                 </View>
+
+                {needsUsernameSetup ? (
+                    <GlassCard
+                        style={{ marginBottom: 14 }}
+                        borderTint="rgba(255,210,120,0.42)"
+                    >
+                        <SectionLabel>Profile setup</SectionLabel>
+
+                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 17 }}>
+                            Set your username
+                        </Text>
+
+                        <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                            Your username is shown on reviews and helps people recognise trusted feedback.
+                        </Text>
+
+                        <View style={{ marginTop: 12 }}>
+                            <MenuRow
+                                title="Choose username now"
+                                subtitle="Takes 10 seconds. You can change it later."
+                                rightLabel="Set"
+                                onPress={() => router.push("/(tabs)/user/edit-profile")}
+                            />
+                        </View>
+                    </GlassCard>
+                ) : null}
 
                 {/* Your Stats */}
                 <GlassCard style={{ marginBottom: 14 }}>
@@ -1148,10 +1769,213 @@ export default function UserMenuScreen() {
                     <View style={{ marginTop: 12 }}>
                         <MenuRow
                             title="How review scoring works"
-                            subtitle="How the score is calculated and how to write reviews that actually help."
+                            subtitle="Required before posting your first review. Includes scoring rules and effect guidance."
+                            rightLabel={guideRightLabel}
                             onPress={() => router.push("/(tabs)/user/reviews-info")}
                         />
                     </View>
+                </GlassCard>
+
+                {/* Following */}
+                <GlassCard style={{ marginBottom: 14 }}>
+                    <SectionLabel>Following</SectionLabel>
+
+                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16, marginBottom: 6 }}>
+                        Members you follow
+                    </Text>
+
+                    {loadingFollowing ? (
+                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                            Loading followed members...
+                        </Text>
+                    ) : followedUsers.length === 0 ? (
+                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                            Follow member profiles from review threads to build your trusted reviewer list.
+                        </Text>
+                    ) : (
+                        <View style={{ marginTop: 8 }}>
+                            {followedUsers.map((member) => (
+                                <Pressable
+                                    key={member.uid}
+                                    onPress={() => router.push(`/(tabs)/user/profile/${encodeURIComponent(member.uid)}`)}
+                                    style={({ pressed }) => ({
+                                        borderRadius: 18,
+                                        padding: 12,
+                                        marginTop: 10,
+                                        backgroundColor: "rgba(255,255,255,0.06)",
+                                        borderWidth: 1,
+                                        borderColor: "rgba(255,255,255,0.12)",
+                                        opacity: pressed ? 0.84 : 1,
+                                    })}
+                                >
+                                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                        <AvatarCircle
+                                            avatarId={member.avatarId}
+                                            photoURL={member.photoURL}
+                                            size={44}
+                                            seed={member.uid || member.displayName}
+                                        />
+                                        <View style={{ flex: 1, marginLeft: 10 }}>
+                                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16 }}>
+                                                {member.displayName}
+                                            </Text>
+                                            <Text style={{ marginTop: 3, color: theme.colors.textOnDarkSecondary, fontSize: 12 }}>
+                                                {member.followedAtMs
+                                                    ? `Following since ${formatDate(member.followedAtMs)}`
+                                                    : "Following"}
+                                            </Text>
+                                        </View>
+                                        <Text style={{ color: "rgba(255,255,255,0.55)", fontSize: 20, marginLeft: 10 }}>›</Text>
+                                    </View>
+                                </Pressable>
+                            ))}
+                        </View>
+                    )}
+                </GlassCard>
+
+                {/* Notifications */}
+                <GlassCard style={{ marginBottom: 14 }}>
+                    <SectionLabel>Notifications</SectionLabel>
+
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+                        <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 16, flex: 1 }}>
+                            Activity from members you follow
+                        </Text>
+                        {unreadNotificationsCount > 0 ? (
+                            <View
+                                style={{
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 4,
+                                    borderRadius: 999,
+                                    backgroundColor: "rgba(255,255,255,0.12)",
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.16)",
+                                }}
+                            >
+                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 12 }}>
+                                    {unreadNotificationsCount} new
+                                </Text>
+                            </View>
+                        ) : null}
+                    </View>
+
+                    {unreadNotificationsCount > 0 ? (
+                        <Pressable
+                            onPress={markAllNotificationsRead}
+                            style={({ pressed }) => ({
+                                alignSelf: "flex-start",
+                                marginTop: 4,
+                                marginBottom: 6,
+                                borderRadius: 999,
+                                paddingVertical: 8,
+                                paddingHorizontal: 12,
+                                backgroundColor: "rgba(255,255,255,0.10)",
+                                borderWidth: 1,
+                                borderColor: "rgba(255,255,255,0.15)",
+                                opacity: markingAllNotificationsRead ? 0.6 : pressed ? 0.84 : 1,
+                            })}
+                            disabled={markingAllNotificationsRead}
+                        >
+                            <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 12 }}>
+                                {markingAllNotificationsRead ? "Marking..." : "Mark all as read"}
+                            </Text>
+                        </Pressable>
+                    ) : null}
+
+                    {loadingNotifications ? (
+                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                            Loading notifications...
+                        </Text>
+                    ) : notifications.length === 0 ? (
+                        <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                            No notifications yet. Follow members to get alerts when they post new reviews.
+                        </Text>
+                    ) : (
+                        <View style={{ marginTop: 4 }}>
+                            {notifications.slice(0, 8).map((item) => {
+                                const productName =
+                                    (item.productId ? productMap[item.productId]?.name : null) ||
+                                    "a strain";
+                                const when = formatRelativeTime(item.eventAtMs || item.createdAtMs);
+                                const title =
+                                    item.type === "followed_review"
+                                        ? `${item.actorDisplayNameSnapshot} posted a new review`
+                                        : item.actorDisplayNameSnapshot;
+
+                                return (
+                                    <Pressable
+                                        key={item.id}
+                                        onPress={async () => {
+                                            if (!item.isRead) await markNotificationRead(item.id);
+                                            if (item.productId) router.push(`/reviews/${item.productId}`);
+                                        }}
+                                        style={({ pressed }) => ({
+                                            borderRadius: 18,
+                                            padding: 12,
+                                            marginTop: 10,
+                                            backgroundColor: item.isRead
+                                                ? "rgba(255,255,255,0.05)"
+                                                : "rgba(255,255,255,0.09)",
+                                            borderWidth: 1,
+                                            borderColor: item.isRead
+                                                ? "rgba(255,255,255,0.11)"
+                                                : "rgba(212,175,55,0.45)",
+                                            opacity: pressed ? 0.84 : 1,
+                                        })}
+                                    >
+                                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                            <AvatarCircle
+                                                avatarId={item.actorAvatarIdSnapshot}
+                                                photoURL={item.actorPhotoURLSnapshot}
+                                                size={42}
+                                                seed={item.actorUid || item.actorDisplayNameSnapshot}
+                                            />
+                                            <View style={{ flex: 1, marginLeft: 10 }}>
+                                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900", fontSize: 14 }}>
+                                                    {title}
+                                                </Text>
+                                                <Text
+                                                    style={{
+                                                        marginTop: 2,
+                                                        color: theme.colors.textOnDarkSecondary,
+                                                        fontWeight: "800",
+                                                        fontSize: 12,
+                                                    }}
+                                                >
+                                                    {`Review on ${productName} • ${when}`}
+                                                </Text>
+                                            </View>
+                                            {!item.isRead ? (
+                                                <View
+                                                    style={{
+                                                        width: 9,
+                                                        height: 9,
+                                                        borderRadius: 999,
+                                                        backgroundColor: "rgba(212,175,55,0.95)",
+                                                        marginLeft: 10,
+                                                    }}
+                                                />
+                                            ) : null}
+                                        </View>
+
+                                        {item.textPreview ? (
+                                            <Text
+                                                numberOfLines={2}
+                                                style={{
+                                                    marginTop: 8,
+                                                    color: theme.colors.textOnDarkSecondary,
+                                                    lineHeight: 18,
+                                                    fontSize: 13,
+                                                }}
+                                            >
+                                                {item.textPreview}
+                                            </Text>
+                                        ) : null}
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    )}
                 </GlassCard>
 
                 {/* Community Impact */}
@@ -1176,10 +2000,23 @@ export default function UserMenuScreen() {
                     </Text>
 
                     <MenuRow
-                        title="Change profile picture"
-                        subtitle="Edit your username."
-                        rightLabel={editRightLabel}
+                        title={needsUsernameSetup ? "Set username" : "Edit username"}
+                        subtitle={
+                            needsUsernameSetup
+                                ? "Pick the name people will see on your reviews."
+                                : "Change the name shown on your reviews."
+                        }
+                        rightLabel={needsUsernameSetup ? "Required" : "Edit"}
                         onPress={() => router.push("/(tabs)/user/edit-profile")}
+                    />
+
+                    <Divider />
+
+                    <MenuRow
+                        title="Choose avatar"
+                        subtitle="Pick from animal or emoji avatars."
+                        rightLabel={editRightLabel}
+                        onPress={() => setAvatarPickerOpen(true)}
                     />
                 </GlassCard>
 
@@ -1203,13 +2040,16 @@ export default function UserMenuScreen() {
                     <SectionLabel>What’s coming</SectionLabel>
 
                     <Text style={{ color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                        More ways to personalise your experience
+                        A stronger community hub where members can quickly see what is working best for specific needs.
                     </Text>
                     <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                        Expanded profiles and community features
+                        Better member profiles, clearer trust signals, and smarter moderation to keep reviews useful.
                     </Text>
                     <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                        Smarter recommendations over time
+                        Smarter recommendations and summaries built from real-world review patterns over time.
+                    </Text>
+                    <Text style={{ marginTop: 6, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
+                        The goal is to make Review Budz the go-to community place to check what may suit each person best.
                     </Text>
 
                     <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", lineHeight: 18 }}>
@@ -1272,6 +2112,21 @@ export default function UserMenuScreen() {
                     />
                 </GlassCard>
 
+                {/* Admin */}
+                <GlassCard style={{ marginBottom: 14 }}>
+                    <SectionLabel>Admin</SectionLabel>
+                    <MenuRow
+                        title="Admin moderation"
+                        subtitle={
+                            isAdmin
+                                ? "Users, reports, restrictions, and review actions."
+                                : "Admin-only tools. Ask support for admin access."
+                        }
+                        rightLabel={isAdmin ? "Enabled" : "Locked"}
+                        onPress={() => router.push("/(tabs)/user/admin-moderation")}
+                    />
+                </GlassCard>
+
                 {/* Sign out */}
                 <GlassCard>
                     <MenuRow
@@ -1313,6 +2168,7 @@ export default function UserMenuScreen() {
                             borderWidth: 1,
                             borderColor: "rgba(255,255,255,0.18)",
                             backgroundColor: "rgba(20,24,32,0.92)",
+                            maxHeight: "85%",
                         }}
                     >
                         <LinearGradient
@@ -1343,63 +2199,78 @@ export default function UserMenuScreen() {
                             </View>
 
                             <Text style={{ marginTop: 8, color: theme.colors.textOnDarkSecondary, lineHeight: 18 }}>
-                                Emoji avatars are manual picks. If you don’t choose one, you’ll get a fun persona by default.
+                                Pick an animal avatar or emoji persona. If you don’t choose one, you’ll get a fun persona by default.
                             </Text>
 
-                            <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap" }}>
-                                {AVATARS.map((a) => {
-                                    const active = avatarId === a.id;
-                                    return (
-                                        <Pressable
-                                            key={a.id}
-                                            onPress={async () => {
-                                                await saveAvatar(a.id);
-                                                setAvatarPickerOpen(false);
-                                            }}
-                                            style={({ pressed }) => ({
-                                                width: "20%",
-                                                padding: 6,
-                                                opacity: pressed ? 0.8 : 1,
-                                            })}
-                                        >
-                                            <View
-                                                style={{
-                                                    aspectRatio: 1,
-                                                    borderRadius: 18,
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    backgroundColor: active ? "rgba(212,175,55,0.20)" : "rgba(255,255,255,0.08)",
-                                                    borderWidth: 1,
-                                                    borderColor: active ? "rgba(212,175,55,0.55)" : "rgba(255,255,255,0.14)",
-                                                }}
-                                            >
-                                                <Text style={{ fontSize: 26 }}>{a.emoji}</Text>
-                                            </View>
-                                        </Pressable>
-                                    );
-                                })}
-                            </View>
-
-                            <Pressable
-                                onPress={async () => {
-                                    await saveAvatar(null);
-                                    setAvatarPickerOpen(false);
-                                }}
-                                style={({ pressed }) => ({
-                                    marginTop: 10,
-                                    paddingVertical: 12,
-                                    borderRadius: 14,
-                                    alignItems: "center",
-                                    backgroundColor: "rgba(255,255,255,0.10)",
-                                    borderWidth: 1,
-                                    borderColor: "rgba(255,255,255,0.14)",
-                                    opacity: pressed ? 0.8 : 1,
-                                })}
+                            <ScrollView
+                                style={{ marginTop: 14 }}
+                                showsVerticalScrollIndicator={false}
+                                contentContainerStyle={{ paddingBottom: 10 }}
                             >
-                                <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
-                                    Use default bud (no persona)
-                                </Text>
-                            </Pressable>
+                                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                                    {AVATARS.map((a) => {
+                                        const active = avatarId === a.id;
+                                        return (
+                                            <Pressable
+                                                key={a.id}
+                                                onPress={async () => {
+                                                    await saveAvatar(a.id);
+                                                    setAvatarPickerOpen(false);
+                                                }}
+                                                style={({ pressed }) => ({
+                                                    width: "20%",
+                                                    padding: 6,
+                                                    opacity: pressed ? 0.8 : 1,
+                                                })}
+                                            >
+                                                <View
+                                                    style={{
+                                                        aspectRatio: 1,
+                                                        borderRadius: 18,
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                        overflow: "hidden",
+                                                        backgroundColor: active ? "rgba(212,175,55,0.20)" : "rgba(255,255,255,0.08)",
+                                                        borderWidth: 1,
+                                                        borderColor: active ? "rgba(212,175,55,0.55)" : "rgba(255,255,255,0.14)",
+                                                    }}
+                                                >
+                                                    {a.image ? (
+                                                        <Image
+                                                            source={a.image}
+                                                            resizeMode="cover"
+                                                            style={{ width: "114%", height: "114%" }}
+                                                        />
+                                                    ) : (
+                                                        <Text style={{ fontSize: 26 }}>{a.emoji}</Text>
+                                                    )}
+                                                </View>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+
+                                <Pressable
+                                    onPress={async () => {
+                                        await saveAvatar(null);
+                                        setAvatarPickerOpen(false);
+                                    }}
+                                    style={({ pressed }) => ({
+                                        marginTop: 10,
+                                        paddingVertical: 12,
+                                        borderRadius: 14,
+                                        alignItems: "center",
+                                        backgroundColor: "rgba(255,255,255,0.10)",
+                                        borderWidth: 1,
+                                        borderColor: "rgba(255,255,255,0.14)",
+                                        opacity: pressed ? 0.8 : 1,
+                                    })}
+                                >
+                                    <Text style={{ color: theme.colors.textOnDark, fontWeight: "900" }}>
+                                        Use default bud (no persona)
+                                    </Text>
+                                </Pressable>
+                            </ScrollView>
                         </LinearGradient>
                     </Pressable>
                 </Pressable>
@@ -1407,3 +2278,14 @@ export default function UserMenuScreen() {
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    screen: {
+        flex: 1,
+        backgroundColor: theme.colors.appBgSolid,
+    },
+    backgroundScrim: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: "rgba(3, 8, 18, 0.62)",
+    },
+});
