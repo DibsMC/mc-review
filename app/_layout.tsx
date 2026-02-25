@@ -25,6 +25,18 @@ function requiresEmailVerification(user: any) {
   return passwordOnly && !user?.emailVerified;
 }
 
+function signOutCompat(auth: any) {
+  try {
+    const mod = require("@react-native-firebase/auth");
+    if (typeof mod?.signOut === "function") {
+      return mod.signOut(auth());
+    }
+  } catch {
+    // fall back to namespaced method
+  }
+  return auth().signOut();
+}
+
 class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
 
@@ -119,18 +131,14 @@ export default function RootLayout() {
       unsub = auth().onAuthStateChanged((user) => {
         if (user?.isAnonymous) {
           // Enforce explicit sign-in/create-account flow for all testers/users.
-          auth()
-            .signOut()
+          signOutCompat(auth)
             .catch(() => {
               // Ignore sign-out races; gate still treats anonymous as signed out.
             });
           setHasSignedInUser(false);
         } else if (user && requiresEmailVerification(user)) {
-          auth()
-            .signOut()
-            .catch(() => {
-              // Ignore sign-out races; user remains gated at auth screen.
-            });
+          // Keep session alive long enough for auth-screen resend-verification actions.
+          // Route gate still blocks entry into the app until email is verified.
           setHasSignedInUser(false);
         } else if (user) {
           const firestore = getFirebaseFirestore();
@@ -146,8 +154,7 @@ export default function RootLayout() {
             .get()
             .then((doc) => {
               if (doc.exists() && doc.data()?.accountDisabled) {
-                auth()
-                  .signOut()
+                signOutCompat(auth)
                   .catch(() => {
                     // Ignore sign-out races; user stays gated.
                   });
@@ -194,8 +201,7 @@ export default function RootLayout() {
       .onSnapshot(
         (doc) => {
           if (doc.exists() && doc.data()?.accountDisabled) {
-            auth()
-              .signOut()
+            signOutCompat(auth)
               .catch(() => {
                 // Ignore sign-out races; auth gate still forces sign-in screen.
               });

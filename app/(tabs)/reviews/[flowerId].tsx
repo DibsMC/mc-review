@@ -190,18 +190,25 @@ const EFFECT_FIELDS: Array<{ key: EffectKey; label: string; chipLabel?: string }
     { key: "racingThoughts", label: "Racing thoughts relief", chipLabel: "Racing thoughts" },
 ];
 
-const EFFECT_HINTS: Partial<Record<EffectKey, string>> = {
-    daytime: "Use this for daytime function, focus, and social usability.",
-    sleepy: "High score = heavy sedation / couch lock.",
-    calm: "Rate higher when it clearly settles body/mind tension.",
-    uplifting: "Rate for positive lift, energy, and motivation.",
-    focusAdhd: "Rate for task follow-through, less distraction, better concentration.",
-    anxiety: "Rate for reduced anxious spikes, overthinking, or paranoia.",
-    appetite: "Rate for stronger munchies/appetite after use.",
-    muscleRelaxation: "Rate for body release and physical unwinding.",
-    creativity: "Rate for idea flow, expression, and productive creativity.",
-    painRelief: "Rate only if this reliably softens pain intensity.",
-    clarity: "Rate for clear-headed function without heavy cognitive fog.",
+const EFFECT_HINTS: Record<EffectKey, string> = {
+    daytime: "How usable this felt in daytime settings. 5 = very daytime-friendly.",
+    sleepy: "How sedating/couch-lock this felt. 5 = very sleepy and heavy.",
+    calm: "How much this settled stress and tension. 5 = deeply calming.",
+    uplifting: "How much this lifted mood and energy. 5 = strongly uplifting.",
+    focusAdhd: "How much this helped concentration and task follow-through. 5 = strong focus support.",
+    anxiety: "How much this reduced anxiety or panic. 5 = major anxiety relief.",
+    moodBalance: "How much this kept mood steady and even. 5 = very balanced mood.",
+    appetite: "How much this increased appetite/munchies. 5 = very strong munchies.",
+    femaleHealth: "How much this helped female-health symptoms. 5 = very strong support.",
+    muscleRelaxation: "How much this eased body tension/stiffness. 5 = very strong muscle relaxation.",
+    creativity: "How much this helped creative flow. 5 = strong creative boost.",
+    painRelief: "Overall pain relief from this strain. 5 = strongest relief.",
+    clarity: "How clear-headed this felt (low fog/confusion). 5 = very clear.",
+    backPain: "Back pain relief specifically. 5 = strongest back pain relief.",
+    jointPain: "Joint pain relief specifically. 5 = strongest joint pain relief.",
+    legPain: "Leg pain relief specifically. 5 = strongest leg pain relief.",
+    headacheRelief: "Headache relief specifically. 5 = strongest headache relief.",
+    racingThoughts: "How much this reduced racing thoughts. 5 = strongest relief.",
 };
 
 function safeName(v: unknown) {
@@ -855,6 +862,7 @@ export default function FlowerDetail() {
 
     const [reviews, setReviews] = useState<Review[]>([]);
     const [loadingReviews, setLoadingReviews] = useState(true);
+    const [expandedReviewIds, setExpandedReviewIds] = useState<Record<string, boolean>>({});
 
     const [nameMap, setNameMap] = useState<Record<string, string>>({});
 
@@ -921,6 +929,22 @@ export default function FlowerDetail() {
         setSortMode("recent");
         setSortOpen(false);
     }, [productId]);
+
+    useEffect(() => {
+        setExpandedReviewIds((prev) => {
+            const keep = new Set(reviews.map((r) => r.id));
+            let changed = false;
+            const next: Record<string, boolean> = {};
+            Object.entries(prev).forEach(([id, expanded]) => {
+                if (!keep.has(id)) {
+                    changed = true;
+                    return;
+                }
+                next[id] = expanded;
+            });
+            return changed ? next : prev;
+        });
+    }, [reviews]);
 
     const sanitizeEffectScore = useCallback((v: unknown): number | null => {
         if (typeof v !== "number" || !Number.isFinite(v)) return null;
@@ -1031,6 +1055,10 @@ export default function FlowerDetail() {
         setSortOpen(false);
         setReportOpen(false);
         setReportingReview(null);
+        if (router.canGoBack()) {
+            router.back();
+            return;
+        }
         router.replace("/(tabs)/reviews");
     }, [router]);
 
@@ -2821,6 +2849,10 @@ export default function FlowerDetail() {
                                 .sort((a, b) => (b.value as number) - (a.value as number))
                                 .slice(0, 8);
 
+                            const reviewText = typeof review.text === "string" ? review.text.trim() : "";
+                            const isExpanded = !!expandedReviewIds[review.id];
+                            const canExpand = reviewText.length > 180 || reviewText.includes("\n");
+
                             return (
                                 <View style={styles.reviewItem}>
                                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -2853,7 +2885,42 @@ export default function FlowerDetail() {
                                         <BudRating value={getReviewScore(review)} size={14} />
                                     </View>
 
-                                    {review.text ? <Text style={{ marginTop: 10, color: theme.colors.textOnDark, lineHeight: 20 }}>{review.text}</Text> : null}
+                                    {reviewText ? (
+                                        <Text
+                                            style={{ marginTop: 10, color: theme.colors.textOnDark, lineHeight: 20 }}
+                                            numberOfLines={isExpanded ? undefined : 3}
+                                            ellipsizeMode="tail"
+                                        >
+                                            {reviewText}
+                                        </Text>
+                                    ) : null}
+
+                                    {reviewText && canExpand ? (
+                                        <Pressable
+                                            onPress={() =>
+                                                setExpandedReviewIds((prev) => ({
+                                                    ...prev,
+                                                    [review.id]: !prev[review.id],
+                                                }))
+                                            }
+                                            style={({ pressed }) => ({
+                                                marginTop: 8,
+                                                alignSelf: "flex-start",
+                                                opacity: pressed ? 0.78 : 1,
+                                            })}
+                                        >
+                                            <Text
+                                                style={{
+                                                    color: "rgba(212,175,55,0.98)",
+                                                    fontWeight: "900",
+                                                    fontSize: 13,
+                                                    letterSpacing: 0.2,
+                                                }}
+                                            >
+                                                {isExpanded ? "Show less" : "Read more"}
+                                            </Text>
+                                        </Pressable>
+                                    ) : null}
 
                                     {chips.length ? (
                                         <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 6 }}>

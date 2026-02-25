@@ -28,6 +28,45 @@ const SUBTLE_2 = "rgba(255,255,255,0.55)";
 const BTN_BG = "rgba(255,255,255,0.14)";
 const BTN_BORDER = "rgba(255,255,255,0.18)";
 
+function sendVerificationEmailCompat(user: any) {
+  try {
+    // RN Firebase modular API (preferred)
+    const mod = require("@react-native-firebase/auth");
+    if (typeof mod?.sendEmailVerification === "function") {
+      return mod.sendEmailVerification(user);
+    }
+  } catch {
+    // fall back to namespaced method
+  }
+  return user.sendEmailVerification();
+}
+
+function sendPasswordResetEmailCompat(auth: any, email: string) {
+  try {
+    // RN Firebase modular API (preferred)
+    const mod = require("@react-native-firebase/auth");
+    if (typeof mod?.sendPasswordResetEmail === "function") {
+      return mod.sendPasswordResetEmail(auth(), email);
+    }
+  } catch {
+    // fall back to namespaced method
+  }
+  return auth().sendPasswordResetEmail(email);
+}
+
+function signOutCompat(auth: any) {
+  try {
+    // RN Firebase modular API (preferred)
+    const mod = require("@react-native-firebase/auth");
+    if (typeof mod?.signOut === "function") {
+      return mod.signOut(auth());
+    }
+  } catch {
+    // fall back to namespaced method
+  }
+  return auth().signOut();
+}
+
 function Glass({ children }: { children: React.ReactNode }) {
   return <View style={styles.glass}>{children}</View>;
 }
@@ -36,7 +75,7 @@ function safeStr(v: unknown) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function getFriendlyAuthError(error: any, mode: "signIn" | "create" | "reset") {
+function getFriendlyAuthError(error: any, mode: "signIn" | "create" | "reset" | "verify") {
   const code = typeof error?.code === "string" ? error.code : "";
 
   if (code.includes("network-request-failed")) {
@@ -75,6 +114,18 @@ function getFriendlyAuthError(error: any, mode: "signIn" | "create" | "reset") {
     }
     if (code.includes("invalid-email")) {
       return "Please enter a valid email address.";
+    }
+  }
+
+  if (mode === "verify") {
+    if (code.includes("too-many-requests")) {
+      return "We have sent too many emails recently. Please wait a few minutes and try again.";
+    }
+    if (code.includes("quota-exceeded")) {
+      return "Email sending is temporarily at capacity. Please try again shortly.";
+    }
+    if (code.includes("invalid-email")) {
+      return "The email address format is invalid.";
     }
   }
 
@@ -164,24 +215,62 @@ export default function AuthScreen() {
 
         const freshUser = auth().currentUser ?? signedInUser;
         if (requiresEmailVerification(freshUser)) {
-          let sent = false;
-          try {
-            await freshUser.sendEmailVerification();
-            sent = true;
-          } catch {
-            // ignore; still enforce verification
-          }
-
-          await auth().signOut().catch(() => {
-            // ignore sign-out races
-          });
-
           setPassword("");
           Alert.alert(
             "Verify your email",
-            sent
-              ? "Your email is not verified yet. We sent a verification link. Please verify, then sign in."
-              : "Your email is not verified yet. Please check your inbox for a verification link, then sign in."
+            "This account is not verified yet. If you have not received a verification email, tap Resend email below.",
+            [
+              {
+                text: "Reset password",
+                onPress: async () => {
+                  try {
+                    await sendPasswordResetEmailCompat(auth, trimmedEmail);
+                    Alert.alert(
+                      "Reset email sent",
+                      "If the account exists, we sent a password reset email. Check inbox and spam."
+                    );
+                  } catch (e: any) {
+                    Alert.alert("Password reset failed", getFriendlyAuthError(e, "reset"));
+                  } finally {
+                    await signOutCompat(auth).catch(() => {
+                      // ignore sign-out races
+                    });
+                  }
+                },
+              },
+              {
+                text: "Resend email",
+                onPress: async () => {
+                  try {
+                    const resendCred = await auth().signInWithEmailAndPassword(trimmedEmail, password);
+                    const resendUser = resendCred.user ?? auth().currentUser;
+                    if (!resendUser) {
+                      throw new Error("No authenticated user session available for resend.");
+                    }
+                    await sendVerificationEmailCompat(resendUser);
+                    Alert.alert(
+                      "Verification email sent",
+                      "We sent a new verification email. Check inbox and spam, then sign in."
+                    );
+                  } catch (e: any) {
+                    Alert.alert("Could not resend verification", getFriendlyAuthError(e, "verify"));
+                  } finally {
+                    await signOutCompat(auth).catch(() => {
+                      // ignore sign-out races
+                    });
+                  }
+                },
+              },
+              {
+                text: "OK",
+                style: "cancel",
+                onPress: async () => {
+                  await signOutCompat(auth).catch(() => {
+                    // ignore sign-out races
+                  });
+                },
+              },
+            ]
           );
           return;
         }
@@ -189,7 +278,7 @@ export default function AuthScreen() {
         if (firestore) {
           const userSnap = await firestore().collection("users").doc(freshUser.uid).get();
           if (userSnap.exists() && userSnap.data()?.accountDisabled) {
-            await auth().signOut().catch(() => {
+            await signOutCompat(auth).catch(() => {
               // ignore sign-out races
             });
             setPassword("");
@@ -205,7 +294,7 @@ export default function AuthScreen() {
             .doc(normalizeEmailKey(normalizedEmail))
             .get();
           if (emailBanSnap.exists() && emailBanSnap.data()?.active) {
-            await auth().signOut().catch(() => {
+            await signOutCompat(auth).catch(() => {
               // ignore sign-out races
             });
             setPassword("");
@@ -244,6 +333,66 @@ export default function AuthScreen() {
       }
     } catch (e: any) {
       Alert.alert("Sign in failed", getFriendlyAuthError(e, "signIn"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!auth || !AsyncStorage) {
+      Alert.alert("Startup issue", "Authentication is not available yet. Please reopen the app.");
+      return;
+    }
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      Alert.alert(
+        "Missing details",
+        "Enter your email and current password first, then tap Resend verification email."
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await AsyncStorage.setItem(LAST_EMAIL_KEY, trimmedEmail);
+
+      const cred = await auth().signInWithEmailAndPassword(trimmedEmail, password);
+      const signedInUser = cred.user ?? auth().currentUser;
+      if (!signedInUser) {
+        Alert.alert("Unable to resend", "Please try signing in again.");
+        return;
+      }
+
+      try {
+        await signedInUser.reload();
+      } catch {
+        // ignore reload races
+      }
+
+      const freshUser = auth().currentUser ?? signedInUser;
+      if (!requiresEmailVerification(freshUser)) {
+        setPassword("");
+        if (returnTo) {
+          router.replace(String(returnTo));
+        } else {
+          router.replace("/(tabs)");
+        }
+        return;
+      }
+
+      await sendVerificationEmailCompat(freshUser);
+      await signOutCompat(auth).catch(() => {
+        // ignore sign-out races
+      });
+      setPassword("");
+
+      Alert.alert(
+        "Verification email sent",
+        "We sent a new verification email. Check inbox and spam, verify your email, then sign in."
+      );
+    } catch (e: any) {
+      Alert.alert("Could not resend verification", getFriendlyAuthError(e, "verify"));
     } finally {
       setLoading(false);
     }
@@ -288,15 +437,23 @@ export default function AuthScreen() {
         // Firebase Auth displayName (some screens read from here)
         await createdUser.updateProfile({ displayName: defaultName });
 
-        const emailBanSnap = await firestore()
-          .collection("bannedEmails")
-          .doc(normalizeEmailKey(normalizedEmail))
-          .get();
-        if (emailBanSnap.exists() && emailBanSnap.data()?.active) {
+        let emailBlocked = false;
+        try {
+          const emailBanSnap = await firestore()
+            .collection("bannedEmails")
+            .doc(normalizeEmailKey(normalizedEmail))
+            .get();
+          emailBlocked = !!(emailBanSnap.exists() && emailBanSnap.data()?.active);
+        } catch {
+          // If this check fails, do not block account creation or verification email.
+          // Sign-in checks will still enforce blocking where needed.
+        }
+
+        if (emailBlocked) {
           await createdUser.delete().catch(() => {
             // ignore cleanup races; sign-out gate still blocks access
           });
-          await auth().signOut().catch(() => {
+          await signOutCompat(auth).catch(() => {
             // ignore sign-out races
           });
           setPassword("");
@@ -308,11 +465,13 @@ export default function AuthScreen() {
         }
 
         let verificationSent = false;
+        let verificationError = "";
         try {
-          await createdUser.sendEmailVerification();
+          await sendVerificationEmailCompat(createdUser);
           verificationSent = true;
-        } catch {
-          // ignore send failures and continue enforcing verification-only sign-in
+        } catch (sendErr: any) {
+          verificationError = getFriendlyAuthError(sendErr, "verify");
+          // continue; account is created and user can retry from sign-in
         }
 
         // Firestore profile (source of truth for public profile)
@@ -337,7 +496,7 @@ export default function AuthScreen() {
             { merge: true }
           );
 
-        await auth().signOut().catch(() => {
+        await signOutCompat(auth).catch(() => {
           // ignore sign-out races
         });
 
@@ -349,7 +508,7 @@ export default function AuthScreen() {
           "Verify your email",
           verificationSent
             ? "Account created. We sent a verification email. Please verify your email, then sign in."
-            : "Account created. Please verify your email before signing in."
+            : `Account created, but we could not send a verification email right now.${verificationError ? `\n\nReason: ${verificationError}` : ""}\n\nUse the \"Resend verification email\" button on sign-in.`
         );
         return;
       }
@@ -375,7 +534,7 @@ export default function AuthScreen() {
     try {
       setLoading(true);
       await AsyncStorage.setItem(LAST_EMAIL_KEY, trimmedEmail);
-      await auth().sendPasswordResetEmail(trimmedEmail);
+      await sendPasswordResetEmailCompat(auth, trimmedEmail);
       Alert.alert(
         "Reset email sent",
         "If the account exists, we sent a password reset email. Check your inbox and spam folder."
@@ -604,13 +763,6 @@ export default function AuthScreen() {
                   {authMode === "create" ? "Already have an account? Sign in" : "New here? Create account"}
                 </Text>
               </Pressable>
-
-              <View style={{ height: 10 }} />
-              <Text style={styles.hint}>
-                {authMode === "create"
-                  ? "After creating your account, verify your email before you sign in."
-                  : "Tip: we’ll remember your email next time."}
-              </Text>
             </Glass>
           </View>
         </KeyboardAvoidingView>
@@ -683,7 +835,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 1,
-    textTransform: "uppercase",
     marginBottom: 6,
   },
 
@@ -786,13 +937,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     textDecorationLine: "underline",
-  },
-
-  hint: {
-    color: SUBTLE_2,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 18,
   },
 
   inlineHint: {

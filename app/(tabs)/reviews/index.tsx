@@ -25,11 +25,12 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { theme } from "../../../lib/theme";
-import { getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
+import { getAsyncStorage, getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 import { buildCommunityNotesSummary, type CommunityNotesSummary } from "../../../lib/communityNotes";
 
 const budImg = require("../../../assets/icons/bud.png");
 const flowersBg = require("../../../assets/images/flowers-bg.png");
+const REVIEWS_SORT_STORAGE_KEY = "@mc/reviews/sortKey/v1";
 
 type Product = {
   id: string;
@@ -150,6 +151,74 @@ function round1(n: number) {
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
+}
+
+function avgNumbers(vals: Array<number | null | undefined>) {
+  const xs = vals.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (xs.length === 0) return 0;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function avgEffects(vals: Array<number | null | undefined>) {
+  const xs = vals.filter((v): v is number => typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 5);
+  if (xs.length === 0) return null;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function getStructuredEffectValues(r: Partial<Review>) {
+  return [
+    r.daytime,
+    r.sleepy,
+    r.calm,
+    r.clarity,
+    r.uplifting,
+    r.focusAdhd,
+    r.anxiety,
+    r.moodBalance,
+    r.appetite,
+    r.femaleHealth,
+    r.muscleRelaxation,
+    r.creativity,
+    r.painRelief,
+    r.backPain,
+    r.jointPain,
+    r.legPain,
+    r.headacheRelief,
+    r.racingThoughts,
+  ];
+}
+
+function computeRobustReviewScore(input: { rating: number; effectsMean: number | null; highEffectsCount: number }) {
+  const rating = Number.isFinite(input.rating) ? input.rating : 0;
+  if (!input.effectsMean) return round1(clamp(rating, 1, 5));
+
+  const eDelta = clamp((input.effectsMean - 3) / 2, -1, 1);
+  const effectsBoost = eDelta * 0.25;
+  const superPenalty = clamp(input.highEffectsCount >= 4 ? 0.06 * (input.highEffectsCount - 3) : 0, 0, 0.18);
+
+  return round1(clamp(rating + effectsBoost - superPenalty, 1, 5));
+}
+
+function computeRobustProductScore(params: { ratings: number[]; effectsMeans: number[]; globalMeanRating: number }) {
+  const { ratings, effectsMeans, globalMeanRating } = params;
+  const v = ratings.length;
+  if (v === 0) return 0;
+
+  const R = avgNumbers(ratings);
+  const C = Number.isFinite(globalMeanRating) && globalMeanRating > 0 ? globalMeanRating : 3.5;
+
+  const m = 8;
+  const bayes = (v / (v + m)) * R + (m / (v + m)) * C;
+
+  const E = effectsMeans.length ? avgNumbers(effectsMeans) : 0;
+  const hasEffects = effectsMeans.length > 0;
+  const eDelta = hasEffects ? clamp((E - 3) / 2, -1, 1) : 0;
+  const effectsBoost = eDelta * 0.25;
+
+  const highCount = effectsMeans.filter((x) => x >= 4.5).length;
+  const superPenalty = clamp(highCount >= 4 ? 0.08 * (highCount - 3) : 0, 0, 0.25);
+
+  return round1(clamp(bayes + effectsBoost - superPenalty, 1, 5));
 }
 
 function toScore(v: unknown): number | null {
@@ -365,6 +434,18 @@ function sortLabel(k: SortKey) {
   }
 }
 
+function isSortKey(v: unknown): v is SortKey {
+  return (
+    v === "mostReviewed" ||
+    v === "recentReviews" ||
+    v === "highestRated" ||
+    v === "thcHighLow" ||
+    v === "thcLowHigh" ||
+    v === "maker" ||
+    v === "atoz"
+  );
+}
+
 function chipOnDark(selected: boolean) {
   return {
     paddingVertical: 10,
@@ -472,6 +553,7 @@ function BudRating({ value, size = 18 }: { value: number; size?: number }) {
 export default function ReviewsIndex() {
   const firestore = getFirebaseFirestore();
   const auth = getFirebaseAuth();
+  const AsyncStorage = getAsyncStorage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -550,6 +632,40 @@ export default function ReviewsIndex() {
 
   // Back-to-top button state
   const [showTop, setShowTop] = useState(false);
+  const sortHydratedRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!AsyncStorage) {
+        sortHydratedRef.current = true;
+        return;
+      }
+      try {
+        const saved = await AsyncStorage.getItem(REVIEWS_SORT_STORAGE_KEY);
+        if (!mounted) return;
+        if (isSortKey(saved)) {
+          setSortKey(saved);
+          setDraftSortKey(saved);
+        }
+      } catch {
+        // no-op
+      } finally {
+        sortHydratedRef.current = true;
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [AsyncStorage]);
+
+  useEffect(() => {
+    if (!sortHydratedRef.current || !AsyncStorage) return;
+    AsyncStorage.setItem(REVIEWS_SORT_STORAGE_KEY, sortKey).catch(() => {
+      // no-op
+    });
+  }, [AsyncStorage, sortKey]);
 
   useEffect(() => {
     if (searchDebounceRef.current) {
@@ -753,7 +869,16 @@ export default function ReviewsIndex() {
           };
         });
 
-        const scoreBuckets: Record<string, { count: number; sum: number; latestReviewAtMs: number; helpfulTotal: number }> = {};
+        const scoreBuckets: Record<
+          string,
+          {
+            count: number;
+            scores: number[];
+            effectMeans: number[];
+            latestReviewAtMs: number;
+            helpfulTotal: number;
+          }
+        > = {};
         const effectBucketsByProductId: Record<string, EffectAggregate> = {};
         const reviewTextsByProductId: Record<string, string[]> = {};
 
@@ -770,12 +895,35 @@ export default function ReviewsIndex() {
             }
           }
 
-          const val = typeof r.score === "number" && Number.isFinite(r.score) ? r.score : r.rating;
-          if (val < 1 || val > 5) continue;
+          const effectValues = getStructuredEffectValues(r);
+          const effectMean = avgEffects(effectValues);
+          const highEffectsCount = effectValues.filter(
+            (v): v is number => typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 5
+          ).filter((v) => v >= 4.5).length;
 
-          const prev = scoreBuckets[r.productId] ?? { count: 0, sum: 0, latestReviewAtMs: 0, helpfulTotal: 0 };
+          const reviewScore =
+            typeof r.score === "number" && Number.isFinite(r.score)
+              ? r.score
+              : computeRobustReviewScore({
+                  rating: r.rating,
+                  effectsMean: effectMean,
+                  highEffectsCount,
+                });
+
+          if (reviewScore < 1 || reviewScore > 5) continue;
+
+          const prev = scoreBuckets[r.productId] ?? {
+            count: 0,
+            scores: [],
+            effectMeans: [],
+            latestReviewAtMs: 0,
+            helpfulTotal: 0,
+          };
           prev.count += 1;
-          prev.sum += val;
+          prev.scores.push(reviewScore);
+          if (typeof effectMean === "number" && Number.isFinite(effectMean)) {
+            prev.effectMeans.push(effectMean);
+          }
           prev.latestReviewAtMs = Math.max(prev.latestReviewAtMs ?? 0, r.createdAtMs ?? 0);
           prev.helpfulTotal += typeof r.helpfulCount === "number" ? Math.max(0, r.helpfulCount) : 0;
           scoreBuckets[r.productId] = prev;
@@ -795,22 +943,19 @@ export default function ReviewsIndex() {
         const statsNext: Record<string, Stat> = {};
         const badgesNext: Record<string, EffectFilterKey[]> = {};
         const notesNext: Record<string, CommunityNotesSummary> = {};
+        const globalMeanRating = 3.6;
 
         Object.keys(scoreBuckets).forEach((productId) => {
           const bucket = scoreBuckets[productId];
-          const avg = bucket.count > 0 ? bucket.sum / bucket.count : 0;
+          const avg = bucket.count > 0 ? avgNumbers(bucket.scores) : 0;
           const effectAgg = effectBucketsByProductId[productId] ?? makeEmptyEffectAggregate();
 
           const qualifiedEffects: EffectFilterKey[] = [];
-          let effectConsensus = 0;
-          let effectSignals = 0;
 
           EFFECT_KEYS.forEach((key) => {
             const e = effectAgg[key];
             if (e.count <= 0) return;
             const effectAvg = e.sum / e.count;
-            effectSignals += 1;
-            effectConsensus += ((effectAvg - 3) / 2) * Math.min(1, e.count / 4);
             if (
               e.count >= EFFECT_THRESHOLD_MIN_COUNT &&
               (e.perfect >= EFFECT_THRESHOLD_MIN_PERFECT || effectAvg >= EFFECT_THRESHOLD_MIN_AVG)
@@ -819,9 +964,11 @@ export default function ReviewsIndex() {
             }
           });
 
-          const normalizedConsensus = effectSignals > 0 ? clamp(effectConsensus / effectSignals, -1, 1) : 0;
-          const confidenceBoost = clamp(Math.log2(bucket.count + 1) / 10 + Math.min(bucket.helpfulTotal, 60) / 600, 0, 0.2);
-          const weightedScore = clamp(avg + normalizedConsensus * 0.35 + confidenceBoost, 1, 5);
+          const weightedScore = computeRobustProductScore({
+            ratings: bucket.scores,
+            effectsMeans: bucket.effectMeans,
+            globalMeanRating,
+          });
 
           statsNext[productId] = {
             count: bucket.count,

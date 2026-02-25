@@ -2113,19 +2113,17 @@ export default function UserMenuScreen() {
                 </GlassCard>
 
                 {/* Admin */}
-                <GlassCard style={{ marginBottom: 14 }}>
-                    <SectionLabel>Admin</SectionLabel>
-                    <MenuRow
-                        title="Admin moderation"
-                        subtitle={
-                            isAdmin
-                                ? "Users, reports, restrictions, and review actions."
-                                : "Admin-only tools. Ask support for admin access."
-                        }
-                        rightLabel={isAdmin ? "Enabled" : "Locked"}
-                        onPress={() => router.push("/(tabs)/user/admin-moderation")}
-                    />
-                </GlassCard>
+                {isAdmin ? (
+                    <GlassCard style={{ marginBottom: 14 }}>
+                        <SectionLabel>Admin</SectionLabel>
+                        <MenuRow
+                            title="Admin moderation"
+                            subtitle="Users, reports, restrictions, and review actions."
+                            rightLabel="Enabled"
+                            onPress={() => router.push("/(tabs)/user/admin-moderation")}
+                        />
+                    </GlassCard>
+                ) : null}
 
                 {/* Sign out */}
                 <GlassCard>
