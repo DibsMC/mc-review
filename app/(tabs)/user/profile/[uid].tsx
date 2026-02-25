@@ -277,8 +277,9 @@ export default function PublicProfileScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
-    const params = useLocalSearchParams<{ uid?: string }>();
+    const params = useLocalSearchParams<{ uid?: string; returnTo?: string }>();
     const uid = typeof params?.uid === "string" ? params.uid : "";
+    const returnTo = typeof params?.returnTo === "string" ? params.returnTo : "";
 
     const currentUid = auth().currentUser?.uid ?? "";
     const isSelf = !!uid && !!currentUid && uid === currentUid;
@@ -303,9 +304,13 @@ export default function PublicProfileScreen() {
     const [followBusy, setFollowBusy] = useState(false);
 
     const goBackToUser = useCallback(() => {
+        if (returnTo.startsWith("/")) {
+            router.replace(returnTo as any);
+            return;
+        }
         if (router.canGoBack()) router.back();
         else router.replace("/(tabs)/user");
-    }, [router]);
+    }, [returnTo, router]);
 
     useEffect(() => {
         if (!uid) return;

@@ -2861,7 +2861,15 @@ export default function FlowerDetail() {
                                                 <Text style={{ fontWeight: "900", color: theme.colors.textOnDark, fontSize: 16 }}>{authorName}</Text>
                                             ) : (
                                                 <Pressable
-                                                    onPress={() => router.push(`/(tabs)/user/profile/${encodeURIComponent(review.userId)}`)}
+                                                    onPress={() =>
+                                                        router.push({
+                                                            pathname: "/(tabs)/user/profile/[uid]",
+                                                            params: {
+                                                                uid: review.userId,
+                                                                returnTo: `/(tabs)/reviews/${flowerId}`,
+                                                            },
+                                                        })
+                                                    }
                                                     style={({ pressed }) => ({
                                                         alignSelf: "flex-start",
                                                         opacity: pressed ? 0.82 : 1,

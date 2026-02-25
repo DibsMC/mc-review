@@ -276,7 +276,9 @@ export default function AuthScreen() {
         }
 
         if (firestore) {
-          const userSnap = await firestore().collection("users").doc(freshUser.uid).get();
+          const userRef = firestore().collection("users").doc(freshUser.uid);
+          const userSnap = await userRef.get();
+          const existingData = userSnap.data() ?? null;
           if (userSnap.exists() && userSnap.data()?.accountDisabled) {
             await signOutCompat(auth).catch(() => {
               // ignore sign-out races
@@ -304,23 +306,37 @@ export default function AuthScreen() {
             );
             return;
           }
-        }
 
-        if (firestore) {
-          firestore()
-            .collection("users")
-            .doc(freshUser.uid)
-            .set(
-              {
+          const effectiveDisplayName =
+            safeStr(existingData?.displayName) ||
+            safeStr(freshUser?.displayName) ||
+            "New Member";
+
+          const profilePatch = userSnap.exists()
+            ? {
                 email: normalizedEmail,
                 emailVerified: true,
                 updatedAt: firestore.FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            )
-            .catch(() => {
-              // profile sync is best-effort
-            });
+              }
+            : {
+                displayName: effectiveDisplayName,
+                email: normalizedEmail,
+                emailVerified: true,
+                isAdmin: false,
+                accountDisabled: false,
+                favoriteProductIds: [],
+                reviewRestrictionLevel: 0,
+                reviewRestrictionUntilMs: null,
+                reviewRestrictionManual: false,
+                moderationStrikeCount: 0,
+                lastEscalationRemovedTotal: 0,
+                createdAt: firestore.FieldValue.serverTimestamp(),
+                updatedAt: firestore.FieldValue.serverTimestamp(),
+              };
+
+          await userRef.set(profilePatch, { merge: true }).catch(() => {
+            // profile sync is best-effort
+          });
         }
       }
 

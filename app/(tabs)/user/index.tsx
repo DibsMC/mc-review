@@ -1419,7 +1419,41 @@ export default function UserMenuScreen() {
     const saveAvatar = async (next: string | null) => {
         if (!uid) return;
         try {
-            await firestore().collection("users").doc(uid).set({ avatarId: next ?? null }, { merge: true });
+            const ref = firestore().collection("users").doc(uid);
+            const existing = await ref.get();
+
+            if (!existing.exists) {
+                const authUser = auth().currentUser;
+                await ref.set(
+                    {
+                        displayName:
+                            (typeof authUser?.displayName === "string" && authUser.displayName.trim()) || "New Member",
+                        email: typeof authUser?.email === "string" ? authUser.email.trim().toLowerCase() : "",
+                        emailVerified: !!authUser?.emailVerified,
+                        isAdmin: false,
+                        accountDisabled: false,
+                        favoriteProductIds: [],
+                        reviewRestrictionLevel: 0,
+                        reviewRestrictionUntilMs: null,
+                        reviewRestrictionManual: false,
+                        moderationStrikeCount: 0,
+                        lastEscalationRemovedTotal: 0,
+                        avatarId: next ?? null,
+                        createdAt: firestore.FieldValue.serverTimestamp(),
+                        updatedAt: firestore.FieldValue.serverTimestamp(),
+                    },
+                    { merge: true }
+                );
+            } else {
+                await ref.set(
+                    {
+                        avatarId: next ?? null,
+                        updatedAt: firestore.FieldValue.serverTimestamp(),
+                    },
+                    { merge: true }
+                );
+            }
+
             setAvatarId(next);
         } catch (e: any) {
             Alert.alert("Could not save avatar", e?.message ?? "Unknown error");
