@@ -3,7 +3,7 @@
     "name": "Review Budz",
     "slug": "mc-review",
     "scheme": "mcreview",
-    "version": "1.1",
+    "version": "1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
