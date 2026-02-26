@@ -24,6 +24,15 @@ service cloud.firestore {
         && request.resource.data.lastEscalationRemovedTotal == resource.data.lastEscalationRemovedTotal;
     }
 
+    function selfAvatarUpdateOnly() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(["avatarId", "updatedAt"])
+        && (
+          !request.resource.data.diff(resource.data).changedKeys().hasAny(["avatarId"])
+          || request.resource.data.avatarId is string
+          || request.resource.data.avatarId == null
+        );
+    }
+
     function reviewIdentityUnchanged() {
       return request.resource.data.userId == resource.data.userId
         && request.resource.data.productId == resource.data.productId
@@ -90,6 +99,10 @@ service cloud.firestore {
         || (
           isSelf(uid)
           && userRoleFieldsUnchanged()
+        )
+        || (
+          isSelf(uid)
+          && selfAvatarUpdateOnly()
         );
 
       allow delete: if isSelf(uid) || isAdmin();
