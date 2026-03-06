@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review Budz - Delete Account</title>
+    <style>
+      :root {
+        --bg: #0b0f18;
+        --card: rgba(255, 255, 255, 0.06);
+        --card2: rgba(255, 255, 255, 0.08);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.68);
+        --accent: rgba(255, 192, 84, 0.98);
+      }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: radial-gradient(900px 600px at 20% -10%, rgba(125, 250, 205, 0.12), transparent 60%),
+                    radial-gradient(900px 600px at 110% 30%, rgba(120, 155, 255, 0.10), transparent 55%),
+                    var(--bg);
+        color: var(--text);
+      }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 48px 18px 64px; }
+      .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+      h1 { margin: 0; font-size: 32px; letter-spacing: -0.6px; }
+      .pill {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 12px;
+      }
+      .card {
+        margin-top: 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, var(--card2), var(--card));
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+      }
+      h2 { margin: 18px 0 8px; font-size: 18px; letter-spacing: -0.2px; }
+      p, li { color: var(--muted); line-height: 1.55; }
+      ul { margin: 8px 0 0 18px; padding: 0; }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .footer { margin-top: 18px; font-size: 12px; color: rgba(255,255,255,0.55); }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <div class="topbar">
+        <h1>Delete Account</h1>
+        <span class="pill">Review Budz</span>
+      </div>
+
+      <div class="card">
+        <p>
+          You can request permanent deletion of your Review Budz account at any time.
+        </p>
+
+        <h2>Delete directly in the app (fastest)</h2>
+        <ul>
+          <li>Open Review Budz.</li>
+          <li>Go to <strong>User</strong> tab.</li>
+          <li>Scroll to <strong>Delete account</strong>.</li>
+          <li>Confirm deletion.</li>
+        </ul>
+
+        <h2>Request deletion by email</h2>
+        <p>
+          If you cannot access the app, email us from your account email address:
+          <a href="mailto:dibsmccallum@sky.com?subject=Review%20Budz%20Account%20Deletion%20Request">dibsmccallum@sky.com</a>
+        </p>
+        <p>
+          Include your sign-in email and the subject line: <strong>Account Deletion Request</strong>.
+        </p>
+
+        <h2>What is deleted</h2>
+        <ul>
+          <li>Sign-in account (Firebase Authentication).</li>
+          <li>Your profile record and personal account data in the app database.</li>
+        </ul>
+
+        <h2>What may be retained</h2>
+        <ul>
+          <li>
+            Reviews may be anonymised for community integrity and safety moderation logs.
+          </li>
+          <li>
+            Operational logs required for security, fraud prevention, and legal compliance may be retained for a limited time.
+          </li>
+        </ul>
+
+        <p class="footer">
+          Last updated: 6 March 2026
+        </p>
+      </div>
+
+      <div class="footer">
+        <a href="../support/">Support</a> ·
+        <a href="../privacy-policy/">Privacy Policy</a>
+      </div>
+    </main>
+  </body>
+</html>
