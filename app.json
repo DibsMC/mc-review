@@ -2,10 +2,11 @@
   "expo": {
     "name": "mc-review",
     "slug": "mc-review",
-    "version": "1.0.0",
+    "version": "2.0.0",
+    "scheme": "mcreview",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",

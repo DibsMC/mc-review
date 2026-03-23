@@ -21,7 +21,7 @@ function Glass({ children }: { children: React.ReactNode }) {
 
 export default function ChangeEmailScreen() {
     const user = auth().currentUser;
-    const [email, setEmail] = useState<string>(user?.email ?? "");
+    const [email] = useState<string>(user?.email ?? "");
     const [newEmail, setNewEmail] = useState<string>("");
 
     const handleChange = async () => {

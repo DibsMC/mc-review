@@ -10,8 +10,8 @@ export default function ReviewsLayout() {
       }}
     >
 
-      <Stack.Screen name="index" options={{ title: "Reviews" }} />
-      <Stack.Screen name="[flowerId]" options={{ title: "" }} />
+      <Stack.Screen name="index" options={{ title: "Reviews", headerShown: false }} />
+      <Stack.Screen name="[flowerId]" options={{ title: "", headerShown: false }} />
       <Stack.Screen name="product/[productId]" options={{ title: "Product" }} />
     </Stack>
   );

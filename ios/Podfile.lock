@@ -1201,7 +1201,7 @@ PODS:
   - EXJSONUtils (0.15.0)
   - EXManifests (1.0.10):
     - ExpoModulesCore
-  - Expo (54.0.32):
+  - Expo (54.0.33):
     - boost
     - DoubleConversion
     - ExpoModulesCore
@@ -1446,7 +1446,7 @@ PODS:
     - ExpoModulesCore
   - ExpoFont (14.0.11):
     - ExpoModulesCore
-  - ExpoHead (6.0.22):
+  - ExpoHead (6.0.23):
     - ExpoModulesCore
     - RNScreens
   - ExpoKeepAwake (15.0.8):
@@ -3911,7 +3911,7 @@ PODS:
   - RecaptchaInterop (101.0.0)
   - RNCAsyncStorage (2.2.0):
     - React-Core
-  - RNFBApp (23.8.4):
+  - RNFBApp (23.8.6):
     - boost
     - DoubleConversion
     - fast_float
@@ -3940,7 +3940,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - RNFBAuth (23.8.4):
+  - RNFBAuth (23.8.6):
     - boost
     - DoubleConversion
     - fast_float
@@ -3970,7 +3970,7 @@ PODS:
     - RNFBApp
     - SocketRocket
     - Yoga
-  - RNFBFirestore (23.8.4):
+  - RNFBFirestore (23.8.6):
     - boost
     - DoubleConversion
     - fast_float
@@ -4352,7 +4352,7 @@ SPEC CHECKSUMS:
   EXConstants: fce59a631a06c4151602843667f7cfe35f81e271
   EXJSONUtils: 1d3e4590438c3ee593684186007028a14b3686cd
   EXManifests: a8d97683e5c7a3b026ffbd58559c64dc655b747b
-  Expo: c802d58921c39b942c42a37352e1af38245f14b5
+  Expo: f34662ae8150c8f2bc714b33a866b5467a2f9162
   expo-dev-client: 425ee077d6754a98cfe3a2e2410d29b440b24c9d
   expo-dev-launcher: 1a69b47ab6369d28c9c6f376212bab8889257394
   expo-dev-menu: a0cc8a92729ad8e4783e7d3d2d9628fe3d268ed2
@@ -4360,7 +4360,7 @@ SPEC CHECKSUMS:
   ExpoAsset: f867e55ceb428aab99e1e8c082b5aee7c159ea18
   ExpoFileSystem: 858a44267a3e6e9057e0888ad7c7cfbf55d52063
   ExpoFont: f543ce20a228dd702813668b1a07b46f51878d47
-  ExpoHead: 92af62bf4cc07c690e2bbf892998fa6192c4e841
+  ExpoHead: 057268a91e300c6fc93e5d4e148e88a65666633c
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoLinearGradient: 809102bdb979f590083af49f7fa4805cd931bd58
   ExpoLinking: 8f0aaf69aa56f832913030503b6263dc6f647f37
@@ -4453,9 +4453,9 @@ SPEC CHECKSUMS:
   ReactCommon: 6d0fa86a4510730da7c72560e0ced14258292ab9
   RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
   RNCAsyncStorage: b44e8a4e798c3e1f56bffccd0f591f674fb9198f
-  RNFBApp: 8408c742acaecb22290dfd55787ed780e79da27d
-  RNFBAuth: 2b012be4a71ba195c0ebeef15a4fca8580611521
-  RNFBFirestore: d3f916494ebc4eb046738c998d2a63ca33baaa15
+  RNFBApp: d1886cba8b15547054afa7095686868c8fe8eeab
+  RNFBAuth: b61e95f0f3242db81310634d454a5cdc526c179c
+  RNFBFirestore: 743ed5450574c23700894f545ae9cc29382a2627
   RNScreens: 5dc1a3d8a8720d4a2ba1fc26f912ae47f5a84dc6
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: cc4a6600d61e4e9276e860d4d68eebb834a050ba

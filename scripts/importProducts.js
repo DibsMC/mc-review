@@ -36,6 +36,20 @@ function toNumberOrNull(v) {
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
 }
+
+function normalizeProductType(v) {
+    const s = (v ?? "").toString().trim().toLowerCase();
+    if (!s) return null;
+    if (s.includes("flower")) return "flower";
+    if (s.includes("vape") || s.includes("cart")) return "vape";
+    if (s.includes("oil") || s.includes("tinct") || s.includes("sublingual")) {
+        return "oil";
+    }
+    if (s.includes("edible") || s.includes("gummy")) return "edible";
+    if (s.includes("topical") || s.includes("cream")) return "topical";
+    return null;
+}
+
 function parseTerpenes(v) {
     const s = (v ?? "").toString().trim();
     if (!s) return null;
@@ -90,6 +104,7 @@ async function main() {
         columns: true,
         skip_empty_lines: true,
         trim: true,
+        relax_column_count: true,
     });
 
     if (!records.length) {
@@ -117,17 +132,30 @@ async function main() {
                 continue;
             }
 
+            const legacyType = toNullIfBlank(row.type);
+            const productType =
+                normalizeProductType(row.productType) ??
+                normalizeProductType(legacyType) ??
+                "flower";
+            const strainType =
+                toNullIfBlank(row.strainType) ??
+                (normalizeProductType(legacyType) ? null : legacyType);
+
             const doc = {
                 name: toNullIfBlank(row.name) ?? "",
                 maker: toNullIfBlank(row.maker) ?? "",
                 variant: toNullIfBlank(row.variant),
-                type: (toNullIfBlank(row.type) || "flower").toLowerCase(),
+                productType,
                 thcPct: toNumberOrNull(row.thcPct),
                 cbdPct: toNumberOrNull(row.cbdPct),
                 terpenes: toNullIfBlank(row.terpenes),
                 isActive: true,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
+
+            if (strainType) {
+                doc.type = strainType;
+            }
 
             const ref = db.collection("products").doc(id);
             if (!dryRun) batch.set(ref, doc, { merge: true });

@@ -64,7 +64,7 @@ export function CinematicCard({ children, onPress, style }: Props) {
                 {/* Soft top gloss */}
                 <LinearGradient
                     pointerEvents="none"
-                    colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.00)"]}
+                    colors={["rgba(255,255,255,0.14)", "rgba(255,255,255,0.00)"]}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
                     style={styles.topGloss}
@@ -73,7 +73,7 @@ export function CinematicCard({ children, onPress, style }: Props) {
                 {/* Subtle depth gradient (very mild, keeps it chill) */}
                 <LinearGradient
                     pointerEvents="none"
-                    colors={["rgba(255,255,255,0.06)", "rgba(0,0,0,0.08)"]}
+                    colors={["rgba(255,255,255,0.03)", "rgba(0,0,0,0.18)"]}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
                     style={StyleSheet.absoluteFillObject}
@@ -101,9 +101,9 @@ const styles = StyleSheet.create({
         overflow: "hidden",
 
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.16)",
+        borderColor: "rgba(255,255,255,0.12)",
 
-        backgroundColor: "rgba(255,255,255,0.10)",
+        backgroundColor: "rgba(10,14,20,0.78)",
 
         ...Platform.select({
             ios: {
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
 
     baseFill: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: "rgba(255,255,255,0.08)",
+        backgroundColor: "rgba(9,13,20,0.72)",
     },
 
     topGloss: {
@@ -142,10 +142,10 @@ const styles = StyleSheet.create({
         borderRadius: 20,
 
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.10)",
+        borderColor: "rgba(255,255,255,0.06)",
 
-        backgroundColor: "rgba(255,255,255,0.04)",
-        opacity: 0.6,
+        backgroundColor: "rgba(255,255,255,0.02)",
+        opacity: 0.4,
     },
 
     contentTapArea: {

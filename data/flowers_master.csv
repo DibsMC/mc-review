@@ -1,4 +1,4 @@
-id,name,maker,variant,type,thcPct,cbdPct
+id,name,maker,variant,type,thcPct,cbdPct,productType,strainType
 curaleaf-tripoli-20-1-flower,Tripoli,Curaleaf,,flower,20,1
 upstate-crossbow-26-1-flower,Crossbow,Upstate,,flower,26,1
 4clabs-gary-busey-30-1-flower,Gary Busey,4C Labs,,flower,30,1
@@ -107,3 +107,41 @@ four20-pharma-wappa-20-1-flower,Wappa,Four20 Pharma,,flower,20,1
 tilray-strawberry-glue-25-1-flower,Strawberry Glue,Tilray,,flower,25,1
 grow-pharma-amnesia-haze-26-1-flower,Amnesia Haze,Grow Pharma,,flower,26,1
 dalgety-gorilla-glue-28-1-flower,Gorilla Glue,Dalgety,,flower,28,1
+mamedica-purple-milk-27-1-flower,Purple Milk,Mamedica,,,27,1,flower,Hybrid
+sinceritas-mack-and-crack-28-1-flower,Mack & Crack,Sinceritas,,,28,1,flower,Sativa Hybrid
+sinceritas-runtz-24-1-flower,Runtz,Sinceritas,,,24,1,flower,Hybrid
+peace-naturals-og-kush-30-1-flower,OG Kush,Peace Naturals,,,30,1,flower,Hybrid
+peace-naturals-blue-thai-27-1-flower,Blue Thai,Peace Naturals,,,27,1,flower,Hybrid
+lit-snow-lotus-smalls-30-1-flower,Snow Lotus,LIT,smalls,,30,1,flower,Indica Hybrid
+lit-sour-diesel-smalls-30-1-flower,Sour Diesel,LIT,smalls,,30,1,flower,Indica Hybrid
+ips-pharma-jet-fuel-apricot-20-1-flower,Jet Fuel Apricot,IPS Pharma,,,20,1,flower,Hybrid
+big-narstie-papaya-bantz-24-1-flower,Papaya Bantz,Big Narstie,,,24,1,flower,Indica Hybrid
+spirit-bear-strawberry-meltshake-28-1-flower,Strawberry Meltshake,Spirit Bear,,,28,1,flower,Hybrid
+tofino-ripper-super-sherb-27-1-flower,Super Sherb,Tofino Ripper,,,27,1,flower,Hybrid
+tofino-ripper-electric-lemon-21-1-flower,Electric Lemon,Tofino Ripper,,,21,1,flower,Indica Hybrid
+mystery-mountain-coco-bamba-26-1-flower,Coco Bamba,Mystery Mountain,,,26,1,flower,Indica Hybrid
+mystery-mountain-seaton-lemon-haze-29-1-flower,Seaton Lemon Haze,Mystery Mountain,,,29,1,flower,Sativa Hybrid
+superseed-blueberry-purp-25-1-flower,Blueberry Purp,Superseed,,,25,1,flower,Indica Hybrid
+superseed-congo-creek-haze-30-1-flower,Congo Creek Haze,Superseed,,,30,1,flower,Sativa Hybrid
+carmel-bananaconda-30-1-flower,Bananaconda,Carmel,,,30,1,flower,Hybrid
+grassroots-tropic-thunder-28-1-flower,Tropic Thunder,Grassroots,,,28,1,flower,Hybrid
+carmel-spiked-mai-tai-29-1-flower,Spiked Mai Tai,Carmel,,,29,1,flower,Hybrid
+khiron-biscotti-mintz-22-1-flower,Biscotti Mintz,Khiron,,,22,1,flower,Hybrid
+ecocann-access-black-cherry-pie-18-1-flower,Black Cherry Pie,EcoCann Access,,,18,1,flower,Hybrid
+greyscales-gelato-dream-26-1-flower,Gelato Dream,Greyscales,,,26,1,flower,Hybrid
+carmel-masterpiece-27-1-flower,Masterpiece,Carmel,,,27,1,flower,Hybrid
+carmel-thin-mint-jealousy-25-1-flower,Thin Mint Jealousy,Carmel,,,25,1,flower,Hybrid
+muzon-frosted-fruit-cake-28-1-flower,Frosted Fruit Cake,Muzon,,,28,1,flower,Indica Hybrid
+four20-frozen-lemons-28-1-flower,Frozen Lemons,Four20 Pharma,,,28,1,flower,Sativa Hybrid
+cookies-vienna-31-1-flower,Vienna,Cookies,,,31,1,flower,Hybrid
+cookies-gelatti-32-1-flower,Gelatti,Cookies,,,32,1,flower,Indica Hybrid
+green-joy-pink-lilac-25-1-flower,Pink Lilac,Green Joy,,,25,1,flower,Sativa Hybrid
+wellford-aqua-legendary-bozy-29-1-flower,Legendary Bozy,Wellford Aqua,,,29,1,flower,Indica Hybrid
+upstate-grape-burger-24-1-flower,Grape Burger,Upstate,,,24,1,flower,Indica Hybrid
+four20-gastro-pop-31-1-flower,Gastro Pop,Four20 Pharma,,,31,1,flower,Indica Hybrid
+ips-pharma-lasage-26-1-flower,L. A. S. A. G. E.,IPS Pharma,,,26,1,flower,Hybrid
+avaay-khalifa-mints-28-1-flower,Khalifa Mints,Avaay,,,28,1,flower,Hybrid
+tastee-bitz-banjo-22-1-flower,Banjo,Tastee Bitz,,,22,1,flower,Hybrid
+tastee-bitz-blunicorn-22-1-flower,Blunicorn,Tastee Bitz,,,22,1,flower,Hybrid
+find-zour-apples-22-1-flower,Zour Apples,Find,,,22,1,flower,Indica Hybrid
+4clabs-afghan-lights-23-1-flower,Afghan Lights,4C Labs,,,23,1,flower,Hybrid

@@ -2,6 +2,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { useState } from "react";
 import auth from "@react-native-firebase/auth";
+import { upsertOwnUserDocFields } from "../../../lib/userProfileDoc";
 
 const GLASS_BG = "rgba(255,255,255,0.08)";
 const GLASS_BORDER = "rgba(255,255,255,0.16)";
@@ -47,6 +48,13 @@ export default function EditProfileScreen() {
 
             setSaving(true);
             await user.updateProfile({ displayName: name });
+            await upsertOwnUserDocFields({
+                uid: user.uid,
+                email: user.email ?? null,
+                displayName: name,
+                emailVerified: user.emailVerified ?? false,
+                fields: {},
+            });
             Alert.alert("Saved", "Your display name was updated.");
         } catch (e: any) {
             Alert.alert("Save failed", e?.message ?? "Unknown error");
