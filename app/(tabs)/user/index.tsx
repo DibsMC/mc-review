@@ -458,6 +458,7 @@ export default function UserMenuScreen() {
     const [statSheetReviews, setStatSheetReviews] = useState<ReviewStatPreview[]>([]);
     const [statSheetFollowers, setStatSheetFollowers] = useState<FollowerPreview[]>([]);
     const [verificationBusy, setVerificationBusy] = useState(false);
+    const [signOutBusy, setSignOutBusy] = useState(false);
     const scrollRef = useRef<ScrollView | null>(null);
     const scrollOffsetRef = useRef(0);
 
@@ -956,28 +957,60 @@ export default function UserMenuScreen() {
         }
     }, []);
 
+    const clearToGuestState = () => {
+        setAuthUser(null);
+        setAvatarId(null);
+        setIsAdmin(false);
+        setJoinYear(null);
+        setReviewCount(null);
+        setProductCount(null);
+        setLastActiveLabel(null);
+        setFollowerCount(0);
+        setHelpfulCount(0);
+        setHelpfulReceivedLive(0);
+        setHelpfulGivenProfile(0);
+        setHelpfulGivenVotes(0);
+        setMatchedReviews([]);
+        setReviewPreviews([]);
+        setHelpfulVotes([]);
+        setUserSearchQuery("");
+        setDirectoryUsers([]);
+        setStatSheetOpen(false);
+        setAvatarPickerOpen(false);
+        setProfileDisplayName(null);
+        router.replace("/(tabs)/user");
+    };
+
     const handleSignOut = async () => {
+        if (signOutBusy) return;
+
+        const currentUser = auth().currentUser;
+        if (!currentUser) {
+            clearToGuestState();
+            return;
+        }
+
         try {
+            setSignOutBusy(true);
             await auth().signOut();
-            setAuthUser(null);
-            setAvatarId(null);
-            setIsAdmin(false);
-            setJoinYear(null);
-            setReviewCount(null);
-            setProductCount(null);
-            setLastActiveLabel(null);
-            setFollowerCount(0);
-            setHelpfulCount(0);
-            setHelpfulGivenProfile(0);
-            setHelpfulGivenVotes(0);
-            setMatchedReviews([]);
-            setReviewPreviews([]);
-            setHelpfulVotes([]);
-            setStatSheetOpen(false);
-            setAvatarPickerOpen(false);
-            router.replace("/(tabs)/user");
+            clearToGuestState();
         } catch (e: any) {
-            Alert.alert("Sign out failed", e?.message ?? "Unknown error");
+            const code = typeof e?.code === "string" ? e.code : "";
+            const message = typeof e?.message === "string" ? e.message : "";
+            const alreadySignedOut =
+                code.includes("no-current-user")
+                || code.includes("user-not-found")
+                || /no current user/i.test(message)
+                || /user.*not found/i.test(message);
+
+            if (alreadySignedOut || !auth().currentUser) {
+                clearToGuestState();
+                return;
+            }
+
+            Alert.alert("Sign out failed", message || "Unknown error");
+        } finally {
+            setSignOutBusy(false);
         }
     };
 
@@ -1376,6 +1409,10 @@ export default function UserMenuScreen() {
                                 <Pressable
                                     key={member.id}
                                     onPress={() => {
+                                        if (member.id === uid) {
+                                            router.push("/(tabs)/user");
+                                            return;
+                                        }
                                         router.push(`/(tabs)/user/profile/${encodeURIComponent(member.id)}`);
                                     }}
                                     style={({ pressed }) => ({
@@ -1611,6 +1648,14 @@ export default function UserMenuScreen() {
                         onPress={() => router.push("/(tabs)/user/legal")}
                     />
 
+                    <Divider />
+
+                    <MenuRow
+                        title="Terpenes made simple"
+                        subtitle="A plain-English guide to the main terpene profiles and what they often feel like."
+                        onPress={() => router.push("/(tabs)/user/terpenes-info")}
+                    />
+
                     {!guestMode ? (
                         <>
                             <Divider />
@@ -1740,6 +1785,10 @@ export default function UserMenuScreen() {
                                                     key={entry.id}
                                                     onPress={() => {
                                                         setStatSheetOpen(false);
+                                                        if (entry.id === uid) {
+                                                            router.push("/(tabs)/user");
+                                                            return;
+                                                        }
                                                         router.push(`/(tabs)/user/profile/${encodeURIComponent(entry.id)}`);
                                                     }}
                                                     style={({ pressed }) => ({

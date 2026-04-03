@@ -36,14 +36,15 @@ export default function FeedbackScreen() {
 
         const url = `mailto:${to}?subject=${subject}&body=${body}`;
 
-        const canOpen = await Linking.canOpenURL(url);
-        if (!canOpen) {
-            Alert.alert("Could not open email app", "Please copy and send manually.");
-            return;
+        try {
+            await Linking.openURL(url);
+            setMessage("");
+        } catch {
+            Alert.alert(
+                "Could not open email app",
+                "No mail app is available right now. Please set up an email app on this device and try again."
+            );
         }
-
-        await Linking.openURL(url);
-        setMessage("");
     };
 
     return (

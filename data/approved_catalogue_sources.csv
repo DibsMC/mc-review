@@ -1,0 +1,6 @@
+sourceName,sourceType,baseUrl,allowedForImport,allowedFields,refreshCadence,notes
+Official manufacturer pages,manufacturer,,yes,"name|maker|variant|productType|strainType|thcPct|cbdPct|terpenes|genetics|countryOfOrigin|irradiationStatus|producerUseCases|producerNotes|availabilityStatus|availabilitySignals","twice_weekly","Preferred source class. Use official producer pages or datasheets only."
+Official grower pages,grower,,yes,"name|maker|variant|productType|strainType|thcPct|cbdPct|terpenes|genetics|countryOfOrigin|irradiationStatus|producerUseCases|producerNotes|availabilityStatus|availabilitySignals","twice_weekly","Use when grower operates its own public product or cultivar pages."
+Public pharmacy product pages,pharmacy,,yes,"name|maker|variant|productType|thcPct|cbdPct|countryOfOrigin|irradiationStatus|availabilityStatus|availabilitySignals","twice_weekly","Use only openly accessible factual product listings. Do not copy editorial prose."
+Patient-only portals,restricted,,no,,"never","Never use gated patient dashboards or portals as a source."
+Third-party searchable directories,directory,,no,,"never","Do not scrape or import from external searchable directories whose terms prohibit reuse."

@@ -60,7 +60,10 @@ export default function LegalScreen() {
             scrimColor="rgba(5,7,11,0.24)"
         >
             <SafeAreaView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 58, backgroundColor: "transparent" }}>
-                <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+                <ScrollView
+                    contentContainerStyle={{ paddingBottom: 180 }}
+                    scrollIndicatorInsets={{ bottom: 140 }}
+                >
                     <Glass>
                         <Text style={{ fontSize: 22, fontWeight: "900", color: "white" }}>
                             Terms and legal
@@ -81,7 +84,7 @@ export default function LegalScreen() {
 
                         <H>Privacy and account data</H>
                         <P>
-                            We use Firebase Authentication to sign you in and keep your account secure. We use Firestore to store account details, reviews, profile stats, moderation data, favourites, follows, and helpful/report actions.
+                            We use secure account sign-in and cloud-hosted app data to keep your account available across devices and to store reviews, profile stats, moderation data, favourites, follows, and helpful or report actions.
                         </P>
                         <P>
                             We also use local device storage for lightweight app preferences such as recent visit data and UI state. We do not sell your personal data.
@@ -102,9 +105,14 @@ export default function LegalScreen() {
                             Review Budz is an independent community app. Unless we explicitly say otherwise, we are not affiliated with clinics, pharmacies, brands, or producers.
                         </P>
 
+                        <H>Product facts</H>
+                        <P>
+                            Review Budz keeps factual catalogue data separate from community experience. Product names, THC/CBD, terpenes, producer guidance, and similar factual fields are compiled from approved public sources where permitted and tracked with provenance where possible.
+                        </P>
+
                         <H>Acknowledgements</H>
                         <P>
-                            Product information, community review data, analytics counts, and profile activity are used to improve search, scoring, and moderation inside the app. If any third-party data sources or licensed feeds are added later, we will list them here.
+                            Product information, community review data, analytics counts, and profile activity are used to improve search, scoring, and moderation inside the app. If any third-party licensed feeds are added later, we will list them here as well.
                         </P>
                     </Glass>
                 </ScrollView>

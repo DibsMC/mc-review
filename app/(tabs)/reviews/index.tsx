@@ -23,10 +23,11 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { theme } from "../../../lib/theme";
 import { getAsyncStorage, getFirebaseAuth, getFirebaseFirestore } from "../../../lib/nativeDeps";
 import { buildCommunityNotesSummary, type CommunityNotesSummary } from "../../../lib/communityNotes";
+import { dedupeCatalogueProducts } from "../../../lib/catalogueDedupe";
 
 const budImg = require("../../../assets/icons/bud.png");
 const flowersBg = require("../../../assets/images/flowers-bg.png");
@@ -42,6 +43,7 @@ type Product = {
   thcPct?: number | null;
   cbdPct?: number | null;
   terpenes?: string | null; // "limonene:major|caryophyllene:major|linalool:minor"
+  availabilityStatus?: string | null;
   updatedAtMs?: number | null;
 };
 
@@ -648,6 +650,7 @@ export default function ReviewsIndex() {
   const auth = getFirebaseAuth();
   const AsyncStorage = getAsyncStorage();
   const router = useRouter();
+  const params = useLocalSearchParams<{ terpenePreset?: string | string[]; terpenePresetLabel?: string | string[]; terpenePresetStamp?: string | string[] }>();
   const insets = useSafeAreaInsets();
 
   if (!firestore || !auth) {
@@ -725,6 +728,8 @@ export default function ReviewsIndex() {
 
   const headerOpacity = useRef(new Animated.Value(1)).current;
   const [headerH, setHeaderH] = useState(176);
+  const [presetReviewedOnly, setPresetReviewedOnly] = useState(false);
+  const appliedPresetKeyRef = useRef<string>("");
 
   // Back-to-top button state
   const [showTop, setShowTop] = useState(false);
@@ -798,10 +803,6 @@ export default function ReviewsIndex() {
     [showTop]
   );
 
-  const scrollToTop = useCallback(() => {
-    (listRef.current as any)?.scrollToOffset?.({ offset: 0, animated: true });
-  }, []);
-
   useEffect(() => {
     const unsub = auth().onAuthStateChanged((user) => {
       setCurrentUid(user?.uid ?? "");
@@ -815,6 +816,51 @@ export default function ReviewsIndex() {
     if (!authResolved || currentUid) return;
     router.replace("/(tabs)/user");
   }, [authResolved, currentUid, router]);
+
+  useEffect(() => {
+    const rawPreset = Array.isArray(params.terpenePreset) ? params.terpenePreset[0] : params.terpenePreset;
+    const rawStamp = Array.isArray(params.terpenePresetStamp) ? params.terpenePresetStamp[0] : params.terpenePresetStamp;
+    const presetKey = typeof rawPreset === "string" ? rawPreset.trim() : "";
+    const presetSignature = `${presetKey}::${typeof rawStamp === "string" ? rawStamp : ""}`;
+    if (!presetKey || appliedPresetKeyRef.current === presetSignature) return;
+
+    const nextTerpenes = presetKey
+      .split("|")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (!nextTerpenes.length) return;
+
+    appliedPresetKeyRef.current = presetSignature;
+
+    setQueryInput("");
+    setQuery("");
+    setStrainFilter(null);
+    setMakerFilter(null);
+    setEffectFilter([]);
+    setFavoriteFilterAny(false);
+    setFavoriteFilterSlots([]);
+    setTerpeneFilter(nextTerpenes);
+    setPresetReviewedOnly(true);
+
+    setDraftStrainFilter(null);
+    setDraftMakerFilter(null);
+    setDraftEffectFilter([]);
+    setDraftFavoriteFilterAny(false);
+    setDraftFavoriteFilterSlots([]);
+    setDraftTerpeneFilter(nextTerpenes);
+
+    setSortMenuOpen(false);
+    setMakerOpen(false);
+    setTerpeneOpen(false);
+    setMakerPanelQuery("");
+    setTerpenePanelQuery("");
+    setPanelOpen(false);
+
+    requestAnimationFrame(() => {
+      scrollToTop(false);
+    });
+  }, [params.terpenePreset, params.terpenePresetStamp, scrollToTop]);
 
   useEffect(() => {
     if (!currentUid) {
@@ -913,11 +959,12 @@ export default function ReviewsIndex() {
             thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
             cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
             terpenes: typeof data?.terpenes === "string" ? data.terpenes : null,
+            availabilityStatus: typeof data?.availabilityStatus === "string" ? data.availabilityStatus : null,
             updatedAtMs,
           };
         });
 
-        setItems(list);
+        setItems(dedupeCatalogueProducts(list));
         setLoadingProducts(false);
       },
       (err) => {
@@ -1279,6 +1326,10 @@ export default function ReviewsIndex() {
         if (!hasAllEffects) return false;
       }
 
+      if (presetReviewedOnly && (statsByProductId[it.id]?.count ?? 0) <= 0) {
+        return false;
+      }
+
       return true;
     });
 
@@ -1344,9 +1395,21 @@ export default function ReviewsIndex() {
     effectBadgesByProductId,
     communityNotesByProductId,
     getSlotsForProduct,
+    presetReviewedOnly,
   ]);
 
-  const catalogueStrainCount = useMemo(() => catalogueItems.length, [catalogueItems]);
+  function scrollToTop(allowIndexJump = true) {
+    const rawList = listRef.current as any;
+    const scrollable = typeof rawList?.getNode === "function" ? rawList.getNode() : rawList;
+    setShowTop(false);
+    scrollable?.scrollToOffset?.({ offset: 0, animated: true });
+    requestAnimationFrame(() => {
+      scrollable?.scrollToOffset?.({ offset: 0, animated: true });
+      if (allowIndexJump && displayItems.length > 0) {
+        scrollable?.scrollToIndex?.({ index: 0, animated: true, viewPosition: 0 });
+      }
+    });
+  }
 
   const onChangeSearch = useCallback((text: string) => {
     setQueryInput(text);
@@ -1407,6 +1470,7 @@ export default function ReviewsIndex() {
     setDraftEffectFilter([]);
     setDraftFavoriteFilterAny(false);
     setDraftFavoriteFilterSlots([]);
+    setPresetReviewedOnly(false);
     setSortMenuOpen(false);
     setMakerOpen(false);
     setTerpeneOpen(false);
@@ -1415,13 +1479,11 @@ export default function ReviewsIndex() {
   };
 
   const windowH = Dimensions.get("window").height;
+  const windowW = Dimensions.get("window").width;
+  const compactHeader = windowW <= 390;
   const bgShift = Math.round(windowH * 0.18);
   const bgScale = 1.12;
   const toTopBottom = Math.max(insets.bottom + 18, 24);
-  const headerCountLabel = useMemo(
-    () => `strain${catalogueStrainCount === 1 ? "" : "s"} in the catalogue`,
-    [catalogueStrainCount]
-  );
 
   if (authResolved && !currentUid) {
     return <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} />;
@@ -1492,7 +1554,7 @@ export default function ReviewsIndex() {
               keyExtractor={(item) => item.id}
               style={{ flex: 1, backgroundColor: "transparent" }}
               contentContainerStyle={{ paddingBottom: Math.max(theme.spacing.xl + insets.bottom + 104, insets.bottom + 118) }}
-              ListHeaderComponent={<View style={{ height: Math.max(0, headerH - 2) }} />}
+              ListHeaderComponent={<View style={{ height: Math.max(0, headerH + 14) }} />}
               ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
               ListEmptyComponent={
                 <View style={{ paddingTop: 26, paddingHorizontal: theme.spacing.xl }}>
@@ -1519,6 +1581,7 @@ export default function ReviewsIndex() {
                 const strainLabel = formatStrainType(item.strainType);
                 const parts = [maker, strainLabel, `THC ${formatPct(item.thcPct)}`, `CBD ${formatPct(item.cbdPct)}`].filter(Boolean);
                 const metaLine = parts.join(" · ");
+                const isDiscontinued = item.availabilityStatus === "discontinued";
 
                 const favSlots = getSlotsForProduct(item.id);
                 const activeFavSlots = FAVORITE_SLOT_META.filter((s) => !!favSlots[s.key]);
@@ -1569,6 +1632,13 @@ export default function ReviewsIndex() {
                       >
                         {metaLine}
                       </Text>
+
+                      {isDiscontinued ? (
+                        <View style={styles.discontinuedBadge}>
+                          <Feather name="slash" size={12} color="rgba(255,214,214,0.96)" />
+                          <Text style={styles.discontinuedBadgeText}>Discontinued</Text>
+                        </View>
+                      ) : null}
 
                       {effectBadges.length > 0 ? (
                         <View style={styles.effectBadgeRow}>
@@ -1623,7 +1693,7 @@ export default function ReviewsIndex() {
             />
 
             {showTop ? (
-              <Pressable onPress={scrollToTop} hitSlop={12} style={[styles.toTop, { bottom: toTopBottom }]}>
+              <Pressable onPress={() => scrollToTop()} hitSlop={12} style={[styles.toTop, { bottom: toTopBottom }]}>
                 <Text style={styles.toTopText}>Top</Text>
               </Pressable>
             ) : null}
@@ -1671,26 +1741,19 @@ export default function ReviewsIndex() {
                   style={StyleSheet.absoluteFillObject}
                 />
 
-                <View style={styles.headerControlShell}>
-                  <View style={styles.headerTitleRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.headerTitle}>Reviews</Text>
-                    </View>
-
-                    <View style={styles.headerCountBadge}>
-                      <View style={styles.headerCountBadgeInline}>
-                        <Text style={styles.headerCountBadgeValueInline}>{catalogueStrainCount}</Text>
+                  <View style={styles.headerControlShell}>
+                    <View style={styles.headerTitleRow}>
+                      <View style={{ flex: 1 }}>
                         <Text
-                          style={styles.headerCountBadgeLabel}
+                          style={[styles.headerTitle, compactHeader ? styles.headerTitleCompact : null]}
                           numberOfLines={1}
                           adjustsFontSizeToFit
-                          minimumFontScale={0.82}
+                          minimumFontScale={0.72}
                         >
-                          {headerCountLabel}
+                          Reviews
                         </Text>
                       </View>
                     </View>
-                  </View>
 
                   <View style={styles.headerSearchShell}>
                     <Feather name="search" size={18} color="rgba(255,241,210,0.78)" />
@@ -1781,6 +1844,7 @@ export default function ReviewsIndex() {
                           return (
                             <Pressable
                               key={k}
+                              style={styles.sortMenuOptionPressable}
                               onPress={() => {
                                 setSortKey(k);
                                 setDraftSortKey(k);
@@ -2247,6 +2311,27 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
 
+  discontinuedBadge: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,128,128,0.30)",
+    backgroundColor: "rgba(94,24,24,0.42)",
+  },
+
+  discontinuedBadgeText: {
+    color: "rgba(255,232,232,0.96)",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.1,
+  },
+
   communityNotesLine: {
     marginTop: 9,
     color: "rgba(225,236,255,0.82)",
@@ -2259,6 +2344,7 @@ const styles = StyleSheet.create({
   toTop: {
     position: "absolute",
     right: 16,
+    zIndex: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
@@ -2315,6 +2401,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -0.8,
   },
+  headerTitleCompact: {
+    fontSize: 29,
+    lineHeight: 31,
+    letterSpacing: -0.7,
+  },
 
   headerTitleCaption: {
     marginTop: 6,
@@ -2325,12 +2416,12 @@ const styles = StyleSheet.create({
   },
 
   headerCountBadge: {
-    minWidth: 176,
-    maxWidth: 184,
-    minHeight: 54,
+    minWidth: 146,
+    maxWidth: 154,
+    minHeight: 58,
     borderRadius: 18,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 9,
     backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
@@ -2338,6 +2429,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "center",
     marginTop: -4,
+  },
+  headerCountBadgeCompact: {
+    minWidth: 136,
+    maxWidth: 142,
+    minHeight: 56,
+    paddingHorizontal: 10,
   },
 
   headerCountBadgeInline: {
@@ -2350,13 +2447,17 @@ const styles = StyleSheet.create({
 
   headerCountBadgeValueInline: {
     color: "rgba(255,247,232,0.98)",
+    fontSize: 17,
+    lineHeight: 19,
+    fontWeight: "900",
+  },
+  headerCountBadgeValueCompact: {
     fontSize: 16,
     lineHeight: 18,
-    fontWeight: "900",
   },
 
   headerCountBadgeLabel: {
-    flexShrink: 1,
+    marginTop: 2,
     color: "rgba(255,247,232,0.76)",
     fontSize: 11,
     lineHeight: 13,
@@ -2535,11 +2636,14 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: "flex-start",
   },
+  sortMenuOptionPressable: {
+    alignSelf: "flex-start",
+  },
 
   sortMenuTile: {
-    minHeight: 44,
+    minHeight: 46,
     borderRadius: 16,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 11,
     backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,

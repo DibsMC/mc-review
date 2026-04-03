@@ -22,6 +22,7 @@ export default function UserLayout() {
 
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="reviews-info" options={{ headerShown: true, title: "Reviews and scale" }} />
+            <Stack.Screen name="terpenes-info" options={{ headerShown: false }} />
             <Stack.Screen name="about" options={{ headerShown: true, title: "About" }} />
             <Stack.Screen name="legal" options={{ headerShown: true, title: "Terms and legal" }} />
             <Stack.Screen name="edit-profile" options={{ headerShown: true, title: "Edit profile" }} />

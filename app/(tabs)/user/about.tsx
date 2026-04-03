@@ -79,6 +79,14 @@ export default function AboutScreen() {
                         things like clarity, mood, sleep, focus, and how manageable the side
                         effects were.
                     </P>
+
+                    <H>Where product facts come from</H>
+                    <P>
+                        Review Budz keeps product facts separate from community reviews. We
+                        compile names and factual product fields from publicly accessible
+                        sources where permitted, and keep reviews, ratings, and scoring
+                        original to Review Budz.
+                    </P>
                 </Glass>
             </ScrollView>
         </SafeAreaView>

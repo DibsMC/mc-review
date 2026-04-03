@@ -16,6 +16,14 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6759117875"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./scripts/serviceAccountKey.json",
+        "track": "internal"
+      }
+    }
   }
 }

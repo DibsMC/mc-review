@@ -135,6 +135,12 @@ export default function PublicProfileScreen() {
   const [helpfulReceivedLive, setHelpfulReceivedLive] = useState(0);
 
   useEffect(() => {
+    if (isOwnProfile) {
+      router.replace("/(tabs)/user");
+    }
+  }, [isOwnProfile, router]);
+
+  useEffect(() => {
     if (!profileUid) {
       setProfileLoading(false);
       setProfile(null);

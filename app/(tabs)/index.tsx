@@ -9,6 +9,7 @@ import { theme } from "../../lib/theme";
 import { trackEvent } from "../../lib/analytics";
 import BrandedScreenBackground from "../../components/BrandedScreenBackground";
 import { buildCommunityNotesSummary, type CommunityNotesSummary } from "../../lib/communityNotes";
+import { dedupeCatalogueProducts } from "../../lib/catalogueDedupe";
 
 const homeBg = require("../../assets/images/home-bg.png");
 const homeHeroImage = require("../../assets/brand/review-budz-home-hero.png");
@@ -511,6 +512,51 @@ function SectionHeader({
     );
 }
 
+function HomeFeatureGuideCard({
+    onPress,
+}: {
+    onPress: () => void;
+}) {
+    const highlights = ["Body relief", "Wind-down", "Calm mood", "Clear head"];
+
+    return (
+        <Pressable onPress={onPress} style={({ pressed }) => [styles.guideCard, pressed ? styles.cardPressed : null]}>
+            <LinearGradient
+                colors={["rgba(34,63,44,0.98)", "rgba(24,31,24,0.98)", "rgba(17,20,24,0.98)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.guideSurface}
+            >
+                <View style={styles.guideHeaderRow}>
+                    <View style={styles.guideIconWrap}>
+                        <Feather name="feather" size={20} color="rgba(173,229,154,0.98)" />
+                    </View>
+
+                    <View style={styles.guideCopyBlock}>
+                        <Text style={styles.guideEyebrow}>Terpenes made simple</Text>
+                        <Text style={styles.guideTitle}>Learn what the main terpene profiles usually lean towards</Text>
+                        <Text style={styles.guideCaption}>
+                            A quick, plain-English guide to body relief, wind-down strains, calmer moods, and clearer daytime picks.
+                        </Text>
+                    </View>
+
+                    <View style={styles.guideArrowWrap}>
+                        <Feather name="chevron-right" size={20} color="rgba(242,247,239,0.96)" />
+                    </View>
+                </View>
+
+                <View style={styles.guideHighlightRow}>
+                    {highlights.map((item) => (
+                        <View key={item} style={styles.guideHighlightPill}>
+                            <Text style={styles.guideHighlightText}>{item}</Text>
+                        </View>
+                    ))}
+                </View>
+            </LinearGradient>
+        </Pressable>
+    );
+}
+
 function RailProductCard({
     product,
     stat,
@@ -703,7 +749,7 @@ export default function HomeScreen() {
                         } satisfies Product;
                     });
 
-                    setProducts(next);
+                    setProducts(dedupeCatalogueProducts(next));
                     setLoadingProducts(false);
                 },
                 (error) => {
@@ -1124,6 +1170,13 @@ export default function HomeScreen() {
                         </View>
                     </LinearGradient>
 
+                    <HomeFeatureGuideCard
+                        onPress={() => {
+                            trackEvent("home_terpene_guide_opened");
+                            router.push("/(tabs)/user/terpenes-info");
+                        }}
+                    />
+
                     <SectionHeader
                         eyebrow="Fresh in the catalog"
                         title="Recently added flowers"
@@ -1497,6 +1550,85 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         fontSize: 10,
         lineHeight: 12,
+    },
+    guideCard: {
+        marginTop: 18,
+        borderRadius: 24,
+        overflow: "hidden",
+    },
+    guideSurface: {
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: "rgba(178,227,154,0.16)",
+        paddingHorizontal: 18,
+        paddingVertical: 18,
+    },
+    guideHeaderRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 12,
+    },
+    guideIconWrap: {
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(173,229,154,0.24)",
+        backgroundColor: "rgba(58,94,62,0.34)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    guideCopyBlock: {
+        flex: 1,
+    },
+    guideEyebrow: {
+        color: "rgba(181,232,164,0.94)",
+        fontSize: 11,
+        fontWeight: "900",
+        letterSpacing: 1.1,
+        textTransform: "uppercase",
+    },
+    guideTitle: {
+        marginTop: 8,
+        color: theme.colors.textOnDark,
+        fontSize: 18,
+        lineHeight: 23,
+        fontWeight: "900",
+    },
+    guideCaption: {
+        marginTop: 7,
+        color: theme.colors.textOnDarkSecondary,
+        fontSize: 13,
+        lineHeight: 19,
+    },
+    guideArrowWrap: {
+        width: 34,
+        height: 34,
+        borderRadius: 999,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.10)",
+    },
+    guideHighlightRow: {
+        marginTop: 14,
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+    },
+    guideHighlightPill: {
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(176,224,158,0.18)",
+        backgroundColor: "rgba(255,255,255,0.06)",
+        paddingVertical: 8,
+        paddingHorizontal: 11,
+    },
+    guideHighlightText: {
+        color: "rgba(240,247,235,0.96)",
+        fontSize: 12,
+        fontWeight: "800",
     },
     sectionHeader: {
         marginTop: 24,

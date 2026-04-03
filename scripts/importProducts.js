@@ -37,6 +37,54 @@ function toNumberOrNull(v) {
     return Number.isFinite(n) ? n : null;
 }
 
+function parsePipeList(v) {
+    const s = (v ?? "").toString().trim();
+    if (!s) return null;
+    const parts = s
+        .split("|")
+        .map((part) => part.trim())
+        .filter(Boolean);
+    return parts.length ? parts : null;
+}
+
+function parseDateToTimestamp(v) {
+    const s = (v ?? "").toString().trim();
+    if (!s) return null;
+    const d = new Date(s);
+    if (!Number.isFinite(d.getTime())) return null;
+    return admin.firestore.Timestamp.fromDate(d);
+}
+
+function normalizeAvailabilityStatus(v) {
+    const s = (v ?? "").toString().trim().toLowerCase();
+    if (!s) return null;
+    if (["available", "listed", "in_stock", "in-stock", "live"].includes(s)) {
+        return "available";
+    }
+    if (
+        [
+            "possibly_unavailable",
+            "possibly-unavailable",
+            "possibly unavailable",
+            "out_of_stock",
+            "out-of-stock",
+            "out of stock",
+            "temporarily_unavailable",
+            "temporarily-unavailable",
+            "temporarily unavailable",
+        ].includes(s)
+    ) {
+        return "possibly_unavailable";
+    }
+    if (["discontinued", "retired", "archived", "removed"].includes(s)) {
+        return "discontinued";
+    }
+    if (["unknown", "unverified"].includes(s)) {
+        return "unknown";
+    }
+    return null;
+}
+
 function normalizeProductType(v) {
     const s = (v ?? "").toString().trim().toLowerCase();
     if (!s) return null;
@@ -77,6 +125,53 @@ function parseTerpenes(v) {
             pct: pctValue,                // 2.95 (number) if percent
         };
     }).filter(Boolean);
+}
+
+function buildCatalogueSource(row) {
+    const sourceName = toNullIfBlank(row.sourceName);
+    const sourceUrl = toNullIfBlank(row.sourceUrl);
+    const sourceType = toNullIfBlank(row.sourceType);
+    const sourceCheckedAt = parseDateToTimestamp(row.sourceCheckedAt);
+    const sourceNotes = toNullIfBlank(row.sourceNotes);
+    const sourceLicense = toNullIfBlank(row.sourceLicense);
+
+    if (!sourceName && !sourceUrl && !sourceType && !sourceCheckedAt && !sourceNotes && !sourceLicense) {
+        return null;
+    }
+
+    const source = {};
+    if (sourceName) source.name = sourceName;
+    if (sourceUrl) source.url = sourceUrl;
+    if (sourceType) source.type = sourceType;
+    if (sourceCheckedAt) source.checkedAt = sourceCheckedAt;
+    if (sourceNotes) source.notes = sourceNotes;
+    if (sourceLicense) source.license = sourceLicense;
+    return source;
+}
+
+function buildAvailabilityReview(row) {
+    const status = normalizeAvailabilityStatus(row.availabilityStatus);
+    const confidence = toNullIfBlank(row.availabilityConfidence);
+    const checkedAt = parseDateToTimestamp(row.availabilityCheckedAt);
+    const sourceName = toNullIfBlank(row.availabilitySourceName);
+    const sourceUrl = toNullIfBlank(row.availabilitySourceUrl);
+    const notes = toNullIfBlank(row.availabilityNotes);
+    const signals = parsePipeList(row.availabilitySignals);
+
+    if (!status && !confidence && !checkedAt && !sourceName && !sourceUrl && !notes && !signals) {
+        return null;
+    }
+
+    const review = {
+        status: status ?? "unknown",
+    };
+    if (confidence) review.confidence = confidence;
+    if (checkedAt) review.checkedAt = checkedAt;
+    if (sourceName) review.sourceName = sourceName;
+    if (sourceUrl) review.sourceUrl = sourceUrl;
+    if (notes) review.notes = notes;
+    if (signals) review.signals = signals;
+    return review;
 }
 
 async function main() {
@@ -140,6 +235,7 @@ async function main() {
             const strainType =
                 toNullIfBlank(row.strainType) ??
                 (normalizeProductType(legacyType) ? null : legacyType);
+            const availabilityReview = buildAvailabilityReview(row);
 
             const doc = {
                 name: toNullIfBlank(row.name) ?? "",
@@ -149,12 +245,27 @@ async function main() {
                 thcPct: toNumberOrNull(row.thcPct),
                 cbdPct: toNumberOrNull(row.cbdPct),
                 terpenes: toNullIfBlank(row.terpenes),
+                genetics: toNullIfBlank(row.genetics),
+                countryOfOrigin: toNullIfBlank(row.countryOfOrigin),
+                irradiationStatus: toNullIfBlank(row.irradiationStatus),
+                producerUseCases: parsePipeList(row.producerUseCases),
+                producerNotes: toNullIfBlank(row.producerNotes),
+                catalogueSource: buildCatalogueSource(row),
+                factualDataDisclaimer:
+                    "Product names and factual fields are compiled from publicly accessible sources where permitted. Reviews, ratings, tags, notes, and scoring are original or user-generated within Review Budz.",
                 isActive: true,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
 
             if (strainType) {
                 doc.type = strainType;
+            }
+            if (availabilityReview) {
+                doc.availabilityReview = availabilityReview;
+                doc.availabilityStatus = availabilityReview.status;
+                if (availabilityReview.checkedAt) {
+                    doc.availabilityCheckedAt = availabilityReview.checkedAt;
+                }
             }
 
             const ref = db.collection("products").doc(id);

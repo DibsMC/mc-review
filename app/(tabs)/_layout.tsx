@@ -118,6 +118,12 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="user"
+        listeners={{
+          tabPress: (event) => {
+            event.preventDefault();
+            router.replace("/(tabs)/user");
+          },
+        }}
         options={{
           title: "User",
           tabBarLabel: "User",

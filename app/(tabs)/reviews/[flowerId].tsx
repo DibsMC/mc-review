@@ -10,7 +10,6 @@ import {
     Modal,
     Platform,
     Pressable,
-    Share,
     StyleSheet,
     Text,
     TextInput,
@@ -30,15 +29,41 @@ import { getAsyncStorage } from "../../../lib/nativeDeps";
 const budImg = require("../../../assets/icons/bud.png");
 const flowersBg = require("../../../assets/images/flowers-bg.png");
 
+type CatalogueSourceMeta = {
+    name?: string | null;
+    url?: string | null;
+    type?: string | null;
+    checkedAt?: FirebaseFirestoreTypes.Timestamp | number | null;
+    notes?: string | null;
+};
+
+type AvailabilityReview = {
+    status?: "available" | "possibly_unavailable" | "discontinued" | "unknown" | null;
+    confidence?: string | null;
+    checkedAt?: FirebaseFirestoreTypes.Timestamp | number | null;
+    sourceName?: string | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
+    signals?: string[] | null;
+};
+
 type Product = {
     id: string;
     name: string;
     maker: string;
     variant?: string | null;
     type: string; // "flower" etc
+    strainType?: string | null;
     thcPct?: number | null;
     cbdPct?: number | null;
     terpenes?: string | null;
+    genetics?: string | null;
+    countryOfOrigin?: string | null;
+    irradiationStatus?: string | null;
+    producerUseCases?: string[] | null;
+    producerNotes?: string | null;
+    catalogueSource?: CatalogueSourceMeta | null;
+    availabilityReview?: AvailabilityReview | null;
 };
 
 type Review = {
@@ -273,6 +298,16 @@ function localNoteStorageKey(uid: string, productId: string) {
     return `@mc/private-notes/${uid}/${noteStorageKey(productId)}`;
 }
 
+function formatCheckedAt(value: unknown) {
+    const ms = timestampToMs(value);
+    if (!ms) return null;
+    return new Date(ms).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+    });
+}
+
 function extractReportedReviewIds(rawMeta: unknown, rawIds: unknown) {
     const ids = new Set<string>();
 
@@ -337,13 +372,126 @@ function computeHeadlineScore(input: {
 /* -------------------- Terpenes parsing -------------------- */
 
 function prettyTerpeneName(raw: string) {
-    const s = raw.trim().replace(/_/g, " ").replace(/-/g, " ");
-    return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+    const normalized = raw
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, "-")
+        .replace(/\s+/g, "-");
+
+    const aliases: Record<string, string> = {
+        "a-pinene": "alpha-pinene",
+        "b-pinene": "beta-pinene",
+        "a-caryophyllene": "alpha-caryophyllene",
+        "b-caryophyllene": "beta-caryophyllene",
+    };
+
+    const resolved = aliases[normalized] ?? normalized;
+    return resolved
+        .split("-")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+function terpeneKey(raw: string) {
+    return raw
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, "-")
+        .replace(/\s+/g, "-");
+}
+
+function terpeneVisualMeta(raw: string) {
+    const key = terpeneKey(raw);
+
+    if (key.includes("limonene")) {
+        return {
+            icon: "sunny-outline" as const,
+            borderColor: "rgba(246,207,97,0.26)",
+            backgroundColor: "rgba(246,207,97,0.14)",
+            iconBackground: "rgba(246,207,97,0.18)",
+            iconColor: "rgba(255,231,161,0.98)",
+        };
+    }
+
+    if (key.includes("myrcene")) {
+        return {
+            icon: "moon-outline" as const,
+            borderColor: "rgba(129,180,151,0.26)",
+            backgroundColor: "rgba(63,103,80,0.30)",
+            iconBackground: "rgba(129,180,151,0.18)",
+            iconColor: "rgba(212,245,225,0.98)",
+        };
+    }
+
+    if (key.includes("linalool")) {
+        return {
+            icon: "flower-outline" as const,
+            borderColor: "rgba(185,150,235,0.28)",
+            backgroundColor: "rgba(85,62,118,0.28)",
+            iconBackground: "rgba(185,150,235,0.18)",
+            iconColor: "rgba(239,224,255,0.98)",
+        };
+    }
+
+    if (key.includes("pinene")) {
+        return {
+            icon: "leaf-outline" as const,
+            borderColor: "rgba(101,203,152,0.24)",
+            backgroundColor: "rgba(42,88,63,0.28)",
+            iconBackground: "rgba(101,203,152,0.18)",
+            iconColor: "rgba(213,249,226,0.98)",
+        };
+    }
+
+    if (key.includes("caryophyllene")) {
+        return {
+            icon: "flame-outline" as const,
+            borderColor: "rgba(236,149,102,0.26)",
+            backgroundColor: "rgba(112,58,42,0.28)",
+            iconBackground: "rgba(236,149,102,0.18)",
+            iconColor: "rgba(255,221,204,0.98)",
+        };
+    }
+
+    if (key.includes("humulene")) {
+        return {
+            icon: "nutrition-outline" as const,
+            borderColor: "rgba(212,190,120,0.24)",
+            backgroundColor: "rgba(98,83,44,0.28)",
+            iconBackground: "rgba(212,190,120,0.18)",
+            iconColor: "rgba(255,241,202,0.98)",
+        };
+    }
+
+    if (key.includes("terpinolene") || key.includes("ocimene")) {
+        return {
+            icon: "sparkles-outline" as const,
+            borderColor: "rgba(132,196,255,0.24)",
+            backgroundColor: "rgba(42,73,102,0.28)",
+            iconBackground: "rgba(132,196,255,0.16)",
+            iconColor: "rgba(219,239,255,0.98)",
+        };
+    }
+
+    return {
+        icon: "flask-outline" as const,
+        borderColor: "rgba(255,255,255,0.14)",
+        backgroundColor: "rgba(255,255,255,0.06)",
+        iconBackground: "rgba(255,255,255,0.08)",
+        iconColor: "rgba(255,255,255,0.94)",
+    };
+}
+
+function formatTerpeneValue(strength: string) {
+    const trimmed = strength.trim();
+    if (!trimmed) return null;
+    if (trimmed.endsWith("%")) return trimmed;
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function parseTerpenes(input: string | null | undefined) {
     if (!input) return [];
-    // "limonene:major|caryophyllene:major|linalool:major"
     return input
         .split("|")
         .map((part) => part.trim())
@@ -352,71 +500,14 @@ function parseTerpenes(input: string | null | undefined) {
             const [nameRaw, strengthRaw] = part.split(":").map((x) => (x ?? "").trim());
             const name = prettyTerpeneName(nameRaw);
             const strength = strengthRaw ? strengthRaw.toLowerCase() : "";
-            return { name, strength };
+            return {
+                name,
+                strength,
+                valueLabel: formatTerpeneValue(strength),
+                ...terpeneVisualMeta(nameRaw),
+            };
         })
         .filter((t) => t.name);
-}
-
-/* -------------------- Metallic chip theme -------------------- */
-
-function hashStringToInt(input: string) {
-    let h = 0;
-    for (let i = 0; i < input.length; i++) {
-        h = (h << 5) - h + input.charCodeAt(i);
-        h |= 0;
-    }
-    return Math.abs(h);
-}
-
-type MetalTheme = {
-    colors: [string, string, string];
-    border: string;
-    text: string;
-    subText: string;
-};
-
-const METAL_THEMES: MetalTheme[] = [
-    {
-        colors: ["rgba(212,175,55,0.95)", "rgba(240,214,120,0.95)", "rgba(170,130,30,0.95)"],
-        border: "rgba(255,240,190,0.28)",
-        text: "rgba(12,12,14,0.96)",
-        subText: "rgba(20,20,24,0.78)",
-    },
-    {
-        colors: ["rgba(190,195,205,0.92)", "rgba(235,238,245,0.92)", "rgba(150,155,170,0.92)"],
-        border: "rgba(255,255,255,0.24)",
-        text: "rgba(12,12,14,0.96)",
-        subText: "rgba(20,20,24,0.78)",
-    },
-    {
-        colors: ["rgba(70,75,88,0.92)", "rgba(120,128,145,0.92)", "rgba(52,56,66,0.92)"],
-        border: "rgba(255,255,255,0.16)",
-        text: "rgba(250,250,252,0.96)",
-        subText: "rgba(235,235,240,0.74)",
-    },
-    {
-        colors: ["rgba(170,92,60,0.92)", "rgba(245,175,125,0.92)", "rgba(120,60,40,0.92)"],
-        border: "rgba(255,220,200,0.20)",
-        text: "rgba(12,12,14,0.96)",
-        subText: "rgba(20,20,24,0.78)",
-    },
-    {
-        colors: ["rgba(70,150,120,0.92)", "rgba(160,240,210,0.92)", "rgba(40,90,76,0.92)"],
-        border: "rgba(210,255,240,0.20)",
-        text: "rgba(8,10,12,0.96)",
-        subText: "rgba(20,22,26,0.78)",
-    },
-    {
-        colors: ["rgba(120,95,185,0.92)", "rgba(210,190,255,0.92)", "rgba(75,60,130,0.92)"],
-        border: "rgba(240,230,255,0.22)",
-        text: "rgba(12,12,14,0.96)",
-        subText: "rgba(20,20,24,0.78)",
-    },
-];
-
-function metalThemeForKey(key: string): MetalTheme {
-    const idx = hashStringToInt(key.trim().toLowerCase()) % METAL_THEMES.length;
-    return METAL_THEMES[idx];
 }
 
 /* -------------------- BudRating -------------------- */
@@ -856,9 +947,60 @@ export default function FlowerDetail() {
                         maker: typeof data?.maker === "string" ? data.maker : "",
                         variant: data?.variant ?? null,
                         type: typeof data?.type === "string" ? data.type : "flower",
+                        strainType: typeof data?.strainType === "string" ? data.strainType : null,
                         thcPct: typeof data?.thcPct === "number" ? data.thcPct : null,
                         cbdPct: typeof data?.cbdPct === "number" ? data.cbdPct : null,
                         terpenes: typeof data?.terpenes === "string" ? data.terpenes : null,
+                        genetics: typeof data?.genetics === "string" ? data.genetics : null,
+                        countryOfOrigin: typeof data?.countryOfOrigin === "string" ? data.countryOfOrigin : null,
+                        irradiationStatus: typeof data?.irradiationStatus === "string" ? data.irradiationStatus : null,
+                        producerUseCases: Array.isArray(data?.producerUseCases)
+                            ? data.producerUseCases.filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+                            : null,
+                        producerNotes: typeof data?.producerNotes === "string" ? data.producerNotes : null,
+                        catalogueSource:
+                            data?.catalogueSource && typeof data.catalogueSource === "object"
+                                ? {
+                                      name: typeof data.catalogueSource.name === "string" ? data.catalogueSource.name : null,
+                                      url: typeof data.catalogueSource.url === "string" ? data.catalogueSource.url : null,
+                                      type: typeof data.catalogueSource.type === "string" ? data.catalogueSource.type : null,
+                                      checkedAt: data.catalogueSource.checkedAt ?? null,
+                                      notes: typeof data.catalogueSource.notes === "string" ? data.catalogueSource.notes : null,
+                                  }
+                                : null,
+                        availabilityReview:
+                            data?.availabilityReview && typeof data.availabilityReview === "object"
+                                ? {
+                                      status: typeof data.availabilityReview.status === "string" ? data.availabilityReview.status : null,
+                                      confidence:
+                                          typeof data.availabilityReview.confidence === "string"
+                                              ? data.availabilityReview.confidence
+                                              : null,
+                                      checkedAt: data.availabilityReview.checkedAt ?? data.availabilityCheckedAt ?? null,
+                                      sourceName:
+                                          typeof data.availabilityReview.sourceName === "string"
+                                              ? data.availabilityReview.sourceName
+                                              : null,
+                                      sourceUrl:
+                                          typeof data.availabilityReview.sourceUrl === "string"
+                                              ? data.availabilityReview.sourceUrl
+                                              : null,
+                                      notes:
+                                          typeof data.availabilityReview.notes === "string"
+                                              ? data.availabilityReview.notes
+                                              : null,
+                                      signals: Array.isArray(data?.availabilityReview?.signals)
+                                          ? data.availabilityReview.signals.filter(
+                                                (item: unknown): item is string => typeof item === "string" && item.trim().length > 0
+                                            )
+                                          : null,
+                                  }
+                                : typeof data?.availabilityStatus === "string" || data?.availabilityCheckedAt
+                                  ? {
+                                        status: typeof data.availabilityStatus === "string" ? data.availabilityStatus : null,
+                                        checkedAt: data.availabilityCheckedAt ?? null,
+                                    }
+                                  : null,
                     });
                     setLoadingProduct(false);
                 },
@@ -1395,57 +1537,6 @@ export default function FlowerDetail() {
         });
     };
 
-    const shareProduct = async () => {
-        if (!product) return;
-
-        const message = [
-            `${product.name}${product.variant ? ` (${product.variant})` : ""}`,
-            `${product.maker || "Unknown maker"} · THC ${formatPct(product.thcPct)} · CBD ${formatPct(product.cbdPct)}`,
-            reviews.length
-                ? `Community score ${round1(avgOverall).toFixed(1)} from ${reviews.length} review${reviews.length === 1 ? "" : "s"}`
-                : "No reviews yet on Review Budz",
-            "See it in Review Budz.",
-        ].join("\n");
-
-        try {
-            await Share.share({
-                message,
-                title: `${product.name} on Review Budz`,
-            });
-            await trackEvent("product_share", {
-                product_id: product.id,
-                review_count: reviews.length,
-            });
-        } catch (error) {
-            console.log("product share failed:", error);
-        }
-    };
-
-    const shareReview = async (review: Review) => {
-        if (!product) return;
-
-        const score = round1(getReviewScore(review)).toFixed(1);
-        const message = [
-            `${product.name}${product.variant ? ` (${product.variant})` : ""}`,
-            `Shared from Review Budz · Score ${score}/5`,
-            review.text?.trim() || "A Review Budz member shared their experience with this flower.",
-            "See the full product in Review Budz.",
-        ].join("\n");
-
-        try {
-            await Share.share({
-                message,
-                title: `${product.name} review`,
-            });
-            await trackEvent("review_share", {
-                product_id: product.id,
-                review_id: review.id,
-            });
-        } catch (error) {
-            console.log("review share failed:", error);
-        }
-    };
-
     const toggleFavoriteSlot = useCallback(
         async (slot: FavoriteSlot) => {
             const user = auth().currentUser;
@@ -1649,6 +1740,10 @@ export default function FlowerDetail() {
 
     const openReviewerProfile = (uid: string) => {
         if (!uid) return;
+        if (uid === currentUid) {
+            router.push("/(tabs)/user");
+            return;
+        }
         router.push(`/(tabs)/user/profile/${encodeURIComponent(uid)}`);
     };
 
@@ -1852,6 +1947,19 @@ export default function FlowerDetail() {
     }
 
     const terps = parseTerpenes(product.terpenes);
+    const producerUseCases = product.producerUseCases ?? [];
+    const productFactChips = [
+        product.strainType ? { label: "Type", value: product.strainType } : null,
+        product.genetics ? { label: "Genetics", value: product.genetics } : null,
+        product.countryOfOrigin ? { label: "Origin", value: product.countryOfOrigin } : null,
+        product.irradiationStatus ? { label: "Irradiation", value: product.irradiationStatus } : null,
+    ].filter((item): item is { label: string; value: string } => Boolean(item));
+    const hasCatalogueFacts =
+        productFactChips.length > 0 ||
+        terps.length > 0 ||
+        producerUseCases.length > 0 ||
+        !!product.producerNotes;
+    const isDiscontinued = product.availabilityReview?.status === "discontinued";
 
     return (
         <BrandedScreenBackground
@@ -2135,6 +2243,13 @@ export default function FlowerDetail() {
                                         formatPct(product.cbdPct)}
                                 </Text>
 
+                                {isDiscontinued ? (
+                                    <View style={styles.discontinuedPill}>
+                                        <Ionicons name="alert-circle-outline" size={14} color="rgba(255,222,222,0.96)" />
+                                        <Text style={styles.discontinuedPillText}>Discontinued</Text>
+                                    </View>
+                                ) : null}
+
                                 <View style={{ marginTop: 14 }}>
                                     <Text style={styles.saveTagsLabel}>Save tags</Text>
                                     <View style={styles.favoritePillRow}>
@@ -2179,65 +2294,6 @@ export default function FlowerDetail() {
                                     </View>
                                 </View>
 
-                                {/* Terpenes */}
-                                {terps.length > 0 ? (
-                                    <View style={{ marginTop: 12 }}>
-                                        <Text style={{ fontWeight: "900", color: theme.colors.textOnDarkSecondary, marginBottom: 8 }}>
-                                            Terpenes
-                                        </Text>
-
-                                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                                            {terps.map((t) => {
-                                                const chip = metalThemeForKey(t.name);
-
-                                                return (
-                                                    <LinearGradient
-                                                        key={`${t.name}-${t.strength}`}
-                                                        colors={chip.colors}
-                                                        start={{ x: 0, y: 0.35 }}
-                                                        end={{ x: 1, y: 0.65 }}
-                                                        style={{
-                                                            paddingVertical: 9,
-                                                            paddingHorizontal: 14,
-                                                            borderRadius: 999,
-                                                            borderWidth: 1,
-                                                            borderColor: chip.border,
-                                                            overflow: "hidden",
-                                                            shadowColor: "rgba(0,0,0,0.35)",
-                                                            shadowOpacity: 0.30,
-                                                            shadowRadius: 10,
-                                                            shadowOffset: { width: 0, height: 8 },
-                                                            elevation: 10,
-                                                        }}
-                                                    >
-                                                        <LinearGradient
-                                                            pointerEvents="none"
-                                                            colors={["rgba(255,255,255,0.34)", "rgba(255,255,255,0.00)"]}
-                                                            start={{ x: 0.5, y: 0 }}
-                                                            end={{ x: 0.5, y: 1 }}
-                                                            style={{
-                                                                position: "absolute",
-                                                                left: 0,
-                                                                right: 0,
-                                                                top: 0,
-                                                                height: 16,
-                                                                opacity: 0.85,
-                                                            }}
-                                                        />
-
-                                                        <Text style={{ color: chip.text, fontWeight: "900", fontSize: 13 }}>
-                                                            {t.name}
-                                                            {t.strength ? (
-                                                                <Text style={{ color: chip.subText, fontWeight: "900" }}> {t.strength}</Text>
-                                                            ) : null}
-                                                        </Text>
-                                                    </LinearGradient>
-                                                );
-                                            })}
-                                        </View>
-                                    </View>
-                                ) : null}
-
                                 {/* Headline rating */}
                                 <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center" }}>
                                     {reviews.length ? (
@@ -2258,18 +2314,7 @@ export default function FlowerDetail() {
                                     {reviews.length ? `${reviews.length} review${reviews.length === 1 ? "" : "s"}` : "Be the first to review this"}
                                 </Text>
 
-                                        <View style={styles.heroActionsRow}>
-                                    <Pressable
-                                        onPress={shareProduct}
-                                        style={({ pressed }) => [
-                                            styles.heroActionButton,
-                                            pressed ? { opacity: 0.82 } : null,
-                                        ]}
-                                    >
-                                        <Ionicons name="share-social-outline" size={15} color={theme.colors.textOnDark} />
-                                        <Text style={styles.heroActionText}>Share flower</Text>
-                                    </Pressable>
-
+                                <View style={styles.heroActionsRow}>
                                     <Pressable
                                         onPress={() => {
                                             if (currentUid) {
@@ -2335,6 +2380,101 @@ export default function FlowerDetail() {
                                         </LinearGradient>
                                     </Pressable>
                                 </View>
+
+                                {hasCatalogueFacts ? (
+                                    <View style={styles.productFactsCard}>
+                                        <View style={styles.productFactsHeader}>
+                                            <View style={styles.productFactsIconWrap}>
+                                                <Ionicons name="library-outline" size={15} color="rgba(245,212,126,0.96)" />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.productFactsTitle}>Strain info</Text>
+                                            </View>
+                                            {terps.length > 0 ? (
+                                                <Pressable
+                                                    onPress={() => router.push("/(tabs)/user/terpenes-info")}
+                                                    style={({ pressed }) => [
+                                                        styles.productFactsGuideButton,
+                                                        pressed ? styles.productFactsGuideButtonPressed : null,
+                                                    ]}
+                                                >
+                                                    <Ionicons name="leaf-outline" size={13} color="rgba(180,228,150,0.96)" />
+                                                    <Text style={styles.productFactsGuideButtonText}>Learn terpenes</Text>
+                                                </Pressable>
+                                            ) : null}
+                                        </View>
+
+                                        {productFactChips.length > 0 ? (
+                                            <View style={styles.productFactsSection}>
+                                                <View style={styles.productFactsInfoGrid}>
+                                                    {productFactChips.map((chip) => (
+                                                        <View key={`${chip.label}-${chip.value}`} style={styles.productFactsInfoCell}>
+                                                            <Text style={styles.productFactsInfoLabel}>{chip.label}</Text>
+                                                            <Text style={styles.productFactsInfoValue}>{chip.value}</Text>
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            </View>
+                                        ) : null}
+
+                                        {terps.length > 0 ? (
+                                            <View style={styles.productFactsSection}>
+                                                <Text style={styles.productFactsSectionTitle}>Dominant terpenes</Text>
+                                                <View style={styles.productFactsTagRow}>
+                                                    {terps.map((terp) => {
+                                                        return (
+                                                            <View
+                                                                key={`${terp.name}-${terp.strength || "terp"}`}
+                                                                style={[
+                                                                    styles.productFactsTerpTag,
+                                                                    {
+                                                                        borderColor: terp.borderColor,
+                                                                        backgroundColor: terp.backgroundColor,
+                                                                    },
+                                                                ]}
+                                                            >
+                                                                <View
+                                                                    style={[
+                                                                        styles.productFactsTerpIconWrap,
+                                                                        { backgroundColor: terp.iconBackground },
+                                                                    ]}
+                                                                >
+                                                                    <Ionicons name={terp.icon} size={14} color={terp.iconColor} />
+                                                                </View>
+                                                                <View style={styles.productFactsTerpCopy}>
+                                                                    <Text style={styles.productFactsTerpTagText}>{terp.name}</Text>
+                                                                    {terp.valueLabel ? (
+                                                                        <Text style={styles.productFactsTerpMetaText}>{terp.valueLabel}</Text>
+                                                                    ) : null}
+                                                                </View>
+                                                            </View>
+                                                        );
+                                                    })}
+                                                </View>
+                                            </View>
+                                        ) : null}
+
+                                        {producerUseCases.length > 0 ? (
+                                            <View style={styles.productFactsSection}>
+                                                <Text style={styles.productFactsSectionTitle}>Known for</Text>
+                                                <View style={styles.productFactsTagRow}>
+                                                    {producerUseCases.map((item) => (
+                                                        <View key={item} style={styles.productFactsTag}>
+                                                            <Text style={styles.productFactsTagText}>{item}</Text>
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            </View>
+                                        ) : null}
+
+                                        {product.producerNotes ? (
+                                            <View style={styles.productFactsSection}>
+                                                <Text style={styles.productFactsSectionTitle}>Grower notes</Text>
+                                                <Text style={styles.productFactsBody}>{product.producerNotes}</Text>
+                                            </View>
+                                        ) : null}
+                                    </View>
+                                ) : null}
 
                                 {/* Summary of effects */}
                                 <View
@@ -2928,18 +3068,6 @@ export default function FlowerDetail() {
                                         </>
                                     ) : null}
 
-                                    <Pressable
-                                        onPress={() => {
-                                            void shareReview(item);
-                                        }}
-                                        style={({ pressed }) => [
-                                            styles.reviewActionButton,
-                                            pressed ? { opacity: 0.82 } : null,
-                                        ]}
-                                    >
-                                        <Ionicons name="share-social-outline" size={14} color={theme.colors.textOnDark} />
-                                        <Text style={styles.reviewActionButtonText}>Share</Text>
-                                    </Pressable>
                                 </View>
                             </View>
                         );
@@ -3029,6 +3157,162 @@ const styles = StyleSheet.create({
     heroNotesRow: {
         marginTop: 12,
         alignItems: "flex-start",
+    },
+    discontinuedPill: {
+        marginTop: 12,
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 7,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(255,128,128,0.32)",
+        backgroundColor: "rgba(90,24,24,0.42)",
+    },
+    discontinuedPillText: {
+        color: "rgba(255,238,238,0.96)",
+        fontSize: 12,
+        fontWeight: "800",
+        letterSpacing: 0.1,
+    },
+    productFactsCard: {
+        marginTop: 16,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+        backgroundColor: "rgba(11,15,22,0.78)",
+        padding: 14,
+    },
+    productFactsHeader: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 10,
+    },
+    productFactsIconWrap: {
+        width: 30,
+        height: 30,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(245,212,126,0.28)",
+        backgroundColor: "rgba(245,212,126,0.10)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    productFactsTitle: {
+        color: theme.colors.textOnDark,
+        fontWeight: "900",
+        fontSize: 16,
+    },
+    productFactsGuideButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(180,228,150,0.22)",
+        backgroundColor: "rgba(31,62,38,0.42)",
+        paddingVertical: 7,
+        paddingHorizontal: 10,
+    },
+    productFactsGuideButtonPressed: {
+        opacity: 0.82,
+    },
+    productFactsGuideButtonText: {
+        color: "rgba(226,244,214,0.96)",
+        fontWeight: "800",
+        fontSize: 11,
+    },
+    productFactsSection: {
+        marginTop: 14,
+    },
+    productFactsSectionTitle: {
+        color: theme.colors.textOnDark,
+        fontWeight: "800",
+        fontSize: 13,
+        marginBottom: 8,
+    },
+    productFactsInfoGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+    },
+    productFactsInfoCell: {
+        minWidth: 112,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+        backgroundColor: "rgba(255,255,255,0.05)",
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+    },
+    productFactsInfoLabel: {
+        color: "rgba(255,255,255,0.56)",
+        fontSize: 11,
+        fontWeight: "800",
+        textTransform: "uppercase",
+        letterSpacing: 0.6,
+    },
+    productFactsInfoValue: {
+        marginTop: 4,
+        color: theme.colors.textOnDark,
+        fontSize: 13,
+        fontWeight: "800",
+    },
+    productFactsTagRow: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+    },
+    productFactsTag: {
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "rgba(212,175,55,0.24)",
+        backgroundColor: "rgba(212,175,55,0.12)",
+        paddingVertical: 7,
+        paddingHorizontal: 11,
+    },
+    productFactsTagText: {
+        color: theme.colors.textOnDark,
+        fontWeight: "800",
+        fontSize: 12,
+    },
+    productFactsTerpTag: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        borderRadius: 16,
+        borderWidth: 1,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        minWidth: 148,
+    },
+    productFactsTerpIconWrap: {
+        width: 28,
+        height: 28,
+        borderRadius: 999,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    productFactsTerpCopy: {
+        flexShrink: 1,
+    },
+    productFactsTerpTagText: {
+        color: theme.colors.textOnDark,
+        fontWeight: "800",
+        fontSize: 12,
+    },
+    productFactsTerpMetaText: {
+        marginTop: 2,
+        color: "rgba(255,255,255,0.66)",
+        fontSize: 11,
+        fontWeight: "700",
+    },
+    productFactsBody: {
+        color: theme.colors.textOnDarkSecondary,
+        fontSize: 13,
+        lineHeight: 20,
     },
     heroNoteButton: {
         minHeight: 34,
@@ -3341,16 +3625,6 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: "700",
     },
-    shareMiniButton: {
-        width: 28,
-        height: 28,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.12)",
-        backgroundColor: "rgba(255,255,255,0.06)",
-        alignItems: "center",
-        justifyContent: "center",
-    },
     reviewActionRow: {
         marginTop: 12,
         flexDirection: "row",
@@ -3462,7 +3736,9 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingVertical: 14,
         borderRadius: 16,
-        backgroundColor: "rgba(0,0,0,0.70)",
+        borderWidth: 1,
+        borderColor: "rgba(173,218,130,0.34)",
+        backgroundColor: "rgba(70,136,78,0.92)",
         alignItems: "center",
         justifyContent: "center",
     },
@@ -3471,8 +3747,8 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.14)",
-        backgroundColor: "rgba(255,255,255,0.10)",
+        borderColor: "rgba(255,145,145,0.28)",
+        backgroundColor: "rgba(98,38,38,0.82)",
         alignItems: "center",
         justifyContent: "center",
     },

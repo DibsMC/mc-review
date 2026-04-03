@@ -1,0 +1,9 @@
+duplicateGroup,keepId,dropId,productName,maker,thcPct,cbdPct,reason
+1,upstate-cbw-26-1-flower,upstate-crossbow-26-1-flower,Crossbow,Upstate,26,1,Exact duplicate name and maker; retain the earlier canonical slug and retire the duplicate slug.
+2,glass-pharms-fcf-26-1-flower,glass-pharms-first-class-funk-26-1-flower,First Class Funk,Glass Pharms,26,1,Exact duplicate name and maker; retain the shorter canonical slug and retire the duplicate slug.
+3,4c-labs-gbu-30-1-flower,4clabs-gary-busey-30-1-flower,Gary Busey,4C Labs,30,1,Exact duplicate name and maker; retain the canonical 4c-labs slug and retire the duplicate slug.
+4,together-gmo-18-1-flower,together-pharma-gmo-18-1-flower,GMO Cookies,Together Pharmacy,18,1,Exact duplicate name and maker; retain the shorter Together slug and retire the duplicate slug.
+5,curaleaf-organic-ggo-23-1-flower,noidecs-t23-23-1-flower,Green Gelato,ECS Botanics,23,1,Exact duplicate name and maker; retain the current Curaleaf/ECS canonical slug and retire the legacy duplicate slug.
+6,curaleaf-lavender-cake-20-1-flower,curaleaf-lce-20-1-flower,Lavender Cake,Curaleaf,20,1,Exact duplicate name and maker; retain the readable Lavender Cake slug and retire the shorthand duplicate slug.
+7,lit-sl-smalls-34-1-flower,lit-snow-lotus-34-1-flower,Snow Lotus,LIT,34,1,Exact duplicate name and maker; retain the Smalls variant slug currently in use and retire the duplicate slug.
+8,glass-pharms-mac-25-1-flower,glass-pharms-super-mac-25-1-flower,Super M.A.C.,Glass Pharms,25,1,Exact duplicate name and maker; retain the shorter canonical slug and retire the duplicate slug.

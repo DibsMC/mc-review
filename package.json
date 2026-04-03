@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
+    "postinstall": "node scripts/patch-rnfb-auth-ios.js",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "catalogue:export": "node scripts/exportProductsCatalog.js data/live_products_catalogue.csv",
+    "catalogue:queue:terpenes": "node scripts/generateTerpeneEnrichmentWorklist.js data/live_products_catalogue.csv data/live_terpene_enrichment_worklist.csv",
+    "catalogue:queue:availability": "node scripts/generateAvailabilityReviewQueue.js data/live_products_catalogue.csv data/live_availability_review_queue.csv"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

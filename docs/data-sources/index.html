@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review Budz Product Data Sources</title>
+    <meta
+      name="description"
+      content="How Review Budz compiles product names, factual catalogue fields, and provenance while keeping reviews and scoring original."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0e14;
+        --panel: rgba(18, 22, 30, 0.9);
+        --panel-border: rgba(255, 255, 255, 0.12);
+        --text: rgba(248, 249, 251, 0.96);
+        --muted: rgba(212, 216, 224, 0.78);
+        --eyebrow: rgba(223, 198, 130, 0.92);
+        --accent: #d9b24f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(189, 143, 58, 0.24), transparent 36%),
+          linear-gradient(180deg, #13161f 0%, #0b0e14 100%);
+        color: var(--text);
+      }
+
+      .wrap {
+        width: min(920px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 48px 0 72px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 28px;
+        overflow: hidden;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24);
+      }
+
+      .hero {
+        padding: 28px;
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--eyebrow);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        line-height: 1.02;
+      }
+
+      .lead {
+        margin: 14px 0 0;
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.7;
+      }
+
+      .meta {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 20px;
+      }
+
+      .panel {
+        padding: 24px;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 1.2rem;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+        line-height: 1.75;
+        font-size: 0.98rem;
+      }
+
+      ul {
+        margin: 10px 0 0;
+        padding-left: 20px;
+      }
+
+      .full {
+        margin-top: 20px;
+      }
+
+      a {
+        color: #f5d47e;
+      }
+
+      .quote {
+        margin-top: 20px;
+        padding: 16px 18px;
+        border-radius: 20px;
+        background: rgba(217, 178, 79, 0.08);
+        border: 1px solid rgba(217, 178, 79, 0.22);
+      }
+
+      .footer {
+        margin-top: 22px;
+        color: rgba(212, 216, 224, 0.6);
+        font-size: 0.92rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <p class="eyebrow">Review Budz</p>
+        <h1>Product Data Sources</h1>
+        <p class="lead">
+          Review Budz keeps product facts and community experience separate.
+          Product names and factual fields are compiled from publicly accessible
+          sources where permitted. Reviews, ratings, notes, tags, and scoring in
+          Review Budz are original or user-generated.
+        </p>
+        <div class="meta">
+          <div class="pill">Original community reviews</div>
+          <div class="pill">Per-product provenance workflow</div>
+          <div class="pill">Last updated: 26 March 2026</div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <h2>What we use for product facts</h2>
+          <ul>
+            <li>Official manufacturer or grower product pages.</li>
+            <li>Public pharmacy product pages where factual fields are openly available.</li>
+            <li>Publicly accessible producer datasheets or specification pages where permitted.</li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <h2>What we do not copy</h2>
+          <ul>
+            <li>Third-party editorial descriptions or marketing prose.</li>
+            <li>Images owned by external directories, clinics, or producers without permission.</li>
+            <li>Site structure, proprietary taxonomies, or searchable mirror databases from other services.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="panel full">
+        <h2>How provenance works</h2>
+        <p>
+          Where possible, Review Budz keeps a source name, source URL, source
+          type, and a last-checked date for catalogue updates. This makes it
+          easier to review where a factual field came from and when it was last
+          checked.
+        </p>
+
+        <h2>How we keep this defensible</h2>
+        <p>
+          Review Budz avoids copying editorial descriptions, images, or
+          searchable database structures from third-party services. Factual
+          fields are reviewed against permitted public sources and tracked with
+          provenance where possible.
+        </p>
+
+        <div class="quote">
+          <p>
+            Product names and factual fields are compiled from publicly
+            accessible manufacturer, grower, pharmacy, and other permitted
+            sources. All reviews, ratings, and effect data in Review Budz are
+            user-generated or original to Review Budz.
+          </p>
+        </div>
+
+        <p class="footer">
+          If a source owner asks us to correct or remove factual data, we review
+          that request and update the catalogue where appropriate.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
